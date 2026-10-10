@@ -3,6 +3,7 @@
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/skinning_backend.hpp"
+#include "mikudancestudio/geometry_workers.hpp"
 // ===========================================================================
 // VA 0x0047A5B0 - InitMainWindowAndD3D  (original: sub_47A5B0, 0x1AE4 bytes)
 // ===========================================================================
@@ -103,6 +104,9 @@ void Sub06CInit(DShowRecorder* recorder) {
 }
 
 bool InitMainWindowAndD3D(MMDApp* app, void* hInstanceIn, int nShowCmd) {
+    // Set the wait policy before a renderer or optional plugin can load VCOMP.
+    // GeometryWorkerCount also covers consumers that run without a window.
+    InitializeGeometryWorkers();
     PrepareEffectDefaults();
     HINSTANCE hInstance = static_cast<HINSTANCE>(hInstanceIn);
     auto& s = *app;

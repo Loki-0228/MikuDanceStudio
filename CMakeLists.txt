@@ -182,6 +182,17 @@ target_link_libraries(bone_scale_curve_tests PRIVATE mikudancestudio_core winmm 
 set_target_properties(bone_scale_curve_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 add_test(NAME bone_scale_curve_tests COMMAND bone_scale_curve_tests)
 
+add_library(mikudancestudio_geometry_workers STATIC src/model/geometry_workers.cpp)
+target_include_directories(mikudancestudio_geometry_workers PUBLIC include)
+if (MSVC)
+    target_compile_options(mikudancestudio_geometry_workers PRIVATE /openmp)
+    # VCOMP reads OMP_WAIT_POLICY during DLL load, before WinMain for a normal
+    # import. Delay loading lets the host configure its default first. Publish
+    # this to every core consumer, including the independent frame benchmark.
+    target_link_options(mikudancestudio_geometry_workers INTERFACE /DELAYLOAD:vcomp140.dll)
+    target_link_libraries(mikudancestudio_geometry_workers PUBLIC delayimp)
+endif()
+
 add_library(mikudancestudio_core STATIC
     src/animation/animation_curve_host.cpp
     src/animation/native_frame_retime.cpp
@@ -383,6 +394,7 @@ else()
 endif()
 target_link_libraries(mikudancestudio_core PUBLIC mikudancestudio_d3d12 mikudancestudio_curve_editor mikudancestudio_curve_motion)
 target_link_libraries(mikudancestudio_core PUBLIC
+    mikudancestudio_geometry_workers
     mikudancestudio_runtime_log
     BULLET275::BULLET275
     Alembic::Alembic
@@ -410,6 +422,19 @@ if (MSVC)
     target_compile_options(mikudancestudio_core PRIVATE /openmp)
     target_compile_options(mikudancestudio_core PRIVATE /Zc:offsetof-)
 endif()
+
+add_executable(geometry_workers_tests EXCLUDE_FROM_ALL
+    tests/geometry_workers_tests.cpp)
+target_link_libraries(geometry_workers_tests PRIVATE mikudancestudio_geometry_workers)
+set_target_properties(geometry_workers_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+if (MSVC)
+    target_compile_options(geometry_workers_tests PRIVATE /openmp)
+endif()
+add_test(NAME geometry_workers_default COMMAND geometry_workers_tests default 12)
+add_test(NAME geometry_workers_thread_limit COMMAND geometry_workers_tests default 3)
+add_test(NAME geometry_workers_active_override COMMAND geometry_workers_tests ACTIVE 12)
+add_test(NAME geometry_workers_passive_override COMMAND geometry_workers_tests PASSIVE 12)
 
 # ---------------------------------------------------------------------------
 # d3dx9_43 import stubs - MikuMikuEffect (MME) compatibility
