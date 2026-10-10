@@ -25,9 +25,12 @@ the alignment target, rebuilt with a modern toolchain
 - **Animation**: VMD load/save, VPD export, frame editor (bone / morph /
   camera / lighting / self-made expression / accessory tracks), frame playback
   with physics preview
-- **Physics**: Bullet 2.75 rigid bodies + constraints (6DOF spring),
-  deterministic solve order
-- **Rendering**: DirectX 9 fixed pipeline + optional SM2/SM3 effect chain
+- **Physics and baking**: Bullet 2.75 rigid bodies + constraints (6DOF spring),
+  deterministic solve order, physics/keyframe baking, and Alembic mesh export
+  with MMV/MME vertex deformations. See [physics baking](docs/PHYSICS_BAKING_REQUIREMENTS.md)
+  and [mesh export and baking](docs/ALEMBIC_EXPORT.md).
+- **Rendering**: Native DX12 preview and GPU skinning with DX9/CPU fallback when
+  DX12 is unavailable; DirectX 9 fixed pipeline + optional SM2/SM3 effect chain
   (HDR RT), toon textures, ground shadows, stereoscopic 3D (NVIDIA 3D Vision)
 - **Multimedia**: Wave playback, DirectShow AVI with installed legacy codecs,
   and self-contained MP4/H.264 recording with Media Foundation. The export
@@ -126,6 +129,7 @@ original usage habits nor compatibility requirements, and builders may delete
 them by editing the code.
 
 - **Native bone scaling**: Uniform and XYZ controls support local, global and view axes for every bone. PMM preserves full scale data; VMD stores scale in a versioned tail extension while preserving its standard prefix. See [bone scaling](docs/BONE_SCALING.md).
+- **Unrestricted self-shadow resolution**: Adjust the self-shadow map resolution without a preset range limit.
 - **Error reporting**: The program writes no log files; a fatal error raises a
   modal window whose text can be copied with Ctrl+C, and the PDB under
   `build/symbols/` resolves source lines.
@@ -133,7 +137,7 @@ them by editing the code.
   active - P play/stop plus A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R - except inside
   text fields.
 
-### Planned additions
+### Implemented additions
 
 Use **Baking → Bake keyframes…** to bake physics or resample bone motion. [Physics baking](docs/PHYSICS_BAKING_REQUIREMENTS.md) supports frame ranges, ERP, CFM, substeps, simulation rate controls, undo, cancellation, and unencrypted UTF-8 JSON presets. The UI includes English, Chinese and Japanese labels and tooltips; initial settings use Bullet defaults.
 
@@ -190,8 +194,9 @@ VMD/VPD 动作数据，在 DirectX 9 视口中编辑骨骼/形态/相机/照明/
 - **动画**：VMD 加载/保存、VPD 导出、帧编辑器（骨骼/形态/相机/照明/自作表情/附件轨道）、
   帧回放与物理预览
 - **物理**：Bullet 2.75 刚体 + 约束（6DOF spring），确定性求解顺序
-- **渲染**：DirectX 9 固定管线 + 可选 SM2/SM3 特效链（HDR RT）、toon 纹理、地面阴影、
+- **渲染**：原生 DX12 预览与 GPU 蒙皮；DX12 不可用时回退到 DX9/CPU。另有 DirectX 9 固定管线 + 可选 SM2/SM3 特效链（HDR RT）、toon 纹理、地面阴影、
   立体视觉（NVIDIA 3D Vision）
+- **烧录与网格导出**：烧录物理结果或逐帧重采样骨骼动作；导出包含 MMV/MME 顶点变形的 Alembic 网格。见[物理烧录](docs/PHYSICS_BAKING_REQUIREMENTS.md)和[网格导出与烧录](docs/ALEMBIC_EXPORT.md)
 - **多媒体**：Wave 播放、DirectShow AVI（使用已安装的传统编码器）、Media
   Foundation 内置 MP4/H.264 录制；导出页会列出系统已注册的 H.264 编码器并支持
   等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
@@ -305,12 +310,13 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 特性添加仅为方便本人使用，非MMD原本使用习惯或适配需求，编译者可编辑代码删去。
 
 - **原生骨骼缩放**：所有骨骼支持整体及 XYZ 缩放，统一使用局部、全局和视图坐标系。PMM 保存完整数据，VMD 在保留标准前缀的同时，将缩放写入同一文件尾部。见[骨骼缩放说明](docs/BONE_SCALING.md)。
+- **无范围限制的自阴影分辨率调整**：可调整自阴影贴图分辨率，不受预设范围限制。
 - **错误提示**：程序不写日志文件；遇到致命错误时会弹出对话框，可按 `Ctrl+C` 复制内容。
   开发者可结合 `build/symbols/` 下对应构建的 PDB 定位源码。
 - **输入法与快捷键**：开启中文或日文输入法时，字母快捷键仍有效，包括 `P`（播放/停止）
   和 `A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R`；在编辑框内输入文字时除外。
 
-### 计划新增功能
+### 已实现功能
 
 通过 **烘焙 → 烧录关键帧…** 可烧录物理结果或逐帧重采样骨骼动作。[物理烧录说明](docs/PHYSICS_BAKING_REQUIREMENTS.md)包含帧范围、ERP、CFM、子步数、计算频率、撤销、取消，以及 UTF-8 JSON 非加密预设。界面支持中英日三语及悬浮说明，初始配置采用 Bullet 默认参数。
 
@@ -368,9 +374,10 @@ Bullet 2.75 剛体物理、AVI 動画録画、VSQ 音源との同期、アニメ
   フレーム再生
 - **物理**：Bullet 2.75 剛体＋コンストレイント（6DOF スプリング）、決定論的な
   求解順序
-- **レンダリング**：DirectX 9 固定機能パイプライン＋オプションの SM2/SM3
+- **レンダリング**：ネイティブ DX12 プレビューと GPU スキニングに対応し、DX12 が使えない場合は DX9/CPU にフォールバックします。DirectX 9 固定機能パイプライン＋オプションの SM2/SM3
   エフェクトチェーン（HDR RT）、トゥーンテクスチャ、地面影、立体視
   （NVIDIA 3D Vision）
+- **ベイクとメッシュ出力**：物理結果のベイクやボーン動作のフレーム単位再サンプリング、MMV/MME の頂点変形を含む Alembic メッシュ出力に対応します。[物理ベイク](docs/PHYSICS_BAKING_REQUIREMENTS.md)と[メッシュ出力・ベイク](docs/ALEMBIC_EXPORT.md)を参照してください。
 - **マルチメディア**：Wave 再生、インストール済みの従来型コーデックを使う
   DirectShow AVI、Media Foundation による内蔵 MP4/H.264 録画。エクスポート画面で
   登録済み H.264 エンコーダーを確認でき、縦横比を保った解像度変更にも対応します。
@@ -437,13 +444,14 @@ cmake --install build --config Release --prefix build/Release
 ビルドする方はコードを編集して削除できます。
 
 - **ボーンスケール**：すべてのボーンを一括または XYZ 軸ごとに拡大縮小できます。ローカル・グローバル・ビュー座標に対応し、PMM に保存します。VMD は標準部分を維持し、同じファイルの末尾にスケール拡張を保存します。[詳細](docs/BONE_SCALING.md)。
+- **範囲制限のないセルフシャドウ解像度調整**：セルフシャドウマップの解像度をプリセット範囲に制限されず調整できます。
 - **エラー表示**：ログファイルは出力せず、致命的エラー時はモーダルなエラーウィンドウを
   表示します（Ctrl+C で内容をコピーでき、`build/symbols/` の PDB でソース行を特定できます）。
 - **入力メソッドとショートカット**：中国語／日本語の入力メソッドを ON にしたままでも
   英字ショートカット（P 再生／停止、ほか A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R）が有効です
   （テキスト入力欄を除く）。
 
-### 追加予定の機能
+### 実装済み機能
 
 **ベイク → キー焼き込み…** から物理結果の焼き込みとボーン動作の再サンプリングができます。[物理焼き込み](docs/PHYSICS_BAKING_REQUIREMENTS.md)は範囲、ERP、CFM、サブステップ、計算周波数、取り消し、キャンセル、暗号化しない UTF-8 JSON プリセットに対応します。表示と説明は日本語・英語・中国語に対応し、初期値には Bullet の既定値を使います。
 
