@@ -7,3 +7,5 @@
 `v2026.10.11.1` 使用独立发布工作树 `.local/worktrees/shadow-preview-release/` 与构建目录 `.local/builds/shadow-preview-release/`，关闭诊断和阶段计时。发布 EXE 与来源清单存放于 `.local/releases/v2026.10.11.1/`；上传、公开下载核验和旧版本归档记录位于 `.local/artifacts/github-release/v2026.10.11.1/`。替换正式目录前的程序备份位于 `.local/archives/shadow-preview-release/`。工作树作为已验收的发布参考保留。
 
 空场景默认着色器后台编译的源码快照、前后启动对照和隐藏窗口测试记录位于 `.local/artifacts/deferred-effect-20261011/`。独立构建为 `.local/builds/deferred-effect-x64-20261011/`，最终验证包为 `.local/releases/deferred-effect-20261011-integrated/`，性能对照包为 `.local/releases/deferred-effect-20261011/`。这些版本作为验收参考保留，不替换正式发布包。见[启动验收记录](STARTUP_DEFERRED_EFFECT_20261011.md)。
+
+`v2026.10.11.2` 已正式发布并更新 `build/Release/`。独立源码与发布记录位于 `.local/artifacts/github-release/v2026.10.11.2/`，构建在 `.local/builds/startup-release-20261011/`，发布文件在 `.local/releases/v2026.10.11.2/`。正式程序的六次启动对照位于 `.local/artifacts/release-startup-20261011/`，替换前程序备份在 `.local/archives/startup-release-20261011/`。这些目录保留为验收参考。此前 `v2026.10.11.1` 未完成公开发布，仍为空草稿。旧正式版因删除审批未通过而保留。见[本次发布及启动测量](RELEASE_20261011_2.md)。
