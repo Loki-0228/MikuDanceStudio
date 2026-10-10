@@ -120,11 +120,13 @@ std::wstring LegacyFilename(const char* text, const wchar_t* resolvedPath) {
 }
 
 std::wstring ModelLabel(const mdl::ModelRecord& model, bool english) {
+    const auto name = ModelName(model, english);
+    if (!name.empty()) return name;
     const wchar_t* filename = model.path;
     for (const wchar_t* p = filename; *p; ++p)
         if (*p == L'\\' || *p == L'/') filename = p + 1;
     if (*filename) return filename;
-    return ModelName(model, english);
+    return {};
 }
 
 std::wstring ModelName(const mdl::ModelRecord& model, bool english) {

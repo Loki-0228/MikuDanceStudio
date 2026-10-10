@@ -36,6 +36,7 @@
 
 #include "mikudancestudio/texture_lookup.hpp"
 #include "mikudancestudio/draw_order.hpp"
+#include "mikudancestudio/adaptive_shadow.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -2414,16 +2415,18 @@ void RenderModelsFixed(MMDApp* app) {                         // 0x425D20
             if (model != nullptr) {
                 app->ActiveRenderObject() = model;
                 app->ActiveRenderPass() = AccessoryRenderPass::FixedFunction;
-                // Translucent display (displayState != 0) keeps the original
-                // x64 material pass semantics (0x1400B6D70): one walk over the
-                // materials in record order, no sorting and no pass split. The
+                // Translucent display and MME with sorting disabled keep the
+                // original x64 material pass: one walk over the materials in
+                // record order, no sorting and no pass split. The
                 // model is therefore drawn once in the opaque iteration with
                 // ModelAlphaPass::Original and skipped in the translucent one.
-                const bool translucentDisplay =
-                    mdl::Mdl(model)->displayState != 0;
-                if (!translucentDisplay || alphaPass == ModelAlphaPass::Opaque)
+                const bool originalMaterialOrder =
+                    mdl::Mdl(model)->displayState != 0 ||
+                    (GetModuleHandleW(L"MMEffect.dll") != nullptr &&
+                     !app->AutoTransparentMaterialSortingEnabled());
+                if (!originalMaterialOrder || alphaPass == ModelAlphaPass::Opaque)
                     DrawModelMaterials(app, model, false, false,
-                                       translucentDisplay
+                                       originalMaterialOrder
                                            ? ModelAlphaPass::Original
                                            : alphaPass);
                 app->ActiveRenderObject() = nullptr;
@@ -2602,16 +2605,18 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
                 runtime_log::Write("FX model slot=%d order=%d toon=%u", slot,
                                    order,
                                    static_cast<unsigned>(mdl::Mdl(model)->toonFlag));
-                // Translucent display (displayState != 0) keeps the original
-                // x64 material pass semantics (0x1400B6D70): one record-order
+                // Translucent display and MME with sorting disabled keep the
+                // original x64 material pass: one record-order
                 // walk per model, no sorting and no pass split. Draw it once in
                 // the opaque iteration and skip the translucent one.
-                const bool translucentDisplay =
-                    mdl::Mdl(model)->displayState != 0;
-                const auto drawPass = translucentDisplay
+                const bool originalMaterialOrder =
+                    mdl::Mdl(model)->displayState != 0 ||
+                    (GetModuleHandleW(L"MMEffect.dll") != nullptr &&
+                     !app->AutoTransparentMaterialSortingEnabled());
+                const auto drawPass = originalMaterialOrder
                     ? ModelAlphaPass::Original
                     : alphaPass;
-                const bool drawThisPass = !translucentDisplay ||
+                const bool drawThisPass = !originalMaterialOrder ||
                     alphaPass == ModelAlphaPass::Opaque;
                 if (drawThisPass && mdl::Mdl(model)->toonFlag != 0) {
                     app->ActiveRenderPass() = AccessoryRenderPass::Effect;
@@ -2682,6 +2687,7 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
     if (device == nullptr || effect == nullptr || !api.Load())
         return;
 
+    UpdateAdaptiveShadowMap(app, frameMatrix);
     auto*& texture = sub->hdrTexture;
     auto*& surface = sub->shadowSurface;
     auto*& depth = sub->shadowDepthSurface;
@@ -2724,8 +2730,9 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
     D3DVIEWPORT9 shadowViewport{0, 0, width, height, 0.0f, 1.0f};
     device->SetViewport(&shadowViewport);
 
-    float target[3] = {app->ViewOffsetX(), app->ViewOffsetY(),
-                       app->CameraDistance()};
+    // The shadow focus is the orbit target, not the camera eye. Including the
+    // dolly distance moves a fine map away from the model when zooming out.
+    float target[3] = {app->ViewOffsetX(), app->ViewOffsetY(), 0.0f};
     const D3DVECTOR& lightDirection = app->SceneLight().Direction;
     float eye[3] = {
         target[0] - lightDirection.x * 50.0f,

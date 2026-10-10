@@ -297,8 +297,12 @@ int main() {
             Check(type == 0x5A, "Language change preserves model row metadata");
         wchar_t name[64]{};
         SendMessageW(combo, CB_GETLBTEXT, 1, reinterpret_cast<LPARAM>(name));
-        Check(wcscmp(name, L"洛天依.pmx") == 0,
-              "Model selector preserves the Unicode source filename in every language");
+        Check(wcscmp(name, language == 1 ? L"EN model" : L"JP model") == 0,
+              "Model selector displays the model metadata in the selected language");
+        Check(std::strcmp(replacement->name, "JP model") == 0 &&
+              std::strcmp(replacement->nameEn, "EN model") == 0 &&
+              std::wcscmp(replacement->path, L"C:\\模型\\洛天依.pmx") == 0,
+              "display language leaves model names and source identity untouched");
     }
     DestroyWindow(window);
     app->state.hwnd = nullptr;

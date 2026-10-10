@@ -74,7 +74,15 @@ void SetPhysicsMenuState(HWND hwnd, UINT state) {
     item.cbSize = sizeof item;
     item.fMask = MIIM_STATE;
     item.fState = state;
-    SetMenuItemInfoA(submenu, 2, TRUE, &item);
+    // Runtime Help items shift the original model-extension popup. Its child
+    // command is stable; position 2 now belongs to model-name translation.
+    for (int i = 0; i < GetMenuItemCount(submenu); ++i) {
+        HMENU child = GetSubMenu(submenu, i);
+        if (child && GetMenuState(child, 259, MF_BYCOMMAND) != UINT(-1)) {
+            SetMenuItemInfoA(submenu, UINT(i), TRUE, &item);
+            break;
+        }
+    }
 }
 
 }  // namespace

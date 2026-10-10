@@ -22,6 +22,7 @@
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/recording_preview.hpp"
 
 namespace mikudancestudio {
 
@@ -46,6 +47,30 @@ static const char kJpRecStopCaption[] =
 // ---------------------------------------------------------------------------
 LRESULT CALLBACK RecWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     MMDApp* app = g_Block;
+    if (app && (GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_THICKFRAME)) {
+        const int width = app->AviOutputWidth(), height = app->AviOutputHeight();
+        if (msg == WM_GETMINMAXINFO) {
+            auto* limits = reinterpret_cast<MINMAXINFO*>(lp);
+            RECT frame{0, 0, (std::max)(1, width), (std::max)(1, height)};
+            AdjustWindowRectEx(&frame, recording_preview::kStyle, FALSE, 0);
+            limits->ptMaxTrackSize.x = (std::max)(limits->ptMaxTrackSize.x, frame.right - frame.left);
+            limits->ptMaxTrackSize.y = (std::max)(limits->ptMaxTrackSize.y, frame.bottom - frame.top);
+            return 0;
+        }
+        if (msg == WM_SIZING) {
+            recording_preview::SizeToAspect(*reinterpret_cast<RECT*>(lp), wp, width, height);
+            return TRUE;
+        }
+        if (msg == WM_SYSCOMMAND && ((wp & 0xfff0) == SC_MAXIMIZE ||
+                                     (wp & 0xfff0) == SC_RESTORE) && !IsIconic(hwnd)) {
+            RECT client{}; GetClientRect(hwnd, &client);
+            const bool original = client.right == width && client.bottom == height;
+            const RECT rect = recording_preview::WindowRect(hwnd, width, height, original);
+            SetWindowPos(hwnd, nullptr, rect.left, rect.top, rect.right - rect.left,
+                rect.bottom - rect.top, SWP_NOACTIVATE | SWP_NOZORDER);
+            return 0;
+        }
+    }
     if (msg == WM_PAINT) {                                       // 0x479DBC
         PAINTSTRUCT ps;
         BeginPaint(hwnd, &ps);
@@ -247,6 +272,7 @@ void DispatchSeparateWindowCommand(MMDApp* app, unsigned short id) {  // was Sub
         const bool on = SendMessageA(GetDlgItem(separate, panel::kSelfShadowCheckbox),
                                      BM_GETCHECK, 0, 0) == 1;
         const std::int32_t value = on ? 4096 : 2048;
+        app->ShadowResolutionLimit() = value;
         D3DRenderer* sub = s.Renderer();
         sub->renderTargetWidth = value;   // 0x1D558
         sub->renderTargetHeight = value;  // 0x1D55C

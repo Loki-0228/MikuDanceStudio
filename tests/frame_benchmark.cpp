@@ -34,6 +34,7 @@
 #include <vector>
 #include <psapi.h>
 #pragma comment(lib, "psapi.lib")
+#include <commctrl.h>
 
 namespace mikudancestudio { void LoadSceneFile(); }
 using namespace mikudancestudio;
@@ -157,6 +158,8 @@ struct Options {
     bool lightGiven = false;
     float light[3]{};
     int fineShadow = -1;
+    int adaptiveShadow = -1;
+    int dynamicPrecision = -1;
     int sortPrecision = -1;
     bool verifyViewToggles = false;
     bool requireMmv = false;   // sampling may start only with MMV loaded
@@ -278,6 +281,16 @@ int ParseOptions(int argc, wchar_t** argv, Options& options) {
             long mode = 0;
             if (!text || !ParseLong(text, mode) || mode < 0 || mode > 1) return kExitUsage;
             options.fineShadow = static_cast<int>(mode);
+        } else if (wcscmp(arg, L"--adaptive-shadow") == 0) {
+            long mode = 0;
+            const wchar_t* text = value(arg);
+            if (!text || !ParseLong(text, mode) || mode < 0 || mode > 1) return kExitUsage;
+            options.adaptiveShadow = static_cast<int>(mode);
+        } else if (wcscmp(arg, L"--dynamic-precision") == 0) {
+            long position = 0;
+            const wchar_t* text = value(arg);
+            if (!text || !ParseLong(text, position) || position < 0 || position > 9999) return kExitUsage;
+            options.dynamicPrecision = static_cast<int>(position);
         } else if (wcscmp(arg, L"--sort-precision") == 0) {
             long value = -1;
             if (++i >= argc || !ParseLong(argv[i], value) || value < 0 || value > static_cast<int>(TransparentSortPrecision::Off)) return kExitUsage;
@@ -843,6 +856,24 @@ int wmain(int argc, wchar_t** argv) {
         if (app->Renderer()->renderTargetWidth != 4096) return 43;
     }
     if (options.fineShadow >= 0) setQuality(options.fineShadow != 0);
+    if (options.adaptiveShadow >= 0) {
+        HWND adaptive = GetDlgItem(app->MainWindow(), panel::kAdaptiveShadowCheckbox);
+        SendMessageW(adaptive, BM_SETCHECK, options.adaptiveShadow ? BST_CHECKED : BST_UNCHECKED, 0);
+        CommandDispatch(adaptive, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED));
+        if (app->AdaptiveShadowResolution() != (options.adaptiveShadow != 0)) return 44;
+    }
+    if (options.dynamicPrecision >= 0) {
+        if (!app->AdaptiveShadowResolution()) return 45;
+        const float range = app->ShadowDistance();
+        const auto light = app->SceneLight();
+        HWND slider = GetDlgItem(app->MainWindow(), panel::kSelfShadowRangeSlider);
+        SendMessageW(slider, TBM_SETPOS, TRUE, options.dynamicPrecision);
+        SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(slider));
+        SyncSelfShadowControls(app);
+        if (app->DynamicShadowPrecision() != options.dynamicPrecision || app->ShadowDistance() != range ||
+            std::memcmp(&light, &app->SceneLight(), sizeof(light)) != 0 ||
+            SendMessageW(slider, TBM_GETPOS, 0, 0) != options.dynamicPrecision) return 46;
+    }
     std::printf("view_startup quality=%u shadow_width=%u sort_state=%u\n", initialQuality, initialShadowWidth, initialSortState);
 
     // ---- explicit D3D viewport ------------------------------------------
@@ -1665,6 +1696,20 @@ int wmain(int argc, wchar_t** argv) {
         json.Bool("toggle_verification_passed", viewTogglesVerified);
         json.End();
         json.Object("self_shadow");
+        json.Bool("adaptive_resolution", app->AdaptiveShadowResolution());
+        json.Integer("dynamic_precision", app->DynamicShadowPrecision());
+        json.Array("light_projection");
+        const auto* shadowMatrix = reinterpret_cast<const float*>(&app->LightViewProjection());
+        for (int row = 0; row < 4; ++row) {
+            json.Item();
+            for (int column = 0; column < 4; ++column) {
+                const char* keys[] = {"x", "y", "z", "w"};
+                json.Number(keys[column], shadowMatrix[row * 4 + column]);
+            }
+            json.End();
+        }
+        json.End();
+        json.Integer("resolution", app->Renderer()->renderTargetWidth);
         json.Bool("requested", options.selfShadowGiven);
         json.Integer("requested_mode",
                      options.selfShadowGiven ? options.selfShadowMode : -1);

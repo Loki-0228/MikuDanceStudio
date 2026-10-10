@@ -144,3 +144,11 @@ MikuMikuDance.exe <另一个新输出前缀> 1 --emm-save-on [素材PMM绝对路
 该入口限定本报告的两份 EXE 哈希，只读状态偏移也与这两份程序绑定。它通过程序原有的工程命令行与播放处理函数运行隐藏窗口，不修改 EXE、不注入 DLL、不写进程内存。正常帧循环日志提供完成 `FrameDriver` 的次数，约每 100 毫秒读取一次，按首末完整日志批次的观察时间计算频率。该指标不能声称是成功 Present 数、桌面显示 FPS 或逐帧耗时分位数。需要这些指标时应另行验证可用的 Present 采集器。
 
 每轮保留相同运行资源哈希、加载模块、播放游标、视口、场景设置、CPU 记录和 GPU 共享负载。测试结束仅关闭自身作业中的进程，不保存输入 PMM。`limited_process.run` 的可选 `stop_event` 用于这种外部观测结束后的清理；传入 `None, None` 作为 CPU 和核心参数时，回读确认作业没有 CPU 速率控制，并保留继承的处理器亲和性。删除正式程序对照入口时一并删除该脚本。
+
+## 阴影、录制预览和 MME 分配显示
+
+`display_compatibility_tests` 与 `display_compatibility_runner.py` 保留为回归测试。它们使用隐藏生产窗口和真实 MOV 录制，验证动态精度滑条不改变光源或阴影范围、菜单开关可双向操作、预览拖动和尺寸切换，以及导出分辨率和 PNG 帧内容。各轮写入新的输出目录。
+
+`mme_display_tests` 是需本地 MME DLL 的隐藏集成测试，输出名为 `MikuMikuDance.exe`。将它和同一版本的 `d3d9.dll`、`MMEffect.dll`、`MMHack.dll` 放入独立测试目录。先运行 `python tests/mme_display_fixtures.py <输出目录>` 生成原创小模型，再分别传入 `bilingual.pmx --bilingual` 和 `alpha-order.pmx --alpha-order` 的绝对路径。前者验证实际列表像素、翻译开关和未改变的绑定文本；后者观测真正的 D3D 材质绘制顺序。测试不会保存输入模型，也不显示或激活窗口。保留这组测试；移除相应兼容行为时再评估删除。
+
+`frame_benchmark` 和 `frame_benchmark_mme` 新增 `--adaptive-shadow 0|1` 与 `--dynamic-precision 0..9999`，JSON 记录实际贴图尺寸、精度值和阴影投影矩阵。后者通过真实滑条消息输入，检查面板刷新不会复位精度，也不会改变光源或阴影范围。验收数据与限制见 [阴影、预览与 MME 修复](../docs/SHADOW_PREVIEW_MME_20261011.md)。

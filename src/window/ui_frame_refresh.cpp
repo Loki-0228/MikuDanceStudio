@@ -27,6 +27,7 @@
 #include <algorithm>
 #include "mikudancestudio/ported_funcs.hpp"
 
+#include "mikudancestudio/adaptive_shadow.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/bone_combo.hpp"
@@ -214,11 +215,7 @@ void RefreshSelfShadowPanel(MMDApp* app) {
 void SyncSelfShadowControls(MMDApp* app) {
     if(app==nullptr)return;
 
-    const double rawRange =
-        10000.0 - static_cast<double>(app->state.physicsInterval) * 100000.0;
-    int range = static_cast<int>(rawRange);
-    if (rawRange - static_cast<double>(range) >= 0.5)
-        ++range;
+    const int range = ShadowSliderPosition(app);
 
     const HWND main = app->state.hwnd;
     const HWND slider=GetDlgItem(main,panel::kSelfShadowRangeSlider);

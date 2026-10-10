@@ -89,4 +89,13 @@ std::wstring DisplayGroupLabel(const mdl::DisplayGroup& group, bool english) {
     if (!entry) entry = Find(Morphs(), original, alternate);
     return Label(entry, original, english);
 }
+
+std::wstring MaterialLabel(const mdl::ModelRecord& model, std::size_t index, bool english) {
+    const auto original = MaterialName(model, index, english);
+    if (!gModelNameAutoTranslation) return original;
+    const auto alternate = MaterialName(model, index, !english);
+    const auto* entry = Find(Bones(), original, alternate);
+    if (!entry) entry = Find(Morphs(), original, alternate);
+    return Label(entry, original, english);
+}
 }

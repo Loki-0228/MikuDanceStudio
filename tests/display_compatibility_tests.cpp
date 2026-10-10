@@ -4,12 +4,21 @@
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/wic_mov_recorder.hpp"
+#include "mikudancestudio/ui_language.hpp"
+#include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/adaptive_shadow.hpp"
+#include <commctrl.h>
+#include <cstring>
 #include <MinHook.h>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 
 using namespace mikudancestudio;
+namespace mikudancestudio {
+void DisablePlaybackMenus(HWND);
+void RestorePlaybackMenus(MMDApp*);
+}
 namespace {
 int failures = 0;
 void Check(bool ok, const char* label) {
@@ -73,6 +82,43 @@ int main(int argc, char** argv) {
     app->InitDefaults();
     Require(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "initialize production host");
     Check(!IsWindowVisible(app->MainWindow()), "startup window stays hidden");
+    const float shadowRange = app->ShadowDistance();
+    const auto light = app->SceneLight();
+    const HWND dynamic = GetDlgItem(app->MainWindow(), panel::kAdaptiveShadowCheckbox);
+    const HWND shadowSlider = GetDlgItem(app->MainWindow(), panel::kSelfShadowRangeSlider);
+    RECT dynamicRect{}; GetWindowRect(dynamic, &dynamicRect);
+    for (int id : {560, 561, 562, 563, 564, 565}) {
+        RECT other{}, overlap{}; GetWindowRect(GetDlgItem(app->MainWindow(), id), &other);
+        Check(!IntersectRect(&overlap, &dynamicRect, &other), "dynamic checkbox does not overlap existing shadow controls");
+    }
+    SendMessageW(dynamic, BM_SETCHECK, BST_CHECKED, 0);
+    SendMessageW(app->MainWindow(), WM_COMMAND, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
+    Check(app->AdaptiveShadowResolution(), "real checkbox enables dynamic scaling");
+    for (int precision : {0, 7500, 9999, 5000}) {
+        SendMessageW(shadowSlider, TBM_SETPOS, TRUE, precision);
+        SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(shadowSlider));
+        SyncSelfShadowControls(app);
+        Check(app->DynamicShadowPrecision() == precision && SendMessageW(shadowSlider, TBM_GETPOS, 0, 0) == precision,
+              "dynamic precision survives ordinary panel refresh");
+        Check(app->ShadowDistance() == shadowRange && std::memcmp(&light, &app->SceneLight(), sizeof(light)) == 0,
+              "dynamic precision changes neither shadow coverage nor light");
+    }
+    SendMessageW(dynamic, BM_SETCHECK, BST_UNCHECKED, 0);
+    SendMessageW(app->MainWindow(), WM_COMMAND, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
+    Check(!app->AdaptiveShadowResolution() && SendMessageW(shadowSlider, TBM_GETPOS, 0, 0) == ShadowSliderPosition(app),
+          "disabling dynamic scaling restores the original range slider");
+    SetModelNameAutoTranslation(false);
+    DisablePlaybackMenus(app->MainWindow());
+    Check((GetMenuState(GetMenu(app->MainWindow()), 311, MF_BYCOMMAND) & (MF_GRAYED | MF_DISABLED)) == 0,
+          "playback does not grey the translation preference");
+    RestorePlaybackMenus(app);
+    for (bool expected : {true, false, true, false}) {
+        SendMessageW(app->MainWindow(), WM_COMMAND, 311, 0);
+        Check(gModelNameAutoTranslation == expected, "real menu command toggles translation both ways");
+        const UINT state = GetMenuState(GetMenu(app->MainWindow()), 311, MF_BYCOMMAND);
+        Check(state != UINT(-1) && ((state & MF_CHECKED) != 0) == expected,
+              "menu check mark follows real translation clicks");
+    }
     std::printf("STARTUP %d %d\n", app->RenderWidth(), app->RenderHeight());
     Check(app->RenderWidth() == std::atoi(argv[1]) && app->RenderHeight() == std::atoi(argv[2]),
           "startup preserves saved dimensions or uses 1080p defaults");
@@ -109,6 +155,27 @@ int main(int argc, char** argv) {
               "preview preserves export aspect ratio within one pixel rounding");
         Check(app->RenderWidth() == 1920 && app->RenderHeight() == 1080,
               "capture keeps requested 1080p dimensions");
+        Check((GetWindowLongPtrW(preview, GWL_STYLE) & (WS_THICKFRAME | WS_MAXIMIZEBOX)) ==
+              (WS_THICKFRAME | WS_MAXIMIZEBOX), "preview has resize border and size-toggle button");
+        fitWorkArea = true;
+        SendMessageW(preview, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+        GetClientRect(preview, &client);
+        Check(client.right == 1920 && client.bottom == 1080, "title button restores original export pixel size");
+        SendMessageW(preview, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+        GetWindowRect(preview, &bounds);
+        Check(bounds.left >= workArea.left && bounds.top >= workArea.top && bounds.right <= workArea.right &&
+              bounds.bottom <= workArea.bottom, "second title click fits the screen again");
+        RECT dragged{bounds.left, bounds.top, bounds.left + 480, bounds.top + 480};
+        Check(SendMessageW(preview, WM_SIZING, WMSZ_BOTTOMRIGHT, reinterpret_cast<LPARAM>(&dragged)),
+              "preview handles border dragging");
+        SetWindowPos(preview, nullptr, dragged.left, dragged.top, dragged.right - dragged.left,
+                     dragged.bottom - dragged.top, SWP_NOACTIVATE | SWP_NOZORDER);
+        GetClientRect(preview, &client);
+        Check(std::llabs(1080LL * client.right - 1920LL * client.bottom) <= 1920 + 1080,
+              "drag resizing preserves export aspect ratio");
+        Check(app->RenderWidth() == 1920 && app->RenderHeight() == 1080,
+              "preview resizing leaves capture resolution unchanged");
+        fitWorkArea = false;
         for (int i = 0; i < 30 && IsPngMovRecording(app->Recorder()); ++i) {
             app->state.messageSeen = 1;
             FrameDriver(app);

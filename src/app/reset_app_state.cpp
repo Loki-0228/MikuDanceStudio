@@ -543,18 +543,7 @@ void ResetAppState(MMDApp* app) {
         EnableMenuItem(GetMenu(hwnd), id, 1u);
     for (std::uint32_t id = 273; id <= 275; ++id)
         EnableMenuItem(GetMenu(hwnd), id, 1u);
-    {
-        MENUITEMINFOA mii;                                        // 0x44FF64
-        std::memset(&mii, 0, sizeof mii);
-        mii.cbSize = 48;
-        mii.fMask = MIIM_STATE;
-        mii.fState = MFS_DISABLED | MFS_GRAYED;
-        // Help is located through its About command, not through index 7: the
-        // port keeps its baking popup directly in front of Help.
-        if (HMENU help = HelpMenuFromBar(GetMenu(hwnd)))
-            SetMenuItemInfoA(help, 2u,
-                             TRUE, &mii);   // original passes 1024 (by position)
-    }
+    SetModelExtensionMenuEnabled(app, false);
     DrawMenuBar(hwnd);
 
     // ---- refresh tail -------------------------------------------------------

@@ -46,6 +46,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/recording_preview.hpp"
 
 namespace mikudancestudio {
 
@@ -163,45 +164,6 @@ bool GrowRenderTarget(MMDApp* app, std::int32_t w, std::int32_t h) {
         return false;
     }
     return true;
-}
-
-// Keep the recording preview on screen while leaving the capture target at
-// the requested export resolution.  The client area is fitted to the nearest
-// monitor's work area; only the window is scaled, never the recorded frames.
-RECT RecordingPreviewWindowRect(HWND owner, std::int32_t outputWidth,
-                                std::int32_t outputHeight) {
-    const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    RECT work{};
-    const HMONITOR monitor = MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO monitorInfo{};
-    monitorInfo.cbSize = sizeof(monitorInfo);
-    if (monitor != nullptr && GetMonitorInfoW(monitor, &monitorInfo)) {
-        work = monitorInfo.rcWork;
-    } else {
-        work = {0, 0, GetSystemMetrics(SM_CXSCREEN),
-                      GetSystemMetrics(SM_CYSCREEN)};
-    }
-
-    RECT frame{0, 0, 0, 0};
-    AdjustWindowRectEx(&frame, style, FALSE, 0);
-    const int frameWidth = frame.right - frame.left;
-    const int frameHeight = frame.bottom - frame.top;
-    const int maxClientWidth = (work.right - work.left) - frameWidth - 32;
-    const int maxClientHeight = (work.bottom - work.top) - frameHeight - 48;
-    const double scale = (outputWidth > 0 && outputHeight > 0)
-        ? (std::min)({1.0,
-            static_cast<double>((std::max)(1, maxClientWidth)) / outputWidth,
-            static_cast<double>((std::max)(1, maxClientHeight)) / outputHeight})
-        : 1.0;
-    const int clientWidth = (std::max)(1, static_cast<int>(outputWidth * scale));
-    const int clientHeight = (std::max)(1, static_cast<int>(outputHeight * scale));
-    RECT frameRect{0, 0, clientWidth, clientHeight};
-    AdjustWindowRectEx(&frameRect, style, FALSE, 0);
-    const int width = frameRect.right - frameRect.left;
-    const int height = frameRect.bottom - frameRect.top;
-    const int left = work.left + ((work.right - work.left) - width) / 2;
-    const int top = work.top + ((work.bottom - work.top) - height) / 2;
-    return {left, top, left + width, top + height};
 }
 
 // Lazy creation of the recording render target (0x45EA68..0x45EACC):
@@ -344,13 +306,13 @@ void StartAviRecordWindow(MMDApp* app) {
             L"AVI export", MB_OK | MB_ICONERROR);
         return;
     }
-    const RECT rc = RecordingPreviewWindowRect(s.MainWindow(), outW, outH);
+    const RECT rc = recording_preview::WindowRect(s.MainWindow(), outW, outH, true);
     char title[0x32];
     strcpy_s(title, 0x32, s.EnglishUI() != 0 ? kRecTitleEn : kRecTitleJp);
     HINSTANCE hInst = static_cast<HINSTANCE>(s.HInstance());  // this+0
     HWND recWnd = CreateWindowExA(                             // 0x45E9C6
         0, "RecWindow", title,
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        recording_preview::kStyle,
         rc.left, rc.top,
         rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst,
         nullptr);

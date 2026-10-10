@@ -21,7 +21,8 @@ using MaterialNames = std::vector<std::array<std::wstring,2>>;
 void SetMaterialNames(const mdl::ModelRecord&,MaterialNames);
 void ForgetMaterialNames(const mdl::ModelRecord&);
 std::wstring MaterialName(const mdl::ModelRecord&,std::size_t index,bool english);
-// UI identity comes from the resolved source file, not language-specific metadata.
+// Prefer model metadata in the selected language; use the source filename only
+// when neither name field contains a name.
 std::wstring ModelLabel(const mdl::ModelRecord& model, bool english);
 std::wstring MorphName(const mdl::MorphRecord& morph, bool english);
 std::wstring BoneName(const mdl::BoneRecord& bone, bool english);
@@ -35,6 +36,7 @@ std::wstring DisplayGroupName(const mdl::DisplayGroup& group, bool english);
 std::wstring BoneLabel(const mdl::BoneRecord& bone, bool english);
 std::wstring MorphLabel(const mdl::MorphRecord& morph, bool english);
 std::wstring DisplayGroupLabel(const mdl::DisplayGroup& group, bool english);
+std::wstring MaterialLabel(const mdl::ModelRecord& model, std::size_t index, bool english);
 // Message boxes whose text comes from the byte-exact Shift-JIS literals of the
 // original image (the JP branches) or from plain ASCII (the EN branches).
 // MessageBoxA would decode those bytes with the *system* code page and garble

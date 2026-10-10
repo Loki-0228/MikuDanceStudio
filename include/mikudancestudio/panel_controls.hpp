@@ -188,6 +188,7 @@ constexpr int kSelfShadowCheckbox = 556;     // 0x22C 美影 / self-shadow enabl
 constexpr int kCoordAxisCheckbox = 557;      // 0x22D 座標軸 / coordinate axis display
 constexpr int kSelfShadowRangeSlider = 560;  // 0x230 self-shadow range trackbar (0..9999)
 constexpr int kSelfShadowRangeEdit = 561;    // 0x231 self-shadow range edit
+constexpr int kAdaptiveShadowCheckbox = 578;
 constexpr int kEditOffCheckbox = 562;        // 0x232 camera/light/acc edit OFF (EN "off")
 constexpr int kEditMode1Checkbox = 563;      // 0x233 EN "mode1" (checked at init)
 constexpr int kEditMode2Checkbox = 564;      // 0x234 EN "mode2"

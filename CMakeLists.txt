@@ -257,6 +257,8 @@ add_library(mikudancestudio_core STATIC
     src/render/debug_geometry.cpp
     src/render/accessory.cpp
     src/render/model_renderers.cpp
+    src/render/adaptive_shadow.cpp
+    src/exports/effect_display.cpp
     src/render/transparent_geometry.cpp
     src/render/transparent_peeling.cpp
     src/render/bg_overlay.cpp
@@ -1010,6 +1012,14 @@ add_test(NAME mmv4mms_menu COMMAND mmv4mms_menu_tests)
 
 if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_executable(display_compatibility_tests EXCLUDE_FROM_ALL tests/display_compatibility_tests.cpp)
+    add_executable(mme_display_tests EXCLUDE_FROM_ALL tests/mme_display_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(mme_display_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(mme_display_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(mme_display_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/lib/$<CONFIG>"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/symbols/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/$<CONFIG>")
     target_sources(display_compatibility_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_options(display_compatibility_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(display_compatibility_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)

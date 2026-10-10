@@ -567,7 +567,7 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
             CmdControl450(app, hwnd, id, notification);
         } else if (id >= 500 && id <= 567) {
             CmdControl500(app, hwnd, id, notification);
-        } else if ((id == 571 || id == 574 || id == 576) &&
+        } else if ((id == 571 || id == 574 || id == 576 || id == panel::kAdaptiveShadowCheckbox) &&
                    notification == BN_CLICKED) {
             // MMS: the 缩放 X / Y / Z reset buttons (command_control_500.cpp).
             CmdControl500(app, hwnd, id, notification);

@@ -383,6 +383,8 @@ void LocalizeUI(MMDApp* app) {
     const bool english = s.EnglishUI() == kUiEnglish;              // UI captions follow UI language
     const bool englishNames = UiUsesEnglishNames(s.EnglishUI());
     const bool chinese = s.EnglishUI() == kUiChinese;
+    SetWindowTextW(Dlg(app, panel::kAdaptiveShadowCheckbox), chinese ? L"动态缩放" :
+        english ? L"Dynamic scaling" : L"動的スケーリング");
     HFONT previousFont = s.state.hFontUI;
     CreateUiFont(app, app->MainWindow());
     struct FontRefresh { MMDApp* owner; HFONT previous; } fonts{app,previousFont};

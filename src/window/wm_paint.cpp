@@ -271,15 +271,25 @@ void HandleWindowPaint(MMDApp* app) {
     // self-shadow panel
     if (app->state.optflag[0] != 0) {
         if (app->state.optflag[6] != 0) {
-            if (en) {
+            if (app->AdaptiveShadowResolution()) {
+                Lbl(app, en ? "self_shadow manipulation" : kJpLblSelfShadow,
+                    hdc, 12, (en ? 708 : 733) - panelShift, rc.bottom - 155);
+                const auto label = [&](const wchar_t* zh, const wchar_t* english, const wchar_t* japanese, int x, int y) {
+                    DrawWideUiGlyph(app->EnglishUI() == kUiChinese ? zh : en ? english : japanese,
+                        hdc, 12, x - panelShift, rc.bottom + y, app->UiTextRed(), app->UiTextGreen(), app->UiTextBlue(), 0);
+                };
+                label(L"阴影精度", L"precision", L"影の精度", 690, -90);
+                label(L"低", L"low", L"低", 690, -54);
+                label(L"高", L"high", L"高", 830, -54);
+            } else if (en) {
                 Lbl(app, "self_shadow manipulation", hdc, 12, 708 - panelShift, rc.bottom - 155);
-                Lbl(app, "shadow range", hdc, 12, 690 - panelShift, rc.bottom - 95);
+                Lbl(app, "shadow range", hdc, 12, 690 - panelShift, rc.bottom - 87);
                 Lbl(app, "detail", hdc, 12, 690 - panelShift, rc.bottom - 54);
                 Lbl(app, "far", hdc, 12,
                     (app->EnglishUI() == kUiChinese ? 830 : 840) - panelShift, rc.bottom - 54);
             } else {
                 Lbl(app, kJpLblSelfShadow, hdc, 12, 733 - panelShift, rc.bottom - 155);
-                Lbl(app, kJpLblShadowRange, hdc, 12, 690 - panelShift, rc.bottom - 100);
+                Lbl(app, kJpLblShadowRange, hdc, 12, 690 - panelShift, rc.bottom - 92);
                 Lbl(app, kJpLblKirei, hdc, 12, 690 - panelShift, rc.bottom - 53);
                 Lbl(app, kJpLblEnpou, hdc, 12, 830 - panelShift, rc.bottom - 53);
             }

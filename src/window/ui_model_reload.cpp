@@ -167,6 +167,8 @@ void PostModelReload2(MMDApp* app) {  // 0x40D940
     curve_host::ShowControls(app, app->state.optflag[0] != 0 && app->state.optflag[3] != 0);
     const bool cameraMode =
         app->state.optflag[0] != 0;
+    ShowWindow(MainControl(app, panel::kAdaptiveShadowCheckbox),
+        cameraMode && app->state.optflag[6] != 0 ? SW_SHOWNORMAL : SW_HIDE);
 
     const struct {
         int first;

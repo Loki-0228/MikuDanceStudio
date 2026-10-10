@@ -1111,6 +1111,8 @@ void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0
             SetMenuItemInfoW(popup, 311, FALSE, &setting);
             CheckMenuItem(popup, 311, MF_BYCOMMAND |
                 (gModelNameAutoTranslation ? MF_CHECKED : MF_UNCHECKED));
+            EnableMenuItem(popup, 310, MF_BYCOMMAND | MF_ENABLED);
+            EnableMenuItem(popup, 311, MF_BYCOMMAND | MF_ENABLED);
         }
     }
 

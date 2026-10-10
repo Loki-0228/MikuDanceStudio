@@ -44,6 +44,7 @@
 #include "../render/viewport_cursor_style.hpp"
 #include "mikudancestudio/bone_combo.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/adaptive_shadow.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "ui_controls.inc"
 
@@ -523,6 +524,15 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     // after its numeric-edit subclass has been installed.  Leaving the
     // CreateWindow caption empty made the top overlay differ by one glyph.
     SetWindowTextA(GetDlgItem(hwnd, panel::kGotoFrameEdit), "0");
+
+    HWND adaptiveShadow = CreateWindowExW(0, L"BUTTON", L"動的スケーリング",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 176, 20, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(panel::kAdaptiveShadowCheckbox)), hInst, nullptr);
+    if (!adaptiveShadow) return false;
+    LoadShadowResolutionPreference(app);
+    SendMessageW(adaptiveShadow, BM_SETCHECK, app->AdaptiveShadowResolution() ? BST_CHECKED : BST_UNCHECKED, 0);
+    ApplyUiFontToControl(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
+    InstallControlSubclass(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
 
     // UI-init tail (original 0x004675FB / 0x00467602, adjacent calls):
     // toon gradient textures, then the in-scene HUD font atlas.  Both are

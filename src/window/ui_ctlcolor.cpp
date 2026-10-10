@@ -113,6 +113,11 @@ LRESULT HandleCtlColor(HWND control, HDC dc) {
     // The camera-reference checkboxes sit over the dark blue view panel. Keep
     // their labels readable without painting an opaque button background.
     const int controlId = GetDlgCtrlID(ctrl);
+    if (controlId == panel::kAdaptiveShadowCheckbox) {
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, RGB(255, 255, 255));
+        return brushResult(8);
+    }
     if (controlId == panel::kCameraRefModelCheckbox ||
         controlId == panel::kCameraRefBoneCheckbox) {
         SetBkMode(dc, TRANSPARENT);

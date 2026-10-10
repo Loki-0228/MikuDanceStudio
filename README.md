@@ -160,6 +160,7 @@ them by editing the code.
 
 - **Native bone scaling**: Uniform and XYZ controls support local, global and view axes for every bone. PMM preserves full scale data; VMD stores scale in a versioned tail extension while preserving its standard prefix. See [bone scaling](docs/BONE_SCALING.md).
 - **Extended self-shadow range**: Removes the original MMD restriction on the range where self-shadows can be generated.
+- **Dynamic shadow scaling**: The self-shadow panel can match shadow-map resolution to the distance of visible meshes. It leaves the light and shadow coverage unchanged. With this option enabled, the slider adjusts precision around the matched result: the midpoint (5000) is neutral, left reduces precision, and right increases it, within the selected shadow-quality and device limits. Turning it off restores the slider's original shadow-range function.
 - **Error reporting**: The program writes no log files; a fatal error raises a
   modal window whose text can be copied with Ctrl+C, and the PDB under
   `build/symbols/` resolves source lines.
@@ -340,6 +341,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 
 - **原生骨骼缩放**：所有骨骼支持整体及 XYZ 缩放，统一使用局部、全局和视图坐标系。PMM 保存完整数据，VMD 在保留标准前缀的同时，将缩放写入同一文件尾部。见[骨骼缩放说明](docs/BONE_SCALING.md)。
 - **扩展自阴影产生范围**：取消原版 MMD 对自阴影产生范围的限制。
+- **动态缩放**：自阴影栏目可按画面中可见网格的远近匹配阴影贴图分辨率，不联动光源或阴影覆盖范围。开启后，滑条在匹配结果基础上继续增减精度，中点（5000）为基准，向左降低、向右提高，受美影设置和显卡上限限制。关闭后，滑条恢复原有的阴影范围调整功能。
 - **错误提示**：程序不写日志文件；遇到致命错误时会弹出对话框，可按 `Ctrl+C` 复制内容。
   开发者可结合 `build/symbols/` 下对应构建的 PDB 定位源码。
 - **输入法与快捷键**：开启中文或日文输入法时，字母快捷键仍有效，包括 `P`（播放/停止）
@@ -479,6 +481,7 @@ cmake --install build --config Release --prefix build/Release
 
 - **ボーンスケール**：すべてのボーンを一括または XYZ 軸ごとに拡大縮小できます。ローカル・グローバル・ビュー座標に対応し、PMM に保存します。VMD は標準部分を維持し、同じファイルの末尾にスケール拡張を保存します。[詳細](docs/BONE_SCALING.md)。
 - **セルフシャドウ範囲の拡張**：オリジナル MMD にあるセルフシャドウ生成範囲の制限をなくしました。
+- **動的スケーリング**：セルフシャドウ欄で、画面内のメッシュまでの距離に応じてシャドウマップの解像度を調整できます。光源と影の範囲は変更しません。有効時のスライダーは自動判定した解像度を基準に精度を調整し、中央（5000）が基準、左が低精度、右が高精度です。美影設定と GPU の上限が適用されます。無効にすると、スライダーは従来の影の範囲調整に戻ります。
 - **エラー表示**：ログファイルは出力せず、致命的エラー時はモーダルなエラーウィンドウを
   表示します（Ctrl+C で内容をコピーでき、`build/symbols/` の PDB でソース行を特定できます）。
 - **入力メソッドとショートカット**：中国語／日本語の入力メソッドを ON にしたままでも

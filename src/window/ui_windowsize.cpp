@@ -206,8 +206,9 @@ void HandleWindowSize(MMDApp* app) {
     MoveCtrl(hwnd, 562, 688 - bandXBase, bottom - 135, 54, 22);
     MoveCtrl(hwnd, 563, 745 - bandXBase, bottom - 135, 54, 22);
     MoveCtrl(hwnd, 564, 802 - bandXBase, bottom - 135, 54, 22);
-    MoveCtrl(hwnd, 560, 683 - bandXBase, bottom - 80, 176, 25);
-    MoveCtrl(hwnd, 561, 820 - bandXBase, bottom - 100, 30, 14);
+    MoveCtrl(hwnd, panel::kAdaptiveShadowCheckbox, 688 - bandXBase, bottom - 112, 170, 18);
+    MoveCtrl(hwnd, 560, 683 - bandXBase, bottom - 75, 176, 20);
+    MoveCtrl(hwnd, 561, 815 - bandXBase, bottom - 92, 35, 14);
     MoveCtrl(hwnd, 565, 745 - bandXBase, bottom - 36, 54, 30);
 
     // --- option band 3: bandXBase += 160 with expand toggle optflag[6] (0x443F19)

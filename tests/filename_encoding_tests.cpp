@@ -97,10 +97,10 @@ int main() {
     wchar_t brokenEnglish[] = L"926\uFF61\uFF7E\uFF74\uE650桒魴\uFF84\uFF89﨓蝪\uFF7F";
     model->pmxTextBuffers[1] = brokenEnglish;
     std::wcscpy(model->path, L"C:\\模型\\石英式洛天依七夕.pmx");
-    Check(enc::ModelLabel(*model, true) == L"石英式洛天依七夕.pmx",
-          "legacy PMM source filename wins over corrupted English PMX metadata");
-    Check(enc::ModelLabel(*model, false) == enc::ModelLabel(*model, true),
-          "switching UI language preserves the source filename");
+    Check(enc::ModelLabel(*model, true) == brokenEnglish,
+          "display preserves the selected model metadata without guessing corrections");
+    Check(enc::ModelLabel(*model, false) == modelName,
+          "native model name takes priority over the source filename");
     Check(enc::ModelName(*model, true) == brokenEnglish,
           "display labels do not rewrite serialized model metadata");
     wchar_t emptyName[] = L"";
@@ -116,8 +116,11 @@ int main() {
     enc::ForgetMaterialNames(*model);
     Check(enc::MaterialName(*model,0,true).empty(), "disposing metadata prevents stale material names on reused slots");
     std::wcscpy(model->path, L"D:/素材/髪_무대_😀.pmx");
+    model->pmxTextBuffers[0] = model->pmxTextBuffers[1] = nullptr;
+    model->name[0] = model->nameEn[0] = 0;
     Check(enc::ModelLabel(*model, true) == L"髪_무대_😀.pmx",
           "Unicode filenames and forward slashes remain intact");
+    model->pmxTextBuffers[0] = modelName;
     model->path[0] = 0;
     Check(enc::ModelLabel(*model, false) == modelName,
           "models without a source path retain their metadata label");

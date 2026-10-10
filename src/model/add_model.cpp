@@ -158,8 +158,7 @@ void LoadModelFile(MMDApp* app, const wchar_t* path, bool showModelInfo) { // 0x
         mii.fState = mdl::Mdl(curModel)->physicsMode == 2
                          ? (MFS_GRAYED | MFS_DISABLED)
                          : 0;
-        if (HMENU help = HelpMenuFromBar(GetMenu(hwnd)))
-            SetMenuItemInfoA(help, 2, TRUE, &mii);
+        SetModelExtensionMenuEnabled(app, mii.fState == MFS_ENABLED);
         DrawMenuBar(hwnd);
 
         EnableWindow(GetDlgItem(hwnd, panel::kPasteButton), 0);

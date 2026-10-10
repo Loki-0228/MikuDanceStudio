@@ -217,6 +217,9 @@ public:
     MMDAppState state;
 
     bool SceneMutationInProgress() const { return m_sceneMutationDepth != 0; }
+    bool& AdaptiveShadowResolution() { return m_adaptiveShadowResolution; }
+    int& DynamicShadowPrecision() { return m_dynamicShadowPrecision; }
+    unsigned& ShadowResolutionLimit() { return m_shadowResolutionLimit; }
 
     pmm_settings::State& PmmProjectSettings() { return m_pmmProjectSettings; }
     const pmm_settings::State& PmmProjectSettings() const { return m_pmmProjectSettings; }
@@ -1512,6 +1515,9 @@ private:
     // Port settings use the PMM v2 extension, outside the legacy state layout.
     pmm_settings::State m_pmmProjectSettings;
     bool m_transparentMaterialIndexOrderDirty = false;
+    bool m_adaptiveShadowResolution = false;
+    int m_dynamicShadowPrecision = 5000;
+    unsigned m_shadowResolutionLimit = 4096;
     TransparentSortPrecision m_transparentMaterialSortPrecision = kDefaultTransparentSortPrecision;
 
     LetterHotkeyState m_letterHotkeys;

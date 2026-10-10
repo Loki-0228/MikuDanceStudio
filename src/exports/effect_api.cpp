@@ -1,4 +1,5 @@
 #include "mikudancestudio/native_mesh.hpp"
+#include "mikudancestudio/effect_display.hpp"
 #include "mikudancestudio/perf_timing.hpp"
 // ===========================================================================
 // VA 0x004C3590..0x004C3A00 - MMD effect/accessory plugin API (37 exports)
@@ -191,7 +192,7 @@ HHOOK effectEditorHook = nullptr;
 MMDApp* effectEditorApp = nullptr;
 
 void TranslateEffectEditor(HWND window) {
-    if (!effectEditorApp || effectEditorApp->EnglishUI() != 2) return;
+    if (!effectEditorApp) return;
     // Match the plugin window and its public command set, never host controls
     // or arbitrary application windows with a coincidentally similar caption.
     const HMODULE module = GetModuleHandleW(L"MMEffect.dll");
@@ -200,6 +201,8 @@ void TranslateEffectEditor(HWND window) {
     HMENU menu = GetMenu(window);
     if (!menu || GetMenuState(menu, 40028, MF_BYCOMMAND) == UINT(-1) ||
         GetMenuState(menu, 40007, MF_BYCOMMAND) == UINT(-1)) return;
+    mikudancestudio::InstallEffectListDisplay(window, effectEditorApp);
+    if (effectEditorApp->EnglishUI() != 2) return;
     SetWindowTextW(window, L"效果文件分配");
     const auto setMenuText = [](HMENU target, UINT id, bool byPosition, const wchar_t* text) {
         MENUITEMINFOW item{sizeof(item)};
@@ -315,6 +318,15 @@ LRESULT CALLBACK EffectMenuProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp,
         // Apply after MME handles the message: it may have rebuilt its popup.
         mikudancestudio::RefreshEffectMenuLanguage(
             reinterpret_cast<mikudancestudio::MMDApp*>(reference));
+    }
+    if (languageChange || (message == WM_COMMAND && (LOWORD(wp) == 310 || LOWORD(wp) == 311))) {
+        EnumThreadWindows(GetCurrentThreadId(), [](HWND window, LPARAM) -> BOOL {
+            TranslateEffectEditor(window);
+            if (reinterpret_cast<HMODULE>(GetWindowLongPtrW(window, GWLP_HINSTANCE)) ==
+                GetModuleHandleW(L"MMEffect.dll"))
+                RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+            return TRUE;
+        }, 0);
     }
     return result;
 }
