@@ -1183,6 +1183,14 @@ void SetModelExtensionMenuEnabled(MMDApp* app, bool enabled) {
     HMENU menu = GetMenu(hwnd);
     const int helpPosition = TopLevelPositionWithCommand(menu, kHelpAboutCommand);
     HMENU help = helpPosition >= 0 ? GetSubMenu(menu, helpPosition) : nullptr;
+    // These are display preferences, not model-extension editing commands.
+    // Restore them during model/panel transitions and every popup opening,
+    // including when an earlier menu update left a disabled state behind.
+    // EnableMenuItem preserves the current check mark.
+    if (help) {
+        EnableMenuItem(help, 310, MF_BYCOMMAND | MF_ENABLED);
+        EnableMenuItem(help, 311, MF_BYCOMMAND | MF_ENABLED);
+    }
     const int position = help ? ChildPopupWithCommand(help, 259) : -1;
     if (position < 0) return;
     EnableMenuItem(help, UINT(position), MF_BYPOSITION |

@@ -376,12 +376,103 @@ void EnsureInterpChannelCombo(MMDApp* app, bool force) {
     SendMessageA(combo, CB_SETCURSEL, static_cast<WPARAM>(cursor), 0);
 }
 
+// Refill model selectors without retaining an invalid initial selection.
+// Shared with hidden control tests; model names remain display-only.
+void RefreshModelSelectorNames(MMDApp* app) {
+    auto& s = *app;
+    const bool english = s.EnglishUI() == kUiEnglish;
+    const bool chinese = s.EnglishUI() == kUiChinese;
+    const bool englishNames = UiUsesEnglishNames(s.EnglishUI());
+    // selector comboboxes 436/474/449: preserve selection across refill
+    HWND combo436 = Dlg(app, 436), combo474 = Dlg(app, 474), combo449 = Dlg(app, 449);
+    LRESULT sel436 = SendMessageA(combo436, CB_GETCURSEL, 0, 0);
+    LRESULT sel474 = SendMessageA(combo474, CB_GETCURSEL, 0, 0);
+    LRESULT sel449 = SendMessageA(combo449, CB_GETCURSEL, 0, 0);
+    SendMessageA(combo436, CB_RESETCONTENT, 0, 0);
+    SendMessageA(combo474, CB_RESETCONTENT, 0, 0);
+    SendMessageA(combo449, CB_RESETCONTENT, 0, 0);
+    if (english) {
+        SendMessageA(combo436, CB_ADDSTRING, 0, (LPARAM)"camera/light/accessory");  // 0x52D2AC
+        SendMessageA(combo474, CB_ADDSTRING, 0, (LPARAM)"ground");                 // 0x52D2A4
+        SendMessageA(combo449, CB_ADDSTRING, 0, (LPARAM)"non");                    // 0x52D38C
+    } else if (chinese) {
+        SendMessageW(combo436, CB_ADDSTRING, 0, (LPARAM)L"\u76f8\u673a/\u7167\u660e/\u914d\u4ef6");
+        SendMessageW(combo474, CB_ADDSTRING, 0, (LPARAM)L"\u5730\u9762");
+        SendMessageW(combo449, CB_ADDSTRING, 0, (LPARAM)L"\u65e0");
+    } else {
+        // Verified byte-exact: 0x52D370 ｶﾒﾗ･照明･ｱｸｾｻﾘ / 0x52D368 地面 /
+        // 0x52D360 なし (push sequence 0x442CE0..0x442D31).
+        SendMessageW(combo436, CB_ADDSTRING, 0,
+                     (LPARAM)L"\xff76\xff92\xff97\xff65\x7167\x660e"
+                              L"\xff65\xff71\xff78\xff7e\xff7b\xff98");  // 0x52D370
+        SendMessageW(combo474, CB_ADDSTRING, 0,
+                     (LPARAM)L"\x5730\x9762");                           // 0x52D368
+        SendMessageW(combo449, CB_ADDSTRING, 0,
+                     (LPARAM)L"\x306a\x3057");                           // 0x52D360
+    }
+
+    // add every loaded model's name to all three selectors; x64 twin
+    // sub_7FF7CB438E70 runs the comboSelIndex (model+0x3108) slot scan and
+    // the order walk to 255 (cmp edx, 0FFh at 0x7FF7CB43A96C / cmp ebp,
+    // 0FFh at 0x7FF7CB43AA8D) - same family as model_edge_dialog.cpp.
+    int rowBySlot[kModelSlotCount]{};
+    for (int order = 1; order <= kModelSlotCount; ++order) {
+        int slotIdx = -1;
+        for (int i = 0; i < kModelSlotCount; ++i) {
+            unsigned char* slot = s.ModelSlot(i);
+            if (slot != nullptr &&
+                mikudancestudio::mdl::Mdl(slot)->comboSelIndex == order) {
+                slotIdx = i;
+                break;
+            }
+        }
+        if (slotIdx < 0)
+            continue;
+        unsigned char* slot = s.ModelSlot(slotIdx);
+        const auto label = text_encoding::ModelLabel(*mdl::Mdl(slot), englishNames);
+        const LPARAM name = reinterpret_cast<LPARAM>(label.c_str());
+        rowBySlot[slotIdx] = static_cast<int>(SendMessageW(combo436, CB_ADDSTRING, 0, name));
+        SendMessageW(combo474, CB_ADDSTRING, 0, name);
+        SendMessageW(combo449, CB_ADDSTRING, 0, name);
+    }
+
+    const int parentSlot = s.CameraParentModel();
+    FillBoneCombo(Dlg(app, 450), parentSlot >= 0 && parentSlot < kModelSlotCount
+        ? mdl::Mdl(s.ModelSlot(parentSlot)) : nullptr, englishNames);
+    SelectBoneCombo(Dlg(app, 450), s.CameraParentBone());
+    if (const auto* acc = s.AccessorySlot(s.SelectedAccessorySlot())) {
+        const int slot = acc->parentModel;
+        FillBoneCombo(Dlg(app, 475), slot >= 0 && slot < kModelSlotCount
+            ? mdl::Mdl(s.ModelSlot(slot)) : nullptr, englishNames);
+        SelectBoneCombo(Dlg(app, 475), acc->parentBone);
+    }
+
+    const auto modelRow = [&](int slot) {
+        return slot >= 0 && slot < kModelSlotCount ? rowBySlot[slot] : 0;
+    };
+    const auto restore = [](HWND combo, LRESULT previous, int fallback) {
+        if (!combo) return -1;
+        const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+        LRESULT selected = previous;
+        if (selected < 0 || selected >= count) selected = fallback;
+        if (selected < 0 || selected >= count) selected = count > 0 ? 0 : -1;
+        SendMessageW(combo, CB_SETCURSEL, selected, 0);
+        // The collapsed caption must repaint even before the first user click.
+        InvalidateRect(combo, nullptr, FALSE);
+        return static_cast<int>(selected);
+    };
+    s.state.mainModelComboSelection = restore(combo436, sel436,
+        s.CameraMode() == 0 ? modelRow(s.SelectedModelSlot()) : 0);
+    const auto* accessory = s.AccessorySlot(s.SelectedAccessorySlot());
+    restore(combo474, sel474, accessory ? modelRow(accessory->parentModel) : 0);
+    restore(combo449, sel449, modelRow(s.CameraParentModel()));
+}
+
 void LocalizeUI(MMDApp* app) {
     RefreshMenuLanguage(app);
     auto& s = *app;
     // Name language follows the shared rule; the CHS pass is not "English".
     const bool english = s.EnglishUI() == kUiEnglish;              // UI captions follow UI language
-    const bool englishNames = UiUsesEnglishNames(s.EnglishUI());
     const bool chinese = s.EnglishUI() == kUiChinese;
     SetWindowTextW(Dlg(app, panel::kAdaptiveShadowCheckbox), chinese ? L"动态缩放" :
         english ? L"Dynamic scaling" : L"動的スケーリング");
@@ -474,72 +565,7 @@ void LocalizeUI(MMDApp* app) {
         PostLoadInit(s.SelectedModel());                           // 0x49C850
     }
 
-    // selector comboboxes 436/474/449: preserve selection across refill
-    HWND combo436 = Dlg(app, 436), combo474 = Dlg(app, 474), combo449 = Dlg(app, 449);
-    LRESULT sel436 = SendMessageA(combo436, CB_GETCURSEL, 0, 0);
-    LRESULT sel474 = SendMessageA(combo474, CB_GETCURSEL, 0, 0);
-    LRESULT sel449 = SendMessageA(combo449, CB_GETCURSEL, 0, 0);
-    SendMessageA(combo436, CB_RESETCONTENT, 0, 0);
-    SendMessageA(combo474, CB_RESETCONTENT, 0, 0);
-    SendMessageA(combo449, CB_RESETCONTENT, 0, 0);
-    if (english) {
-        SendMessageA(combo436, CB_ADDSTRING, 0, (LPARAM)"camera/light/accessory");  // 0x52D2AC
-        SendMessageA(combo474, CB_ADDSTRING, 0, (LPARAM)"ground");                 // 0x52D2A4
-        SendMessageA(combo449, CB_ADDSTRING, 0, (LPARAM)"non");                    // 0x52D38C
-    } else if (chinese) {
-        SendMessageW(combo436, CB_ADDSTRING, 0, (LPARAM)L"\u76f8\u673a/\u7167\u660e/\u914d\u4ef6");
-        SendMessageW(combo474, CB_ADDSTRING, 0, (LPARAM)L"\u5730\u9762");
-        SendMessageW(combo449, CB_ADDSTRING, 0, (LPARAM)L"\u65e0");
-    } else {
-        // Verified byte-exact: 0x52D370 ｶﾒﾗ･照明･ｱｸｾｻﾘ / 0x52D368 地面 /
-        // 0x52D360 なし (push sequence 0x442CE0..0x442D31).
-        SendMessageW(combo436, CB_ADDSTRING, 0,
-                     (LPARAM)L"\xff76\xff92\xff97\xff65\x7167\x660e"
-                              L"\xff65\xff71\xff78\xff7e\xff7b\xff98");  // 0x52D370
-        SendMessageW(combo474, CB_ADDSTRING, 0,
-                     (LPARAM)L"\x5730\x9762");                           // 0x52D368
-        SendMessageW(combo449, CB_ADDSTRING, 0,
-                     (LPARAM)L"\x306a\x3057");                           // 0x52D360
-    }
-
-    // add every loaded model's name to all three selectors; x64 twin
-    // sub_7FF7CB438E70 runs the comboSelIndex (model+0x3108) slot scan and
-    // the order walk to 255 (cmp edx, 0FFh at 0x7FF7CB43A96C / cmp ebp,
-    // 0FFh at 0x7FF7CB43AA8D) - same family as model_edge_dialog.cpp.
-    for (int order = 1; order < kModelSlotCount; ++order) {
-        int slotIdx = -1;
-        for (int i = 0; i < kModelSlotCount; ++i) {
-            unsigned char* slot = s.ModelSlot(i);
-            if (slot != nullptr &&
-                mikudancestudio::mdl::Mdl(slot)->comboSelIndex == order) {
-                slotIdx = i;
-                break;
-            }
-        }
-        if (slotIdx < 0)
-            continue;
-        unsigned char* slot = s.ModelSlot(slotIdx);
-        const auto label = text_encoding::ModelLabel(*mdl::Mdl(slot), englishNames);
-        const LPARAM name = reinterpret_cast<LPARAM>(label.c_str());
-        SendMessageW(combo436, CB_ADDSTRING, 0, name);
-        SendMessageW(combo474, CB_ADDSTRING, 0, name);
-        SendMessageW(combo449, CB_ADDSTRING, 0, name);
-    }
-
-    const int parentSlot = s.CameraParentModel();
-    FillBoneCombo(Dlg(app, 450), parentSlot >= 0 && parentSlot < kModelSlotCount
-        ? mdl::Mdl(s.ModelSlot(parentSlot)) : nullptr, englishNames);
-    SelectBoneCombo(Dlg(app, 450), s.CameraParentBone());
-    if (const auto* acc = s.AccessorySlot(s.SelectedAccessorySlot())) {
-        const int slot = acc->parentModel;
-        FillBoneCombo(Dlg(app, 475), slot >= 0 && slot < kModelSlotCount
-            ? mdl::Mdl(s.ModelSlot(slot)) : nullptr, englishNames);
-        SelectBoneCombo(Dlg(app, 475), acc->parentBone);
-    }
-
-    SendMessageA(combo436, CB_SETCURSEL, sel436, 0);
-    SendMessageA(combo474, CB_SETCURSEL, sel474, 0);
-    SendMessageA(combo449, CB_SETCURSEL, sel449, 0);
+    RefreshModelSelectorNames(app);
     curve_host::Localize(app);
 
     // MMS addition: the caption pass above writes the select caption onto the

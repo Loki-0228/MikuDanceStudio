@@ -56,6 +56,7 @@ int UiLocalizedControlCount();
 int UiLocalizedControlId(int index);
 void DrawTimelineLabel(MMDApp*, HDC, const wchar_t*, int, int, COLORREF);
 HWND CreateUiPanelControl(const ui::ControlSpec&, HWND, HINSTANCE, int);
+void RefreshModelSelectorNames(MMDApp*);
 }  // namespace mikudancestudio
 
 using namespace mikudancestudio;
@@ -118,6 +119,50 @@ void MainPanelComboRegression() {
     }
     DestroyWindow(parent);
     std::puts("PASS production main-panel combos preserve Unicode names");
+}
+
+void ModelSelectorSelectionRegression() {
+    auto app = std::make_unique<MMDApp>();
+    app->state = MMDAppState{};
+    auto model = std::make_unique<mdl::ModelRecord>();
+    HWND parent = CreateWindowExW(0, L"STATIC", L"", WS_OVERLAPPED,
+        0, 0, 320, 240, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    Check(parent != nullptr, "create hidden selector owner");
+    HWND main = MakeCombo(parent, 436, true);
+    HWND ground = MakeCombo(parent, 474, true);
+    HWND normal = MakeCombo(parent, 449, true);
+    app->Hwnd() = parent;
+    app->ModelSlot(7) = reinterpret_cast<unsigned char*>(model.get());
+    app->SetSelectedModelSlot(7);
+    app->CameraMode() = 0;
+    app->CameraParentModel() = 7;
+    model->comboSelIndex = 1;
+    model->pmxTextBuffers[0] = const_cast<wchar_t*>(L"模型_中文_髪_😀");
+    const auto previousPreference = gModelInfoLanguagePreference;
+    SetModelInfoLanguagePreference(kModelInfoLanguageAuto);
+    for (unsigned char language : {kUiChinese, kUiJapanese, kUiEnglish}) {
+        app->EnglishUI() = language;
+        for (HWND combo : {main, ground, normal}) SendMessageW(combo, CB_SETCURSEL, -1, 0);
+        RefreshModelSelectorNames(app.get());
+        Check(SendMessageW(main, CB_GETCURSEL, 0, 0) == 1,
+              "initial model selector recovers the current model without a click");
+        Check(SendMessageW(normal, CB_GETCURSEL, 0, 0) == 1,
+              "initial camera parent selector recovers the bound model");
+        Check(SendMessageW(ground, CB_GETCURSEL, 0, 0) == 0,
+              "unbound accessory selector shows ground instead of a blank caption");
+        wchar_t caption[128]{};
+        GetWindowTextW(main, caption, _countof(caption));
+        Check(std::wcscmp(caption, model->pmxTextBuffers[0]) == 0,
+              "collapsed model caption retains Unicode before any click");
+        SendMessageW(main, CB_SETCURSEL, 0, 0);
+        RefreshModelSelectorNames(app.get());
+        Check(SendMessageW(main, CB_GETCURSEL, 0, 0) == 0,
+              "an existing valid selector choice survives refresh");
+    }
+    SetModelInfoLanguagePreference(previousPreference);
+    app->ModelSlot(7) = nullptr;
+    DestroyWindow(parent);
+    std::puts("PASS initial model selectors: active model, parent fallback, closed Unicode caption, preserved selection");
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +600,51 @@ void DisplayGroupLifetimeRegression() {
           "model disposal forgets Unicode group names before address reuse");
 }
 
+void LegacyNameFallbackRegression() {
+    const bool previousTranslation = gModelNameAutoTranslation;
+    gModelNameAutoTranslation = false;
+    mdl::MorphRecord morph{};
+    mdl::BoneRecord bone{};
+    mdl::DisplayGroup group{};
+    // Fixed-width PMD/legacy fields can end halfway through a CP932 character.
+    // Keep all bytes, including the missing terminator, to exercise the bound.
+    std::memset(morph.name, 'm', sizeof(morph.name));
+    morph.name[sizeof(morph.name) - 1] = char(0x82);
+    std::strcpy(morph.nameEn, "blink");
+    std::memset(group.name, 'g', sizeof(group.name));
+    group.name[sizeof(group.name) - 1] = char(0x82);
+    std::strcpy(group.nameEn, "custom frame");
+    const auto originalMorph = morph;
+    const auto originalGroup = group;
+    Check(text_encoding::MorphLabel(morph, false) == L"blink",
+          "undecodable native morph falls back to the valid English name");
+    Check(text_encoding::DisplayGroupLabel(group, false) == L"custom frame",
+          "undecodable native display group falls back to the valid English name");
+    gModelNameAutoTranslation = true;
+    Check(text_encoding::MorphLabel(morph, false) == L"まばたき",
+          "fallback morph name still participates in display-only translation");
+    gModelNameAutoTranslation = false;
+    Check(std::memcmp(&morph, &originalMorph, sizeof(morph)) == 0 &&
+          std::memcmp(&group, &originalGroup, sizeof(group)) == 0,
+          "display fallback never rewrites model name bytes");
+    morph.nameEn[0] = group.nameEn[0] = 0;
+    Check(text_encoding::MorphLabel(morph, false) == std::wstring(19, L'm') + L"…",
+          "truncated morph without an alternate keeps the readable prefix");
+    Check(text_encoding::DisplayGroupLabel(group, false) == std::wstring(49, L'g') + L"…",
+          "truncated display group without an alternate keeps the readable prefix");
+    std::strcpy(morph.name, "\xEF\xBB\xBF\xE7\x9C\xA8\xE7\x9C\xBC");
+    std::strcpy(group.name, morph.name);
+    Check(text_encoding::MorphLabel(morph, false) == L"眨眼" &&
+          text_encoding::DisplayGroupLabel(group, false) == L"眨眼",
+          "explicit UTF-8 legacy names use their marker under every system code page");
+    std::strcpy(bone.name, "center");
+    bone.nameEn[0] = char(0x82);
+    Check(text_encoding::BoneLabel(bone, true) == L"center",
+          "bone name fallback uses the same decoding rules");
+    gModelNameAutoTranslation = previousTranslation;
+    std::puts("PASS legacy name decoding: invalid preferred field, truncated character, UTF-8 marker, unchanged identity");
+}
+
 void ModelNameTranslationRegression() {
     const auto previousPreference = gModelInfoLanguagePreference;
     const bool previousTranslation = gModelNameAutoTranslation;
@@ -745,6 +835,46 @@ void TimelineLabelRasterRegression() {
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::strcmp(argv[1], "--name-lookup-benchmark") == 0) {
+        mdl::MorphRecord morph{};
+        mdl::DisplayGroup group{};
+        std::strcpy(morph.name, "\x82\xDC\x82\xCE\x82\xBD\x82\xAB");
+        std::strcpy(morph.nameEn, "blink");
+        std::strcpy(group.name, "\x98\x72");
+        std::strcpy(group.nameEn, "arms");
+        gModelNameAutoTranslation = false;
+        std::size_t checksum = 0;
+        const auto run = [&] {
+            checksum += text_encoding::MorphLabel(morph, false).size();
+            checksum += text_encoding::DisplayGroupLabel(group, false).size();
+            checksum += text_encoding::MorphLabel(morph, true).size();
+            checksum += text_encoding::DisplayGroupLabel(group, true).size();
+        };
+        for (int i = 0; i < 1000; ++i) run();
+        checksum = 0;
+        LARGE_INTEGER start{}, end{}, frequency{};
+        QueryPerformanceFrequency(&frequency);
+        QueryPerformanceCounter(&start);
+        for (int i = 0; i < 100000; ++i) run();
+        QueryPerformanceCounter(&end);
+        Check(checksum == 1400000, "benchmark resolves the same names in both builds");
+        std::printf("{\"acp\":%u,\"lookups\":400000,\"checksum\":%zu,\"milliseconds\":%.6f}\n",
+            GetACP(), checksum, (end.QuadPart - start.QuadPart) * 1000.0 / frequency.QuadPart);
+        return 0;
+    }
+    if (argc == 2 && std::strcmp(argv[1], "--model-selectors") == 0) {
+        std::printf("Model selector regression: ACP=%u\n", GetACP());
+        ModelSelectorSelectionRegression();
+        return 0;
+    }
+    if (argc == 2 && std::strcmp(argv[1], "--name-gaps") == 0) {
+        Check(_wsetlocale(LC_ALL, L"Japanese_Japan.932") != nullptr, "set Japanese CRT locale");
+        std::printf("Name gap regression: ACP=%u\n", GetACP());
+        LegacyNameFallbackRegression();
+        ModelSelectorSelectionRegression();
+        MissingEnglishPmxRegression(true);
+        return 0;
+    }
     if (argc == 2 && std::strcmp(argv[1], "--panel-combos") == 0) {
         MainPanelComboRegression();
         return 0;
@@ -770,10 +900,12 @@ int main(int argc, char** argv) {
           "Invalid saved language falls back to Windows");
     NameLanguageRegression();
     MainPanelComboRegression();
+    ModelSelectorSelectionRegression();
     MissingEnglishPmxRegression();
     Check(_wsetlocale(LC_ALL, L"Japanese_Japan.932") != nullptr, "set Japanese CRT locale");
     MissingEnglishPmxRegression(true);
     DisplayGroupLifetimeRegression();
+    LegacyNameFallbackRegression();
     ModelNameTranslationRegression();
     ModelLanguagePreferenceRegression();
     CaptionRegression();

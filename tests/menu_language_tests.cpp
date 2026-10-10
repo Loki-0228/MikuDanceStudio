@@ -259,6 +259,27 @@ int RunResource(const wchar_t* resourceName) {
     for(int language : {0,1,2}){
         app.EnglishUI()=static_cast<unsigned char>(language);RefreshMenuLanguage(&app);
         app.ModelSlot(0)=reinterpret_cast<unsigned char*>(model.get());app.SetSelectedModelSlot(0);app.CameraMode()=0;
+        // A loaded read-only PMX or a legacy menu update can leave these
+        // independent display preferences disabled until a language refresh.
+        model->physicsMode = 2;
+        for (unsigned char preference : {kModelInfoLanguageAuto, kModelInfoLanguageJapanese,
+                                         kModelInfoLanguageEnglish}) {
+            SetModelInfoLanguagePreference(preference);
+            for (bool enabled : {false, true}) {
+                SetModelNameAutoTranslation(enabled);
+                CheckMenuItem(helpPopup, 311, MF_BYCOMMAND | (enabled ? MF_CHECKED : MF_UNCHECKED));
+                EnableMenuItem(helpPopup, 310, MF_BYCOMMAND | MF_GRAYED);
+                EnableMenuItem(helpPopup, 311, MF_BYCOMMAND | MF_GRAYED);
+                MainWndProc(window, WM_INITMENUPOPUP, reinterpret_cast<WPARAM>(helpPopup), 0);
+                Check((GetMenuState(helpPopup, 310, MF_BYCOMMAND) & (MF_GRAYED | MF_DISABLED)) == 0,
+                      "opening Help restores the model-language preference");
+                const auto state = GetMenuState(helpPopup, 311, MF_BYCOMMAND);
+                Check((state & (MF_GRAYED | MF_DISABLED)) == 0,
+                      "opening Help restores auto-translation for a read-only model");
+                Check(((state & MF_CHECKED) != 0) == enabled && gModelNameAutoTranslation == enabled,
+                      "restoring availability preserves the translation setting");
+            }
+        }
         SetModelExtensionMenuEnabled(&app,false);
         MainWndProc(window,WM_INITMENUPOPUP,reinterpret_cast<WPARAM>(helpPopup),0);
         Check(!extensionDisabled(),"opening Help enables model extension for the current model");
@@ -281,6 +302,7 @@ int RunResource(const wchar_t* resourceName) {
 }
 
 int main() {
+    std::printf("Menu regression: ACP=%u\n", GetACP());
     RunResource(L"SAMPLE02E");
     RunResource(L"SAMPLE02");
     return failures ? 1 : 0;

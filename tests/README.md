@@ -145,6 +145,14 @@ MikuMikuDance.exe <另一个新输出前缀> 1 --emm-save-on [素材PMM绝对路
 
 每轮保留相同运行资源哈希、加载模块、播放游标、视口、场景设置、CPU 记录和 GPU 共享负载。测试结束仅关闭自身作业中的进程，不保存输入 PMM。`limited_process.run` 的可选 `stop_event` 用于这种外部观测结束后的清理；传入 `None, None` 作为 CPU 和核心参数时，回读确认作业没有 CPU 速率控制，并保留继承的处理器亲和性。删除正式程序对照入口时一并删除该脚本。
 
+## 日区名称边界
+
+`ui_language_tests --name-gaps` 验证旧式名称解码失败回退、双字节截断、UTF-8 标记、模型选择框首次显示和真实 PMX 控件显示；`--model-selectors` 单独验证点击前的名称、绑定项和已有选择保留；`--name-lookup-benchmark` 单独测量 40 万次有效名称查询的 CPU 耗时。
+
+在 Windows 11 和已安装 Windows SDK 的环境中，运行 `python tests/windows_locale_runner.py <ui_language_tests.exe> <新输出目录>`，为测试副本设置日区、中文、西文和 UTF-8 进程编码。脚本核对实际代码页并保存哈希与结果；不改变系统设置或正式程序清单。若系统不支持指定代码页，检查失败，不记为通过。保留这组回归，移除旧式名称兼容时再评估删除。记录见[日区名称边界修复](../docs/JAPANESE_NAME_GAPS_20261011.md)。
+
+在命令末尾加 `selectors` 可单独运行模型选择框测试。使用 `python tests/windows_locale_runner.py <menu_language_tests.exe> <新输出目录> menu` 验证真实菜单资源，检查翻译项从灰色恢复可用且不改变勾选值。
+
 ## 阴影、录制预览和 MME 分配显示
 
 `display_compatibility_tests` 与 `display_compatibility_runner.py` 保留为回归测试。它们使用隐藏生产窗口和真实 MOV 录制，验证动态精度滑条不改变光源或阴影范围、菜单开关可双向操作、预览拖动和尺寸切换，以及导出分辨率和 PNG 帧内容。各轮写入新的输出目录。

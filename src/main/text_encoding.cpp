@@ -16,6 +16,45 @@ struct DisplayGroupText {
     std::array<std::string, 2> legacy;
 };
 std::unordered_map<const mdl::DisplayGroup*, DisplayGroupText> displayGroupNames;
+
+std::wstring LegacyName(const char* text, std::size_t capacity, bool repair) {
+    const std::string bounded(text, strnlen_s(text, capacity));
+    const bool utf8 = HasUtf8Bom(bounded.c_str());
+    const char* bytes = bounded.c_str() + (utf8 ? 3 : 0);
+    const UINT codePage = utf8 ? CP_UTF8 : 932;
+    std::wstring result;
+    if (Decode(bytes, codePage, result) || !repair) return result;
+
+    // An imported fixed-width name can stop at a DBCS lead byte. Preserve its
+    // readable prefix for display, without changing the motion/plugin identity.
+    if (!utf8 && !bounded.empty() &&
+        IsDBCSLeadByteEx(932, static_cast<BYTE>(bounded.back()))) {
+        const auto prefix = bounded.substr(0, bounded.size() - 1);
+        if (Decode(prefix.c_str(), 932, result) && !result.empty())
+            return result + L"…";
+    }
+    // A valid alternate language is tried before this path. If both fields are
+    // damaged, show the surviving text with replacement glyphs instead of
+    // dropping the entire name. Never guess a different unmarked code page.
+    const int count = MultiByteToWideChar(codePage, 0, bytes, -1, nullptr, 0);
+    if (count > 0) {
+        result.resize(count);
+        MultiByteToWideChar(codePage, 0, bytes, -1, result.data(), count);
+        result.resize(count - 1);
+    }
+    return result;
+}
+
+std::wstring LegacyNamePair(const char* preferred, const char* alternate,
+                            std::size_t capacity) {
+    for (bool repair : {false, true}) {
+        for (const char* text : {preferred, alternate}) {
+            auto name = LegacyName(text, capacity, repair);
+            if (!name.empty()) return name;
+        }
+    }
+    return {};
+}
 }
 void SetMaterialNames(const mdl::ModelRecord& model,MaterialNames names){materialNames[&model]=std::move(names);}
 void ForgetMaterialNames(const mdl::ModelRecord& model){materialNames.erase(&model);}
@@ -149,13 +188,9 @@ std::wstring MorphName(const mdl::MorphRecord& morph, bool english) {
     if (wide && *wide) return wide;
     wide = english ? morph.jpText : morph.enText;
     if (wide && *wide) return wide;
-    const char* narrow = english ? morph.nameEn : morph.name;
-    if (!*narrow) narrow = english ? morph.name : morph.nameEn;
     // PMD/VMD names are CP932, independent of the Windows/UI language.
-    std::wstring result;
-    const std::string bounded(narrow, strnlen_s(narrow, sizeof(morph.name)));
-    Decode(bounded.c_str(), 932, result);
-    return result;
+    return LegacyNamePair(english ? morph.nameEn : morph.name,
+                          english ? morph.name : morph.nameEn, sizeof(morph.name));
 }
 
 std::wstring BoneName(const mdl::BoneRecord& bone, bool english) {
@@ -163,12 +198,8 @@ std::wstring BoneName(const mdl::BoneRecord& bone, bool english) {
     if (wide && *wide) return wide;
     wide = english ? bone.jpText : bone.enText;
     if (wide && *wide) return wide;
-    const char* narrow = english ? bone.nameEn : bone.name;
-    if (!*narrow) narrow = english ? bone.name : bone.nameEn;
-    std::wstring result;
-    const std::string bounded(narrow, strnlen_s(narrow, sizeof(bone.name)));
-    Decode(bounded.c_str(), 932, result);
-    return result;
+    return LegacyNamePair(english ? bone.nameEn : bone.name,
+                          english ? bone.name : bone.nameEn, sizeof(bone.name));
 }
 
 void SetDisplayGroupName(const mdl::ModelRecord& model, const mdl::DisplayGroup& group,
@@ -187,20 +218,21 @@ void ForgetDisplayGroupNames(const mdl::ModelRecord& model) {
 
 std::wstring DisplayGroupName(const mdl::DisplayGroup& group, bool english) {
     const auto found = displayGroupNames.find(&group);
-    const auto name = [&](int slot) {
+    const auto name = [&](int slot, bool repair) {
         const char* narrow = slot ? group.nameEn : group.name;
         const std::string bounded(narrow, strnlen_s(narrow, sizeof(group.name)));
         // The English-name editor can rewrite the legacy field. Do not hide
         // those edits behind the original PMX text.
         if (found != displayGroupNames.end() && bounded == found->second.legacy[slot])
             return found->second.names[slot];
-        std::wstring decoded;
-        Decode(bounded.c_str(), 932, decoded);
-        return decoded;
+        return LegacyName(narrow, sizeof(group.name), repair);
     };
-    auto result = name(english ? 1 : 0);
-    if (result.empty()) result = name(english ? 0 : 1);
-    return result;
+    for (bool repair : {false, true}) {
+        auto result = name(english ? 1 : 0, repair);
+        if (result.empty()) result = name(english ? 0 : 1, repair);
+        if (!result.empty()) return result;
+    }
+    return {};
 }
 
 int MessageBoxJp(void* owner, const char* body, const char* caption,
