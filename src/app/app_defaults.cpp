@@ -39,7 +39,7 @@ void MMDApp::InitDefaults() {
     s.CameraRotation()[0] = 0.0f;
     s.WaveEnabled() = 0;
     s.CameraRotation()[1] = 0.0f;
-    s.DirectSoundAvailable() = 1;
+    s.DirectSoundAvailable() = 0; // Created only after importing audio.
     s.CameraRotation()[2] = 0.0f;
     s.UiOptionFlag(0) = 1;
     s.CameraPositionAxis(0) = 0.0f;

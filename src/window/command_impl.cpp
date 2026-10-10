@@ -333,18 +333,12 @@ void CmdOpenScene(MMDApp* app) {
 
 // ---------------------------------------------------------------------------
 // 206 (0xCE, 入口 0x7FF7CB46B8BC): File: 打开 WAV。
-//   enterKeyState=1 -> DirectSound 可用门（x64 app+0x2D8 为 0 时
-//   MessageBox(主窗, uType=0)：EN "DirectSound error"/"You cannot play WAVE
-//   because failed initialization of DirectSound!"，JP 标题与正文均为
-//   "DirectSound"，然后退出）-> 打开对话框 -> 先整路径入 wavPath、再回写
+//   enterKeyState=1 -> 打开对话框 -> 先整路径入 wavPath、再回写
 //   DirWave（0xA452C）-> LoadWaveFile -> 置脏。不置 reseat。
+//   音频设备在实际导入后创建；取消对话框无需初始化 DirectSound。
 // ---------------------------------------------------------------------------
 void CmdOpenWave(MMDApp* app) {
     app->state.enterKeyState = 1;               // 0x46B8BC [app+0xC0]
-    if (app->DirectSoundAvailable() == 0) {     // 0x46B8C6 门
-        ShowUiMessage(app, MainHwnd(app), UiMessage::DirectSoundError, MB_OK);
-        return;
-    }
     SetCurrentDirectoryW(app->ExeDir());
     wchar_t path[kDialogPathLen];
     swprintf_s(path, kDialogPathLen, kFmtEmptyPath, L"", L"");

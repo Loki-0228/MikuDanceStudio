@@ -13,7 +13,7 @@
 //
 // 0x025C audio/timeline context object (reached as app+0xCC,
 // app+0xCC (audioContext); ctor 0x4C2450, DirectSound init 0x4C2470 =
-// InitTimelineAudio in src/window/ui_init.cpp).  Field map recovered from
+// now deferred until WaveStartPlayback below). Field map recovered from
 // sub_4C2660/4C26F0/4C2760/4C2960/4C2F70:
 //   +0x00/+0x04  waveform max/min byte arrays (malloc'd, +0x250 entries;
 //                drawn by TimelineDrawTicks 0x4C2A00)
@@ -82,6 +82,7 @@
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/ui_message.hpp"
 #include "mikudancestudio/wave_audio_context.hpp"
 
 namespace mikudancestudio {
@@ -112,14 +113,25 @@ inline bool MIKUDANCESTUDIO_WAVE_TRACE() { return false; }
 inline void WaveTrace(const char*, ...) {}
 #endif
 
-// 0x52BB2C: "DirectSoundの初期化に失敗しているため、WAVは鳴らせません"
-static const char kMsgWaveNoSoundJp[] =
-    "DirectSound\x82\xCC\x8F\x89\x8A\xFA\x89\xBB\x82\xC9\x8E\xB8\x94\x73"
-    "\x82\xB5\x82\xC4\x82\xA2\x82\xE9\x82\xBD\x82\xDF\x81\x41WAV\x82\xCD"
-    "\x96\xC2\x82\xE7\x82\xB9\x82\xDC\x82\xB9\x82\xF1";
-// 0x52BB68: "DirectSoundエラー"
-static const char kMsgWaveErrCaptionJp[] =
-    "DirectSound\x83\x47\x83\x89\x81\x5B";
+bool EnsureAudioDevice(WaveAudioContext* audio) {
+    if (audio->directSound != nullptr)
+        return true;
+#ifdef MIKUDANCESTUDIO_DIAG
+    // Preserve the sanitizer escape hatch for the DirectSound worker thread.
+    if (std::getenv("MIKUDANCESTUDIO_SKIP_DSOUND") != nullptr)
+        return false;
+#endif
+    IDirectSound* device = nullptr;
+    if (FAILED(DirectSoundCreate(nullptr, &device, nullptr)))
+        return false;
+    if (FAILED(device->SetCooperativeLevel(audio->mainWindow, DSSCL_PRIORITY))) {
+        device->Release();
+        return false;
+    }
+    // Publish only a usable device, so a failed import can retry later.
+    audio->directSound = device;
+    return true;
+}
 // 0x531728: "WAVEファイルが見つかりません"
 static const char kMsgWaveNotFoundJp[] =
     "WAVE\x83\x74\x83\x40\x83\x43\x83\x8B\x82\xAA\x8C\xA9\x82\xC2\x82\xA9"
@@ -150,16 +162,37 @@ void WaveCtxReset(void* obj) {
     // are already null, so a later reset finds nothing left to free.
     // Defect CB-07.
     IDirectSoundBuffer* const previousBuffer = audio->streamingBuffer;
+    const bool threadOwnsBuffer = audio->feedThread != 0;
     if (audio->parseStream != nullptr || audio->feedThread != 0 ||
         audio->fileHandle != nullptr || previousBuffer != nullptr)
         CloseDataFile(audio);                   // 0x1400DA250 path: thread, FILE*, handle
-    if (previousBuffer != nullptr)              // CloseDataFile does not release this one; it must be handled here.
-        previousBuffer->Release();              // Caller pattern at 0x4C2C57/0x4C2F4A.
+    if (previousBuffer != nullptr && !threadOwnsBuffer)
+        previousBuffer->Release(); // An active feed thread releases its own buffer.
     audio->parseStream = nullptr;               // 0x4C2662 (+0x2C)
     audio->feedThread = 0;                      // 0x4C2665 (+0x234)
     audio->streamingBuffer = nullptr;           // 0x4C266B (+0x14)
     audio->fileHandle = nullptr;                // 0x4C266E (+0x244)
     media::ReleaseAudio(audio);
+}
+
+void ClearWaveAudio(MMDApp* app) {
+    auto* audio = app->Audio();
+    if (audio != nullptr) {
+        KillTimer(audio->mainWindow, 100);
+        WaveCtxReset(audio);
+        std::free(audio->waveformMax);
+        std::free(audio->waveformMin);
+        audio->waveformMax = audio->waveformMin = nullptr;
+        audio->waveformColumns = 0;
+        audio->path[0] = L'\0';
+        if (audio->directSound != nullptr) {
+            audio->directSound->Release();
+            audio->directSound = nullptr;
+        }
+    }
+    app->WavePath()[0] = L'\0';
+    app->WaveEnabled() = 0;
+    app->DirectSoundAvailable() = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +519,8 @@ bool WaveLoadFile(void* obj, const wchar_t* path,
 // ---------------------------------------------------------------------------
 bool WaveStartPlayback(void* obj) {
     auto* audio = static_cast<WaveAudioContext*>(obj);
+    if (audio->path[0] == L'\0')
+        return false;
     FILE*& stream = audio->parseStream;
     if (stream != nullptr)                                          // 0x4C2779
         CloseDataFile(audio);
@@ -533,6 +568,12 @@ bool WaveStartPlayback(void* obj) {
     if (file == INVALID_HANDLE_VALUE)                                            // 0x4C28E8
         return false;
 
+    if (!EnsureAudioDevice(audio)) {
+        CloseHandle(audio->fileHandle);
+        audio->fileHandle = nullptr;
+        return false;
+    }
+
     DSBUFFERDESC desc = {};                                         // 0x4C27C4..
     desc.dwSize = sizeof(desc);                                     // 0x24
     desc.dwFlags = 0x81E0;
@@ -577,26 +618,23 @@ void LoadWaveFile(MMDApp* app) {
     auto& s = *app;
     HWND hwnd = static_cast<HWND>(s.Hwnd());
 
-    if (s.DirectSoundAvailable() == 0) {                            // 0x418506
-        if (s.EnglishUI() != 0)                                     // 0x41850F
-            MessageBoxA(hwnd,
-                        "You cannot play WAVE because failed "
-                        "initialization of DirectSound!",            // 0x52BB80
-                        "DirectSound error", 0);                    // 0x52BBC4
-        else
-            MessageBoxA(hwnd, kMsgWaveNoSoundJp, kMsgWaveErrCaptionJp,
-                        0);                                         // 0x52BB2C/68
-        return;
-    }
-
     auto* audio = s.Audio();                                      // app+0xCC
     unsigned char* ctx = reinterpret_cast<unsigned char*>(audio);
     WaveCtxReset(ctx);                                              // 0x4C2660
-    const bool ok = WaveLoadFile(ctx, s.WavePath(),
-                                 app->PathWorkspace());             // 0x4C2F70
+    // Menu, drop-file and PMM imports converge here. Empty projects never
+    // create a device, and malformed/missing files fail before doing so.
+    bool ok = s.WavePath()[0] != L'\0' &&
+        WaveLoadFile(ctx, s.WavePath(), app->PathWorkspace());
+    if (ok) {
+        ok = WaveStartPlayback(ctx);
+        s.DirectSoundAvailable() = audio->directSound != nullptr ? 1 : 0;
+        if (!ok)
+            ShowUiMessage(app, hwnd, UiMessage::DirectSoundError, MB_OK);
+    }
 
     if (!ok) {                                                      // 0x41857F
         WaveCtxReset(audio);
+        audio->path[0] = L'\0';
         s.WaveEnabled() = 0;                                        // 0x41858C
         swprintf_s(s.WavePath(), 0x100, L"");                       // 0x507499
         // blank the timeline strip (hdc = app+0x2E0) 0x41859A..0x418667
@@ -622,7 +660,6 @@ void LoadWaveFile(MMDApp* app) {
     }
 
     wcscpy_s(s.WavePath(), 0x100, media::AudioSource(audio));
-    WaveStartPlayback(ctx);                                         // 0x4C2760
     s.WaveEnabled() = 1;                                            // 0x4186DD
     TimelineDrawTicks(s.TimelineStartFrame(), s.SidebarWidth());
     RECT rect{6, 0x5F,

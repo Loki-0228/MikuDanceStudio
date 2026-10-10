@@ -844,6 +844,13 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     set_target_properties(camera_follow_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME camera_follow_regressions COMMAND camera_follow_tests)
+    add_executable(wave_audio_tests EXCLUDE_FROM_ALL tests/wave_audio_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(wave_audio_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    target_link_options(wave_audio_tests PRIVATE "/MANIFEST:NO"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(wave_audio_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(scene_lifecycle_tests EXCLUDE_FROM_ALL tests/scene_lifecycle_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(scene_lifecycle_tests PRIVATE mikudancestudio_core winmm dsound)

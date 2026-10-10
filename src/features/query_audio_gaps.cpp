@@ -20,10 +20,9 @@
 //     (ExpGetPmdMatNum ~line 267 reads model+0x1C; ExpGetPmdMaterial
 //     ~line 275 copies 17 floats from the 0x8F4-stride records with the
 //     same inclusive `<=` bound).
-//   0x4C2470  ported as InitTimelineAudio in src/window/ui_init.cpp:58
-//     (DirectSoundCreate + SetCooperativeLevel(hwnd, DSSCL_PRIORITY) +
-//     352800-byte 0x81E0 test buffer 44.1kHz/16bit/2ch, Play/Sleep(1)/
-//     Stop/Release, hdc store).
+//   0x4C2470  replaced by lazy device creation in src/media/wave_audio.cpp.
+//     UI startup binds only the timeline HDC and window. A loaded audio
+//     file triggers DirectSoundCreate + SetCooperativeLevel.
 //   0x4C26F0 / 0x4C2C90 ported in src/media/wave_audio.cpp (WaveFindDataChunk
 //     line 138, WaveStreamFeed line 192).
 //

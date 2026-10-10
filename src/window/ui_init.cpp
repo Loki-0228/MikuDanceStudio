@@ -27,7 +27,6 @@
 #include <commctrl.h>
 #include <d3d9.h>
 #include <mmsystem.h>
-#include <dsound.h>
 #include <shellapi.h>   // DragAcceptFiles
 #include <objbase.h>    // CoInitialize (0x408EF0 DirectShowInit)
 
@@ -108,80 +107,6 @@ static void TraceInitialAccessoryTrack(const MMDApp& app) {
 #else
 static inline void TraceInitialAccessoryTrack(const MMDApp&) {}
 #endif
-
-static bool InitTimelineAudio(MMDApp* app, HWND hwnd, HDC timeline,
-                              bool english) {
-    WaveAudioContext* audio = app->Audio();
-    audio->englishUI = english ? 1 : 0;
-    audio->mainWindow = hwnd;
-
-#ifdef MIKUDANCESTUDIO_DIAG
-    // Debug escape hatch: MSVC ASAN's CreateThread wrapper crashes the
-    // DSOUND worker thread that DirectSoundCreate spawns (null read inside
-    // GetDeviceID), so sanitizer builds can run without timeline audio.
-    if (std::getenv("MIKUDANCESTUDIO_SKIP_DSOUND") != nullptr)
-        return false;
-#endif
-
-    IDirectSound*& directSound = audio->directSound;
-    if (FAILED(DirectSoundCreate(nullptr, &directSound, nullptr))) {
-        // x64 sub_7FF7CB4FA070 @ 0x7FF7CB4FA0C9: JP text is the full blob at
-        // 0x7FF7CB552568 =
-        // "DirectSoundが生成できません\nDirectSoundの使用が不可能です".
-        // Caption stays the empty string: the original passes a pointer at
-        // a NUL byte (IDA name "Locale" resolves to zeroed data).
-        static const char kJpCannotMakeDirectSound[] =
-            "DirectSound\x82\xAA\x90\xB6\x90\xAC\x82\xC5\x82\xAB\x82\xDC"
-            "\x82\xB9\x82\xF1\nDirectSound\x82\xCC\x8E\x67\x97\x70\x82\xAA"
-            "\x95\x73\x89\xC2\x94\x5C\x82\xC5\x82\xB7";
-        LegacyUiMessageBoxA(hwnd,
-                    english ? "Cannot make DirectSound!!"
-                            : kJpCannotMakeDirectSound,
-                    "", MB_OK);
-        return false;
-    }
-    if (FAILED(directSound->SetCooperativeLevel(hwnd, DSSCL_PRIORITY))) {
-        // JP text at x64 0x7FF7CB5525C8:
-        // "DirectSoundの協調に失敗しました".
-        static const char kJpFailedCooperateDirectSound[] =
-            "DirectSound\x82\xCC\x8B\xA2\x92\xB2\x82\xC9\x8E\xB8\x94\x73\x82\xB5\x82\xDC\x82\xB5\x82\xBD";
-        LegacyUiMessageBoxA(hwnd,
-                    english ? "Failed cooperate DirectSound!!"
-                            : kJpFailedCooperateDirectSound,
-                    "", MB_OK);
-        return false;
-    }
-
-    WAVEFORMATEX format{};
-    format.wFormatTag = WAVE_FORMAT_PCM;
-    format.nChannels = 2;
-    format.nSamplesPerSec = 44100;
-    format.nAvgBytesPerSec = 176400;
-    format.nBlockAlign = 4;
-    format.wBitsPerSample = 16;
-
-    DSBUFFERDESC desc{};
-    desc.dwSize = sizeof(desc);
-    desc.dwFlags = 0x81E0;
-    desc.dwBufferBytes = 352800;
-    desc.lpwfxFormat = &format;
-    audio->bufferBytes = static_cast<std::int32_t>(desc.dwBufferBytes);
-
-    IDirectSoundBuffer*& buffer = audio->streamingBuffer;
-    if (FAILED(directSound->CreateSoundBuffer(&desc, &buffer, nullptr)))
-        buffer = nullptr;
-    if (buffer != nullptr) {
-        buffer->SetCurrentPosition(0);
-        buffer->Play(0, 0, DSBPLAY_LOOPING);
-        Sleep(1);
-        buffer->Stop();
-        buffer->Release();
-        buffer = nullptr;
-    }
-
-    audio->timelineDC = timeline;
-    return true;
-}
 
 // VA 0x0040AE00 - was Sub40AE00.  Blank the timeline strip and the
 // interpolation-curve box: white rectangles over both GDI surfaces (the
@@ -348,12 +273,12 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
            copyDc, 0, 0, SRCCOPY);                                    // 0x4672B5
     DeleteDC(copyDc);
 
-    // 0x4672C2..0x4672E4: initialize the ruler/curve caches, then bind the
-    // ruler HDC to the wave/timeline object while DirectSound is initialized.
-    ClearTimelineAndCurveDCs(app);  // was Sub40AE00, 0x40AE00
-    s.DirectSoundAvailable() = static_cast<std::uint8_t>(
-        InitTimelineAudio(app, hwnd, s.TimelineDC(),
-                          app->EnglishUI() != 0));
+    // A new project has no audio. Bind the waveform drawing context without
+    // opening a sound device; LoadWaveFile handles imports and PMM audio.
+    ClearTimelineAndCurveDCs(app);
+    s.Audio()->englishUI = app->EnglishUI() != 0 ? 1 : 0;
+    s.Audio()->mainWindow = hwnd;
+    s.Audio()->timelineDC = s.TimelineDC();
 
     SetCurrentDirectoryW(app->ExeDir());                              // 0x4672F1
     s.state.bmpRes101 = LoadBitmapA(

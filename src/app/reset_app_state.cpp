@@ -91,6 +91,7 @@ static void ReplaceEditText(HWND parent, int id, const char* text) {
 }
 
 void ResetAppState(MMDApp* app) {
+    ClearWaveAudio(app);
     media::ReleaseVideo(app);
     mmv4mms::ClearScene();
     native_mesh::ClearScene();

@@ -250,7 +250,8 @@ void WaveRestartAt(void* obj, double seconds) {  // was Sub4C3530, VA 0x004C3530
     HWND hwnd = audio->mainWindow;                              // 0x4C3533
     KillTimer(hwnd, 0x64);                                      // 0x4C3539
     CloseDataFile(obj);                                         // 0x4C3541
-    WaveStartPlayback(obj);                                     // 0x4C3548
+    if (!WaveStartPlayback(obj))                               // 0x4C3548
+        return;
     IDirectSoundBuffer* buffer = audio->streamingBuffer;
     buffer->SetVolume(audio->volume);                            // 0x4C355D
     WaveSeekAndFeed(obj, seconds);                              // 0x4C356B
