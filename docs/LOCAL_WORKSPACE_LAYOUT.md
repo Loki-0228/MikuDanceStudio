@@ -1,6 +1,8 @@
 # 本地工作区布局
 
-`v2026.10.11.3` 已正式发布，当前 `build/Release/MikuMikuDance.exe` 与发布附件一致。固定源码、构建和发布验证位于 `.local/artifacts/github-release/v2026.10.11.3/`，独立构建为 `.local/builds/names-release-20261011/`，发布包位于 `.local/releases/v2026.10.11.3/`。旧程序备份在 `.local/archives/japanese-name-gaps-20261011/`。这些目录保留为验收参考，见[发布记录](RELEASE_20261011_3.md)。
+当前 `build/Release/MikuMikuDance.exe` 为本地 CPU 忙等待修复版（源码 `6ca7c98`），尚未发布到 GitHub。前后工作树为 `.local/worktrees/cpu-wait-before/` 和 `.local/worktrees/cpu-wait-after/`，构建为 `.local/builds/cpu-wait-before/` 和 `.local/builds/cpu-wait-after/`，证据在 `.local/artifacts/cpu-wait-fix-20261011/01/`。新版快照位于 `.local/releases/cpu-wait-fix-20261011/`，被替换的完整运行目录位于 `.local/archives/cpu-wait-fix-20261011/Release/`。这些目录作为验收参考保留，见[修复记录](CPU_WAIT_FIX_20261011.md)。
+
+`v2026.10.11.3` 是此前正式发布版本。固定源码、构建和发布验证位于 `.local/artifacts/github-release/v2026.10.11.3/`，独立构建为 `.local/builds/names-release-20261011/`，发布包位于 `.local/releases/v2026.10.11.3/`。旧程序备份在 `.local/archives/japanese-name-gaps-20261011/`。这些目录保留为验收参考，见[发布记录](RELEASE_20261011_3.md)。
 
 日区名称边界修复的基线工作树为 `.local/worktrees/japanese-name-before/`（`b3cfb98`，保留同一份新增回归测试及行为不变的测试入口提取）。前后构建分别位于 `.local/builds/japanese-name-before/` 与 `.local/builds/japanese-name-after/`。测试、补丁与版本清单位于 `.local/artifacts/japanese-name-gaps-20261011/01/`；替换前的正式程序备份位于 `.local/archives/japanese-name-gaps-20261011/`，新程序快照位于 `.local/releases/v2026.10.11.3/`。测试与备份作为验收参考保留，不随安装包上传。详见[日区名称修复记录](JAPANESE_NAME_GAPS_20261011.md)。
 
