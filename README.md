@@ -23,27 +23,51 @@ the alignment target, rebuilt with a modern toolchain
 - **Models**: PMD / PMX loading (incl. BDEF4/SDEF weights), bone trees, IK,
   morphs, toon rendering
 - **Animation**: VMD load/save, VPD export, frame editor (bone / morph /
-  camera / lighting / self-made expression / accessory tracks), frame playback
-  with physics preview
+  camera / lighting / self-made expression / accessory tracks), whole-project
+  frame-rate correction, and frame playback with physics preview
 - **Physics**: Bullet 2.75 rigid bodies + constraints (6DOF spring),
   deterministic solve order, physics baking and per-frame bone-motion
   resampling. Supports frame ranges, ERP/CFM, substeps, simulation rate,
   undo/cancel, and unencrypted UTF-8 JSON presets. The baking UI has English,
   Chinese, and Japanese labels and tooltips, with Bullet defaults. See
   [physics baking](docs/PHYSICS_BAKING_REQUIREMENTS.md).
-- **Mesh baking and export**: Alembic export includes MMV/MME vertex
-  deformations. Exporting ABC and baking into the project can be selected
+- **Mesh baking and export**: Supports per-layer MMV baking. Alembic export
+  includes MMV/MME vertex deformations. Exporting ABC and baking into the project can be selected
   independently; project baking warns about its effects. Clear mesh bake
   restores live deformation for the current model or all objects while keeping
   disabled FX disabled. See [mesh export and baking](docs/ALEMBIC_EXPORT.md).
 - **Rendering**: Native DX12 preview and GPU skinning with DX9/CPU fallback when
-  DX12 is unavailable; MME Effect support, toon textures, ground shadows, and
-  stereoscopic 3D (NVIDIA 3D Vision)
-- **Multimedia**: Wave playback, DirectShow AVI with installed legacy codecs,
-  and self-contained MP4/H.264 recording with Media Foundation. The export
-  dialog reports installed Media Foundation H.264 encoders and allows an
-  aspect-ratio-preserving output size; VSQ and Kinect input are also supported.
-- **UI**: English/Japanese interface, timeline, accessory editing, undo/redo
+  DX12 is unavailable; MME Effect support, toon textures, ground shadows,
+  stereoscopic 3D (NVIDIA 3D Vision), and separate device choices for main
+  rendering, vertex processing, and optional MMV processing
+- **Multimedia**: Imports many audio formats and MP4/MOV video through Windows
+  Media Foundation, depending on installed Windows media components;
+  plays Wave audio; records AVI through installed DirectShow codecs, MP4/H.264
+  through Media Foundation, and transparent MOV. The export dialog lists
+  registered H.264 encoders and supports aspect-ratio-preserving output sizes.
+  VSQ and Kinect input are also supported.
+- **UI and compatibility**: English/Chinese/Japanese interface, Unicode file
+  paths, timeline, accessory editing, undo/redo
+
+#### MMV plug-in (under testing; not released)
+
+MMV is an optional plug-in that uses an MME-style effect assignment workflow. It can take over or extend parts of the original bone and morph deformation, skinning, physics, and rendering pipeline. Effects run in layers and produce meshes for MMS to draw in the final scene. MMV is still under testing and has not been released.
+
+### Curve editor and PMM/VMD extensions
+
+The native curve editor edits model expression, camera, lighting, self-shadow,
+gravity, and accessory tracks. Curve data can be exported in a VMD tail
+extension; accessory and scene settings are stored in PMM v2 extension records.
+PMM v2 also preserves MMS project settings without changing the standard file
+header. Bone-scale data uses a VMD tail extension while keeping the standard
+VMD sections readable by older tools. Re-saving an extended project in original
+MMD may discard its MMS-only extension data. See [curve editor](docs/ANIMATION_CURVE_EDITOR.md)
+and [PMM v2 extensions](docs/PMM_V2_EXTENSIONS.md).
+
+Processor choices are saved per Windows user and take effect on the next
+startup. They are not stored in PMM, VMM, or VEM files.
+
+The source and history audit is in [MMS native feature audit](docs/MMS_NATIVE_FEATURES_AUDIT_2026-09-27.md).
 
 ### Building from Source
 
@@ -128,7 +152,7 @@ and the `MMEffect` menu appears; `.fx` effects are then assigned as usual. No
 DirectX SDK, at runtime or at build time. See
 [docs/MME_COMPATIBILITY.md](docs/MME_COMPATIBILITY.md).
 
-### Personal additions
+### Personal usage changes
 
 These additions exist only for personal convenience; they are neither MMD's
 original usage habits nor compatibility requirements, and builders may delete
@@ -142,6 +166,8 @@ them by editing the code.
 - **IME and hotkeys**: Letter hotkeys keep working with a Chinese/Japanese IME
   active - P play/stop plus A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R - except inside
   text fields.
+- **Transparent sorting preference**: Adds five selectable sorting levels,
+  including disable, to adjust transparency ordering for personal scenes.
 
 ### Contributions
 
@@ -168,7 +194,7 @@ input fixes, crash diagnostics, and build and release organization.
   extensions to MMD. See the [MME introduction coauthored by its creator](https://codezine.jp/article/detail/5997).
 - MME community effect authors and contributors, for sharing effects,
   tools, and knowledge.
-- 老面星星 for continued testing and suggestions ([BowlRoll](https://bowlroll.net/user/182602)); 沙拉酱 ([Bilibili](https://space.bilibili.com/3493080791517295)) for technical guidance; and 微波叮桃子 ([AplayBox](https://www.aplaybox.com/u/972840773)), 靡苦居士 ([Bilibili](https://space.bilibili.com/8545990)), 幽灵_U0 ([Bilibili](https://space.bilibili.com/454701392)), and 低智商鼻嘎 for testing and bug reports.
+- 老面星星 (StarNoodle495) for continued testing and suggestions ([BowlRoll](https://bowlroll.net/user/182602)); 沙拉酱 ([Bilibili](https://space.bilibili.com/3493080791517295)) for technical guidance; and 微波叮桃子 ([AplayBox](https://www.aplaybox.com/u/972840773)), 靡苦居士 ([Bilibili](https://space.bilibili.com/8545990)), 幽灵_U0 ([Bilibili](https://space.bilibili.com/454701392)), and 低智商鼻嘎 for testing and bug reports.
 
 ### License
 
@@ -192,14 +218,24 @@ VMD/VPD 动作数据，在 DirectX 9 视口中编辑骨骼/形态/相机/照明/
 
 - **模型**：PMD / PMX（含 BDEF4/SDEF 权重）加载，骨骼树、IK、形态（morph）、toon 渲染
 - **动画**：VMD 加载/保存、VPD 导出、帧编辑器（骨骼/形态/相机/照明/自作表情/附件轨道）、
-  帧回放与物理预览
+  整个工程的帧率修正、帧回放与物理预览
 - **物理**：Bullet 2.75 刚体与约束（6DOF spring），确定性求解顺序；支持烧录物理结果和逐帧重采样骨骼动作。可设置帧范围、ERP、CFM、子步数和计算频率，支持撤销、取消及 UTF-8 非加密 JSON 预设。界面提供中英日三语和悬浮说明，初始值采用 Bullet 默认参数。见[物理烧录](docs/PHYSICS_BAKING_REQUIREMENTS.md)
-- **网格烧录与导出**：Alembic 可导出包含 MMV/MME 顶点变形的网格；导出 ABC 与烧录回工程可分别选择，只有选择烧录时才提示影响。清除网格烧录可恢复当前模型或全部对象的实时变形，已停用的 FX 保持关闭。见[网格导出与烧录](docs/ALEMBIC_EXPORT.md)
-- **渲染**：原生 DX12 预览与 GPU 蒙皮；DX12 不可用时回退到 DX9/CPU。支持 MME Effect、toon 纹理、地面阴影和立体视觉（NVIDIA 3D Vision）
-- **多媒体**：Wave 播放、DirectShow AVI（使用已安装的传统编码器）、Media
-  Foundation 内置 MP4/H.264 录制；导出页会列出系统已注册的 H.264 编码器并支持
-  等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
-- **UI**：英日双语界面、时间轴、附件编辑、撤销/重做
+- **网格烧录与导出**：支持 MMV 逐层烘焙。Alembic 可导出包含 MMV/MME 顶点变形的网格；导出 ABC 与烧录回工程可分别选择，只有选择烧录时才提示影响。清除网格烧录可恢复当前模型或全部对象的实时变形，已停用的 FX 保持关闭。见[网格导出与烧录](docs/ALEMBIC_EXPORT.md)
+- **渲染**：原生 DX12 预览与 GPU 蒙皮；DX12 不可用时回退到 DX9/CPU。支持 MME Effect、toon 纹理、地面阴影、立体视觉（NVIDIA 3D Vision），并可分别选择主渲染、顶点计算和可选 MMV 处理设备
+- **多媒体**：通过 Windows Media Foundation 导入多种音频格式和 MP4/MOV 视频，具体格式取决于系统媒体组件。支持 Wave 音频播放、DirectShow AVI（使用已安装的传统编码器）、Media Foundation MP4/H.264 录制，以及透明 MOV 录制。导出页列出系统已注册的 H.264 编码器并支持等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
+- **UI 与兼容**：英中日三语界面、Unicode 文件路径、时间轴、附件编辑、撤销/重做
+
+#### MMV 插件（测试中，尚未发布）
+
+MMV 是采用类似 MME 的效果分配工作流的可选插件，可接管或扩展原版骨骼与形态变形、蒙皮、物理计算及渲染流程。效果按层运行并生成网格，再交由 MMS 绘制最终场景。目前仍在测试阶段，尚未发布。
+
+### 曲线编辑器与 PMM/VMD 扩展
+
+原生曲线编辑器可编辑模型自作表情、相机、照明、自阴影、重力和附件轨道。曲线数据可通过 VMD 尾部扩展导出；附件及场景设置保存在 PMM v2 扩展记录中。PMM v2 在不改变标准文件头的前提下保存 MMS 工程设置。骨骼缩放数据也通过 VMD 尾部扩展保存，标准 VMD 数据段保持不变。原版 MMD 重新保存扩展工程时可能丢弃 MMS 专有扩展数据。详见[曲线编辑器](docs/ANIMATION_CURVE_EDITOR.md)和[PMM v2 扩展](docs/PMM_V2_EXTENSIONS.md)。
+
+运算器选择按 Windows 用户跨工程保存，下次启动生效，不写入 PMM、VMM 或 VEM。
+
+源码与 Git 历史核对见[MMS 原生功能审计](docs/MMS_NATIVE_FEATURES_AUDIT_2026-09-27.md)。
 
 ### 从源码构建
 
@@ -298,13 +334,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 
 对象登记、效果分配及已验证的兼容范围，见 [MME 兼容性说明](docs/MME_COMPATIBILITY.md)。
 
-### PMM 项目设置
-
-自动透明材质排序随 PMM 保存。运算器改为主渲染、顶点计算和 MMV 处理三个分项，按本机用户跨工程保存，不写入 PMM、VMM 或 VEM，修改在下次启动生效；实施状态见[通用运算器方案](docs/PROCESSOR_SETTINGS_PROPOSAL.md)。当前及后续项目扩展均保持 PMM v2，不递增文件头版本。
-
-扩展边界、未知字段保留和后续开发规则见 [PMM v2 项目扩展格式](docs/PMM_V2_EXTENSIONS.md)。原版 MMD 再次保存会丢失这些扩展。
-
-### 个人添加特性
+### 个人习惯更改
 
 特性添加仅为方便本人使用，非MMD原本使用习惯或适配需求，编译者可编辑代码删去。
 
@@ -314,6 +344,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
   开发者可结合 `build/symbols/` 下对应构建的 PDB 定位源码。
 - **输入法与快捷键**：开启中文或日文输入法时，字母快捷键仍有效，包括 `P`（播放/停止）
   和 `A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R`；在编辑框内输入文字时除外。
+- **透明排序偏好**：增加关闭、低、标准、高、最高五档，便于按个人场景调整透明排序。
 
 ### 项目来源与维护
 
@@ -336,7 +367,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 - 舞力介入P：MikuMikuEffect（MME）原作者，感谢其为 MMD 带来的特效扩展能力。
   可参阅[作者参与撰写的 MME 介绍](https://codezine.jp/article/detail/5997)。
 - MME 社区的特效作者与贡献者：感谢他们创作和分享特效、工具与使用经验。
-- 老面星星（[BowlRoll](https://bowlroll.net/user/182602)）：感谢一直以来持续进行测试并提出建议；感谢沙拉酱（[Bilibili](https://space.bilibili.com/3493080791517295)）提供技术指导；感谢微波叮桃子（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0（[Bilibili](https://space.bilibili.com/454701392)）和低智商鼻嘎参与测试并提交 bug。
+- 老面星星（StarNoodle495，[BowlRoll](https://bowlroll.net/user/182602)）：感谢一直以来持续进行测试并提出建议；感谢沙拉酱（[Bilibili](https://space.bilibili.com/3493080791517295)）提供技术指导；感谢微波叮桃子（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0（[Bilibili](https://space.bilibili.com/454701392)）和低智商鼻嘎参与测试并提交 bug。
 
 ### 许可
 
@@ -364,16 +395,29 @@ Bullet 2.75 剛体物理、AVI 動画録画、VSQ 音源との同期、アニメ
   モーフ、トゥーンレンダリング
 - **アニメーション**：VMD 読み込み／保存、VPD エクスポート、フレームエディタ
   （ボーン／モーフ／カメラ／照明／自作表情／アクセサリトラック）、物理プレビュー付き
-  フレーム再生
+  フレーム再生、プロジェクト全体のフレームレート修正
 - **物理**：Bullet 2.75 剛体とコンストレイント（6DOF スプリング）、決定論的な求解順序。物理結果のベイクとボーン動作のフレーム単位再サンプリングにも対応します。フレーム範囲、ERP、CFM、サブステップ、計算周波数を設定でき、取り消し・キャンセルと暗号化しない UTF-8 JSON プリセットを利用できます。UI とツールチップは日英中に対応し、初期値は Bullet の既定値です。[物理ベイク](docs/PHYSICS_BAKING_REQUIREMENTS.md)
-- **メッシュベイクと出力**：Alembic は MMV/MME の頂点変形を含むメッシュを出力します。ABC 出力とプロジェクトへのベイクは個別に選択でき、ベイクを選んだ場合だけ影響を警告します。メッシュベイク解除で選択モデルまたは全オブジェクトの変形を元に戻し、無効化済み FX は無効のままです。[メッシュ出力・ベイク](docs/ALEMBIC_EXPORT.md)
-- **レンダリング**：ネイティブ DX12 プレビューと GPU スキニングに対応し、DX12 が使えない場合は DX9/CPU にフォールバックします。MME Effect、トゥーンテクスチャ、地面影、立体視（NVIDIA 3D Vision）もサポートします。
-- **マルチメディア**：Wave 再生、インストール済みの従来型コーデックを使う
-  DirectShow AVI、Media Foundation による内蔵 MP4/H.264 録画。エクスポート画面で
-  登録済み H.264 エンコーダーを確認でき、縦横比を保った解像度変更にも対応します。
-  VSQ と Kinect 入力も利用できます
-- **UI**：英語・日本語 UI、タイムライン、
-  アクセサリ編集、元に戻す／やり直し
+- **メッシュベイクと出力**：MMV のレイヤーごとのベイクに対応します。Alembic は MMV/MME の頂点変形を含むメッシュを出力します。ABC 出力とプロジェクトへのベイクは個別に選択でき、ベイクを選んだ場合だけ影響を警告します。メッシュベイク解除で選択モデルまたは全オブジェクトの変形を元に戻し、無効化済み FX は無効のままです。[メッシュ出力・ベイク](docs/ALEMBIC_EXPORT.md)
+- **レンダリング**：ネイティブ DX12 プレビューと GPU スキニングに対応し、DX12 が使えない場合は DX9/CPU にフォールバックします。MME Effect、トゥーンテクスチャ、地面影、立体視（NVIDIA 3D Vision）をサポートし、メイン描画、頂点計算、任意の MMV 処理でデバイスを個別に選べます。
+- **マルチメディア**：Windows Media Foundation を使って多くの音声形式と MP4/MOV 動画を読み込みます。利用可能な形式は Windows のメディアコンポーネントに依存します。Wave 再生、インストール済みコーデックを使う DirectShow AVI、Media Foundation による MP4/H.264、透過 MOV の録画にも対応します。出力画面で登録済み H.264 エンコーダーを確認でき、縦横比を保った解像度変更も可能です。VSQ と Kinect 入力も利用できます。
+- **UI**：英語・中国語・日本語 UI、タイムライン、
+  Unicode ファイルパス、アクセサリ編集、元に戻す／やり直し
+
+#### MMV プラグイン（テスト中・未公開）
+
+MMV は MME に似たエフェクト割り当て方式を使う任意のプラグインです。オリジナルのボーン／モーフ変形、スキニング、物理計算、描画処理を引き継ぐ、または拡張します。エフェクトをレイヤーごとに実行してメッシュを生成し、最終シーンは MMS が描画します。現在もテスト中で、まだ公開されていません。
+
+### 曲線エディタと PMM/VMD 拡張
+
+- **曲線エディタ**：モデルの自作表情、カメラ、照明、セルフシャドウ、重力、アクセサリのトラックを編集できます。アニメーション機能にはプロジェクト全体のフレームレート修正もあります。
+- **PMM 拡張**：標準ヘッダーを変えずに、MMS のプロジェクト設定とシーン／アクセサリ曲線を v2 拡張レコードに保存します。
+- **VMD 拡張**：標準データを維持したまま、末尾拡張に追加曲線やボーンスケールを保存します。オリジナル MMD で拡張プロジェクトを再保存すると、MMS 固有データが失われることがあります。
+
+詳しくは[曲線エディタ](docs/ANIMATION_CURVE_EDITOR.md)と[PMM v2 拡張](docs/PMM_V2_EXTENSIONS.md)を参照してください。
+
+処理デバイスの選択は Windows ユーザーごとに保存され、次回起動時に反映されます。PMM、VMM、VEM には保存されません。
+
+ソースと Git 履歴の根拠は[MMS ネイティブ機能監査](docs/MMS_NATIVE_FEATURES_AUDIT_2026-09-27.md)を参照してください。
 
 ### ソースからのビルド
 
@@ -428,7 +472,7 @@ cmake --install build --config Release --prefix build/Release
 `.fx` を割り当てるだけです。実行時もビルド時も DirectX SDK は不要です。詳細は
 [docs/MME_COMPATIBILITY.md](docs/MME_COMPATIBILITY.md)。
 
-### 個人による追加機能
+### 個人的な使用習慣による変更
 
 追加機能は個人的な利便性のためのもので、MMD 本来の使用習慣でも互換要件でもありません。
 ビルドする方はコードを編集して削除できます。
@@ -440,6 +484,7 @@ cmake --install build --config Release --prefix build/Release
 - **入力メソッドとショートカット**：中国語／日本語の入力メソッドを ON にしたままでも
   英字ショートカット（P 再生／停止、ほか A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R）が有効です
   （テキスト入力欄を除く）。
+- **透明ソート設定**：個人のシーンに合わせて、無効・低・標準・高・最高の五段階を選べます。
 
 ### 貢献
 
@@ -467,7 +512,7 @@ cmake --install build --config Release --prefix build/Release
   [作者が共著した MME 紹介記事](https://codezine.jp/article/detail/5997)もご覧ください。
 - MME コミュニティのエフェクト作者・貢献者の皆様：
   エフェクト、ツール、ノウハウの共有に感謝します。
-- 老面星星氏（[BowlRoll](https://bowlroll.net/user/182602)）：継続的なテストと提案に感謝します。沙拉酱氏（[Bilibili](https://space.bilibili.com/3493080791517295)）には技術指導を、微波叮桃子氏（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士氏（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0 氏（[Bilibili](https://space.bilibili.com/454701392)）、低智商鼻嘎氏にはテストとバグ報告に感謝します。
+- 老面星星氏（StarNoodle495、[BowlRoll](https://bowlroll.net/user/182602)）：継続的なテストと提案に感謝します。沙拉酱氏（[Bilibili](https://space.bilibili.com/3493080791517295)）には技術指導を、微波叮桃子氏（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士氏（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0 氏（[Bilibili](https://space.bilibili.com/454701392)）、低智商鼻嘎氏にはテストとバグ報告に感謝します。
 
 ### ライセンス
 
