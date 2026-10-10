@@ -1,6 +1,8 @@
 # 本地工作区布局
 
-日区名称边界修复的基线工作树为 `.local/worktrees/japanese-name-before/`（`b3cfb98`，保留同一份新增回归测试）。前后构建分别位于 `.local/builds/japanese-name-before/` 与 `.local/builds/japanese-name-after/`。测试、补丁与版本清单位于 `.local/artifacts/japanese-name-gaps-20261011/01/`；替换前的正式程序备份位于 `.local/archives/japanese-name-gaps-20261011/`，新程序快照位于 `.local/releases/japanese-name-gaps-20261011/`。这些内容作为验收参考保留，不上传。详见[日区名称修复记录](JAPANESE_NAME_GAPS_20261011.md)。
+`v2026.10.11.3` 已正式发布，当前 `build/Release/MikuMikuDance.exe` 与发布附件一致。固定源码、构建和发布验证位于 `.local/artifacts/github-release/v2026.10.11.3/`，独立构建为 `.local/builds/names-release-20261011/`，发布包位于 `.local/releases/v2026.10.11.3/`。旧程序备份在 `.local/archives/japanese-name-gaps-20261011/`。这些目录保留为验收参考，见[发布记录](RELEASE_20261011_3.md)。
+
+日区名称边界修复的基线工作树为 `.local/worktrees/japanese-name-before/`（`b3cfb98`，保留同一份新增回归测试及行为不变的测试入口提取）。前后构建分别位于 `.local/builds/japanese-name-before/` 与 `.local/builds/japanese-name-after/`。测试、补丁与版本清单位于 `.local/artifacts/japanese-name-gaps-20261011/01/`；替换前的正式程序备份位于 `.local/archives/japanese-name-gaps-20261011/`，新程序快照位于 `.local/releases/v2026.10.11.3/`。测试与备份作为验收参考保留，不随安装包上传。详见[日区名称修复记录](JAPANESE_NAME_GAPS_20261011.md)。
 
 原生媒体与透明 MOV 的历史快照和构建记录位于 `.local/releases/` 与 `.local/artifacts/`。模型模式光照前后验证位于 `.local/artifacts/model-view-light/20261007/`，详见[光照修复记录](MODEL_VIEW_LIGHTING_20261007.md)。这些历史资料不随应用发布。当前 MMS 发布目录为 `build/Release/`。
 
