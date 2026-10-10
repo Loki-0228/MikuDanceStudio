@@ -69,6 +69,7 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "device_lost_wait.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -269,7 +270,10 @@ void ReloadModels(MMDApp* app) {
     curve_host::Apply(app, curve_host::Kind::Camera, frame);
     SyncCameraFovControls(app);
     D3DRenderer* wrapper = s.Renderer();
-    if (wrapper != nullptr) {
+    // A recording stop or message-driven seek must still evaluate CPU state
+    // while recovery is pending. The successful reset/next frame rebuilds
+    // projection from these current camera values before rendering resumes.
+    if (wrapper != nullptr && !device_lost_wait::Pending(app)) {
         IDirect3DDevice9* device = wrapper->device;    // +120032
         if (device != nullptr) {
             d3dx::D3DXMATRIXF projection{};

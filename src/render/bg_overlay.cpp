@@ -33,6 +33,7 @@
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "../app/device_lost_wait.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -190,6 +191,12 @@ void RefreshOverlayVertexBuffer(MMDApp* app, IDirect3DVertexBuffer9* vb,
 
 // VA 0x004168D0 - AVI background frame -> texture + overlay quad.
 void AviBgOverlayRefresh(MMDApp* app) {
+    // Recording cleanup still applies CPU frame/panel state after a failed
+    // Reset. Preserve its background source until the next recovered frame.
+    if (device_lost_wait::Pending(app)) {
+        device_lost_wait::DeferBackgroundRefresh(app);
+        return;
+    }
     auto& s = *app;
     D3DRenderer* wrapper = s.Renderer();
     if (wrapper == nullptr)
@@ -335,12 +342,13 @@ void AviBgOverlayRefresh(MMDApp* app) {
     if (FAILED(texture->GetSurfaceLevel(0, &texSurface)) ||       // 0x416C67
         texSurface == nullptr)
         return;
-    if (FAILED(device->StretchRect(surface, nullptr, texSurface, nullptr,
-                                   D3DTEXF_LINEAR))) {            // 0x416C8D
-        device->StretchRect(surface, nullptr, texSurface, nullptr,
-                            D3DTEXF_NONE);                        // 0x416CB7
-    }
+    HRESULT uploaded = device->StretchRect(surface, nullptr, texSurface, nullptr,
+                                           D3DTEXF_LINEAR);      // 0x416C8D
+    if (FAILED(uploaded))
+        uploaded = device->StretchRect(surface, nullptr, texSurface, nullptr,
+                                        D3DTEXF_NONE);            // 0x416CB7
     texSurface->Release();
+    if (SUCCEEDED(uploaded)) device_lost_wait::BackgroundRefreshed(app);
     // (the original clears its stack slot after the release - 0x416CC7)
 
     RefreshOverlayVertexBuffer(

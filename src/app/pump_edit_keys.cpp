@@ -68,6 +68,7 @@
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "device_lost_wait.hpp"
 
 namespace mikudancestudio {
 
@@ -528,6 +529,12 @@ void ConsumeEditKeys(MMDApp* app) {
     PumpDeleteRebuild(app, focus, focusNotInPanelEdit);        // G8
     PumpTabCycle(app, focus, focusNotInPanelEdit);             // G5
     PumpFullscreenKeys(app, focus, focusNotInPanelEdit);       // G7
+    if (device_lost_wait::Pending(app)) {
+        // The same ESC can exit fullscreen and cancel recording. Preserve
+        // cancellation/cleanup even when the fullscreen Reset has failed.
+        PumpEscStop(app, focusNotInPanelEdit);
+        return;
+    }
     PumpEnterRegisterFrame(app, focus, focusNotInPanelEdit);   // G2 + G3
     PumpEscStop(app, focusNotInPanelEdit);                     // G4
 }

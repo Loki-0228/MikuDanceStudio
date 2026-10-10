@@ -5,6 +5,7 @@
 #include "mikudancestudio/wic_mov_recorder.hpp"
 #include "mikudancestudio/native_media.hpp"
 #include "mikudancestudio/native_mesh.hpp"
+#include "device_lost_wait.hpp"
 #include "mikudancestudio/transparent_peeling.hpp"
 // ===========================================================================
 // VA 0x00462C40 - ShutdownCleanup  (original: sub_462C40, 0x6A8 bytes)
@@ -429,6 +430,7 @@ void TeardownDShowGraphCoUninit(DShowRecorder* rec) {
 // VA 0x00462C40 - ShutdownCleanup  (original: sub_462C40, __thiscall, app)
 // =========================================================================//
 void ShutdownCleanup(MMDApp* app) {
+    device_lost_wait::Forget(app);
     AbortPngMovRecording(app->Recorder());
     ReleaseTransparentCapture(app);
     mmv4mms::Shutdown();

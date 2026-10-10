@@ -682,6 +682,42 @@ if (CMAKE_SIZEOF_VOID_P EQUAL 8)
 else()
     set(MIKUDANCESTUDIO_GEN_RES res/gen_resources.res)
 endif()
+if (MIKUDANCESTUDIO_BUILD_UI_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/device_lost_wait_tests.cpp")
+    add_executable(device_lost_wait_tests EXCLUDE_FROM_ALL tests/device_lost_wait_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(device_lost_wait_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(device_lost_wait_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(device_lost_wait_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/device-lost/$<CONFIG>")
+    function(add_device_lost_case entry scenario mode)
+        set(test_name "device_lost_${entry}_${scenario}_${mode}")
+        set(test_directory "${CMAKE_BINARY_DIR}/device-lost-artifacts/${test_name}")
+        file(MAKE_DIRECTORY "${test_directory}")
+        add_test(NAME "${test_name}" COMMAND device_lost_wait_tests
+            --entry "${entry}" --case "${scenario}" --mode "${mode}")
+        set_tests_properties("${test_name}" PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE
+            WORKING_DIRECTORY "${test_directory}")
+    endfunction()
+    foreach(mode windowed fullscreen)
+        foreach(entry frame readback record-frame)
+            foreach(scenario ok ready lost-ready lost-reset message-ready quit
+                reset-ok reset-fail message-reset-fail direct-reset-ok direct-reset-fail
+                replace-device replace-slot reenter fatal)
+                add_device_lost_case("${entry}" "${scenario}" "${mode}")
+            endforeach()
+            if(NOT entry STREQUAL "frame")
+                add_device_lost_case("${entry}" cancel "${mode}")
+                add_device_lost_case("${entry}" invalidate-surfaces "${mode}")
+            endif()
+        endforeach()
+        add_device_lost_case(frame paused-background-seek "${mode}")
+        add_device_lost_case(frame in-frame-timeline-reset-fail "${mode}")
+        add_device_lost_case(record-frame in-frame-record-esc-reset-fail "${mode}")
+        add_device_lost_case(record-frame in-frame-record-end-reset-fail "${mode}")
+    endforeach()
+    add_device_lost_case(frame in-frame-esc-reset-fail fullscreen)
+endif()
+
 if(TARGET physics_bake_tests)
     target_sources(physics_bake_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_options(physics_bake_tests PRIVATE "/MANIFEST:NO"

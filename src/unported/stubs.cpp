@@ -35,6 +35,7 @@
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/mf_h264_recorder.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "../app/device_lost_wait.hpp"
 
 #include "mikudancestudio/texture_lookup.hpp"
 
@@ -102,7 +103,7 @@ void FinishAviRecord(MMDApp* app, bool reachedRequestedEnd) {  // was Sub464A00
     bool dshowComplete = false;
     TeardownDShowGraph(s.Recorder(), &dshowComplete);           // 0x464A31
     D3DRenderer* r = s.Renderer();
-    if (r != nullptr) {
+    if (r != nullptr && r->device != nullptr && !device_lost_wait::Pending(app)) {
         IDirect3DDevice9* device = r->device;               // 0x1D4E0
         IDirect3DSurface9** backBuffer = &r->backbufferSurface;
         if (*backBuffer == nullptr)                         // 0x464A3C
@@ -136,7 +137,8 @@ void FinishAviRecord(MMDApp* app, bool reachedRequestedEnd) {  // was Sub464A00
         s.AviRenderResolutionOverridden() = false;
     }
     EnableWindow(GetDlgItem(static_cast<HWND>(s.Hwnd()), panel::kPlayButton), 1);  // 0x464B3E
-    RefreshMainWindowViewport(app);                                         // 0x464B46
+    if (!device_lost_wait::Pending(app))
+        RefreshMainWindowViewport(app);                         // 0x464B46
     RefreshAfterFrameApply(app);                            // 0x464B4D
     PostViewRefresh(app);                                   // 0x464B54
     if (IDirect3DSurface9* com = s.CaptureRenderTarget()) {        // 0x464B69

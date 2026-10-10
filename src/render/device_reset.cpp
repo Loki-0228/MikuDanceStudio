@@ -32,6 +32,7 @@
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "../app/device_lost_wait.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -47,6 +48,7 @@ void ReleaseSubSlot(ComPtr& slot) {
 }  // namespace
 
 bool PostDeviceReset(MMDApp* app) {
+    device_lost_wait::ResetScope recovery(app);
     ReleaseTransparentCapture(app);
     mmv4mms::DeviceLost();
     native_mesh::DeviceLost();
@@ -119,6 +121,7 @@ bool PostDeviceReset(MMDApp* app) {
     app->state.recentFile0[0] = 0;                                 // 0x440FE2
     app->state.recentFile1[0] = 0;
     app->state.recentFile2[0] = 0;
+    recovery.Successful();
     return true;
 }
 

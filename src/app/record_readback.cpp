@@ -77,6 +77,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/mf_h264_recorder.hpp"
+#include "device_lost_wait.hpp"
 
 namespace mikudancestudio {
 
@@ -127,6 +128,7 @@ long CallStreamingState(IPushSource* push, void* flagPtr) {
 // Returns false when the original aborts the whole FrameDriver pass
 // (failure epilogue at 0x46E80B); true to continue into the catch-up.
 bool RecordingReadbackPass(MMDApp* app) {
+    if (device_lost_wait::Active() || !device_lost_wait::Resume(app, true)) return false;
     auto& s = *app;
     D3DRenderer* wrapper = s.Renderer();
     if (wrapper == nullptr)
@@ -221,16 +223,10 @@ bool RecordingReadbackPass(MMDApp* app) {
     }
     if (device->Present(nullptr, nullptr, nullptr, nullptr) ==
         D3DERR_DEVICELOST) {
-        while (device->TestCooperativeLevel() !=
-               D3DERR_DEVICENOTRESET) {
-            Sleep(1);
-            MSG msg;
-            if (PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                TranslateMessage(&msg);
-                DispatchMessageA(&msg);
-            }
-        }
-        PostDeviceReset(app);                                    // 0x440DB0
+        device_lost_wait::Wait(app, device, true);
+        // Reset/cancel/resize can invalidate the surfaces and the rendered
+        // sample. Do not advance recording; the next frame renders it again.
+        return false;
     }
     // StereoActivationToggle (io_gaps.cpp) still works on the raw wrapper
     // bytes - hand it the object address unchanged.

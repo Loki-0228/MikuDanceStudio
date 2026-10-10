@@ -24,8 +24,8 @@
 //      fcn_41A650, clear 0xA04B8
 //   6. D3D cooperative-level / device reset dance (device =
 //      *(this+0xA06C4)+120032), reset params from 0xA0D24/0xA0D38/
-//      renderW/H; D3DERR_DEVICELOST wait loop with Sleep(1) + message pump
-//      when 0xA0274 (windowed?) set; then fcn_440DB0
+//      renderW/H; message-aware D3DERR_DEVICELOST wait in both window modes,
+//      followed by fcn_440DB0 only when the device needs a reset
 //   7. animation frame section (0x479CC6): byte 0x9EDD8 -> copy 0x9EDDC ->
 //      this+0x980, 0x9ED90=1, unsigned frame ints 0xA0B00/0xA0B04 (fild
 //      +2^32 wrap, const 0x52B9F0) / 30.0 (dbl_52BA68) -> 0x9E654/0x9E658,
@@ -41,6 +41,7 @@
 #define NOMINMAX
 #include <Windows.h>
 #include <d3d9.h>
+#include "device_lost_wait.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -347,7 +348,7 @@ void TimelineAdvance(MMDApp* app) {
         r->presentParameters.BackBufferHeight = winH;  // 0x1D500
         r->screenWidth = winW;   // 0x1D4E4
         r->screenHeight = winH;  // 0x1D4E8
-        PostDeviceReset(app);                                     // 0x460410
+        if (!PostDeviceReset(app)) return;                        // 0x460410
     }
     RefreshMainWindowViewport(app);                                               // 0x460417
 }
@@ -454,6 +455,8 @@ void TraceFrameViewpoint(MMDApp* app) {
 }
 
 void FrameDriver(MMDApp* app) {
+    if (device_lost_wait::Active() ||
+        !device_lost_wait::Resume(app, app->state.frameStepPlayback != 0)) return;
     MMD_PERF_SCOPE(Frame);
     // Opt-in heap tripwire for the crash investigation.  The field crashes are
     // intermittent (0%..50% between batches) and only surface later, wherever a
@@ -596,7 +599,9 @@ void FrameDriver(MMDApp* app) {
     mikudancestudio::ConsumeRightButtonDrag(app);  // pump_navigation.cpp
     mikudancestudio::ConsumeMiddleButtonPan(app);  // pump_navigation.cpp
     mikudancestudio::ConsumeEditKeys(app);         // pump_edit_keys.cpp
+    if (device_lost_wait::Pending(app)) return;
     mikudancestudio::ConsumeLetterHotkeys(app);    // key_ladder.cpp
+    if (device_lost_wait::Pending(app)) return;
 #ifdef MIKUDANCESTUDIO_DIAG
     TraceOperationInput(app, "before");
 #endif
@@ -704,9 +709,12 @@ void FrameDriver(MMDApp* app) {
     }
 
     // ---- 5. dynamic overlay producer + D3D scene envelope ---------------
+    if (device_lost_wait::Pending(app)) return;
     // Decode the playback sample before entering BeginScene, just as manual
     // timeline seeks refresh it. The AVI reader caches unchanged samples.
-    if (s.PlaybackActive() != 0 && s.AviBackgroundEnabled() != 0)
+    if (s.AviBackgroundEnabled() != 0 &&
+        (s.PlaybackActive() != 0 || s.AviBackgroundTexture() == nullptr ||
+         device_lost_wait::BackgroundRefreshPending(app)))
         AviBgOverlayRefresh(app);
     RenderFrameScene(app);
 
@@ -758,6 +766,7 @@ void FrameDriver(MMDApp* app) {
 
     // ---- 6. playback catch-up + physics (0x46EEE0..0x46FEB8) ------------
     PlaybackCatchup(app, selActive);
+    if (device_lost_wait::Pending(app)) return;
     // ---- 6.5 Kinect 骨架驱动泵块（x64 0x7FF7CB44C12E..0x7FF7CB44C656）----
     // 原版位于物理帧内部：settle 上升沿请求（0x7FF7CB44C12E）之后、gate B
     // （0x7FF7CB44C65B）之前。settle 请求已移植在 physics_frame.cpp，该文件
@@ -783,6 +792,7 @@ void FrameDriver(MMDApp* app) {
         TimelineAdvance(app);                                     // 0x460130
         s.state.timelineAdvanceDue = 0;
         s.state.timelineAdvanceRequested = 0;
+        if (device_lost_wait::Pending(app)) return;
     }
     if (s.state.timelineAdvanceRequested != 0) {
         s.state.timelineAdvanceDue = 1;
@@ -821,8 +831,8 @@ void FrameDriver(MMDApp* app) {
     //                                   hwnd A0D24, NULL)
     //   else A0D38 != 0            -> Present(&RECT@A0D40, same, A0D38, NULL)
     //   else                       -> Present(&RECT@A0D40, same, A06B8, NULL)
-    // On D3DERR_DEVICELOST: while (TestCooperativeLevel() != NOTRESET)
-    //   { Sleep(1); if (A0274) pump one message; } then 0x440DB0.
+    // Device loss waits with a shared message pump, including windowed mode.
+    if (device_lost_wait::Pending(app)) return;
     IDirect3DDevice9* device = nullptr;
     if (s.Renderer() != nullptr)
         device = s.Renderer()->device;                     // +0x1D4E0
@@ -859,18 +869,9 @@ void FrameDriver(MMDApp* app) {
                                      nullptr);
             }
             if (hr == D3DERR_DEVICELOST) {
-                while (device->TestCooperativeLevel() !=
-                       D3DERR_DEVICENOTRESET) {
-                    Sleep(1);
-                    if (s.FullscreenMode() != 0) {
-                        MSG msg;
-                        if (PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                            TranslateMessage(&msg);
-                            DispatchMessageA(&msg);
-                        }
-                    }
-                }
-                PostDeviceReset(app);                          // 0x440DB0
+                device_lost_wait::Wait(app, device, false);
+                // A dispatched message may have destroyed the renderer.
+                return;
             }
         }
     }
