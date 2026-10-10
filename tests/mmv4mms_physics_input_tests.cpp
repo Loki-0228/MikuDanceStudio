@@ -235,6 +235,34 @@ void ObjectIsolation() {
     Require(Near(updated.vertices[0].position[0],67)&&Near(first.vertices[0].position[0],0)&&Near(second.vertices[0].position[0],57),"models and repeated borrowed views stay independent");
 }
 
+void FrameBufferReuse() {
+    Fixture f;
+    const auto storage=[](const MmvPhysicsInput& input){return std::array<uintptr_t,3>{
+        reinterpret_cast<uintptr_t>(input.vertices),reinterpret_cast<uintptr_t>(input.rigidBindings),reinterpret_cast<uintptr_t>(input.jointFrames)};};
+    const auto first=f.Query();
+    f.pmx[0].position[0]=2;const auto second=f.Query();
+    Require(first.vertices!=second.vertices&&first.rigidBindings!=second.rigidBindings&&first.jointFrames!=second.jointFrames,"same-frame requests own distinct array storage");
+    const auto firstStorage=storage(first),secondStorage=storage(second);
+    ++frameNumber;f.pmx[0].position[0]=3;const auto next=f.Query();
+    const auto nextStorage=storage(next);
+    Require(nextStorage[0]!=firstStorage[0]&&nextStorage[0]!=secondStorage[0],"new frame prepares separate storage before retiring prior views");
+    // Save addresses only. The prior views expire after a successful new-frame
+    // query, so all subsequent content checks use newly returned views.
+    ++frameNumber;f.pmx[0].position[0]=4;f.rigids[0].body=nullptr;
+    f.world.removeConstraint(f.constraints[0].get());
+    const auto reused=f.Query();
+    Require(storage(reused)==firstStorage,"first slot reuses all array capacities after two frames");
+    Require(Near(reused.vertices[0].position[0],4)&&!reused.rigidBindings[0].valid&&Near(reused.rigidBindings[0].inertia[0],0)&&!reused.jointFrames[0].valid,"reused arrays replace geometry and clear absent body/joint fields");
+    f.pmx[0].position[0]=5;f.rigids[0].body=f.bodies[0].get();f.bodies[0]->setMassProps(0,btVector3(0,0,0));
+    const auto reusedSecond=f.Query();
+    Require(storage(reusedSecond)==secondStorage,"second same-frame slot reuses its retired arrays");
+    Require(Near(reused.vertices[0].position[0],4)&&Near(reusedSecond.vertices[0].position[0],5),"reused same-frame slots preserve independent borrowed values");
+    Require(reusedSecond.rigidBindings[0].valid&&Near(reusedSecond.rigidBindings[0].inertia[0],0),"reused second slot clears former dynamic inertia");
+    ++frameNumber;const auto alternate=f.Query();
+    Require(storage(alternate)==nextStorage,"alternate bank also reuses all array capacities");
+    Require(alternate.rigidBindings[0].valid&&Near(alternate.rigidBindings[0].inertia[0],0)&&!alternate.jointFrames[0].valid,"alternate bank clears stale physical fields");
+}
+
 int Benchmark() {
     Fixture f;
     constexpr uint32_t vertices=50000,rigids=128,joints=127,iterations=300,warmup=20;
@@ -270,7 +298,8 @@ int main(int argc,char** argv) {
     struct Test {const char* name;void (*run)();};
     const Test tests[]={{"morph vertices",MorphVertices},{"same-count edits",SameCountEdits},
         {"structural edits",StructuralEdits},{"failure and rebuild",FailureAndRebuild},
-        {"ABI and metadata",AbiAndMetadata},{"object isolation",ObjectIsolation}};
+        {"ABI and metadata",AbiAndMetadata},{"object isolation",ObjectIsolation},
+        {"frame buffer reuse",FrameBufferReuse}};
     int failures=0;
     for(const auto& test:tests){
         try{test.run();std::printf("PASS %s\n",test.name);}

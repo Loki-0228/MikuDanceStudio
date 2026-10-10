@@ -5,8 +5,12 @@ struct PhysicsSnapshot {
     std::vector<MmvJointFrames> joints;
 };
 struct PhysicsFrameSnapshots {
+    struct Bank {
+        std::vector<std::unique_ptr<PhysicsSnapshot>> slots;
+        size_t used=0;
+    } banks[2];
     uint64_t frame=0;
-    std::vector<std::unique_ptr<PhysicsSnapshot>> borrowed;
+    unsigned active=0;
 };
 std::map<uint64_t,PhysicsFrameSnapshots> physicsSnapshots;
 uint32_t snapshotNativePhysics=1;
@@ -36,18 +40,28 @@ int MMV_CALL PhysicsInput(void*,uint64_t objectId,MmvPhysicsInput* output) {
         if((model.vertexCount && (model.physicsMode==2?!model.pmxVertices:!model.rawVertices)) ||
            (model.rigidCount && !model.rigidTable) || (model.jointCount && !model.jointTable))
             return MMV_FAILED;
-        auto data=std::make_unique<PhysicsSnapshot>();data->vertices.resize(model.vertexCount);
+        auto& cached=physicsSnapshots[objectId];
+        const bool newFrame=cached.frame!=frameNumber;
+        const unsigned bankIndex=newFrame?1-cached.active:cached.active;
+        auto& bank=cached.banks[bankIndex];
+        const size_t slot=newFrame?0:bank.used;
+        // A new frame uses the inactive bank until publication succeeds. Within
+        // a frame, each query gets its own slot so borrowed arrays stay intact.
+        if(slot==bank.slots.size())bank.slots.push_back(std::make_unique<PhysicsSnapshot>());
+        auto* data=bank.slots[slot].get();data->vertices.resize(model.vertexCount);
         for(uint32_t i=0;i<model.vertexCount;++i){
             const float* position=model.physicsMode==2?model.pmxVertices[i].position:model.rawVertices[i].position;
             memcpy(data->vertices[i].position,position,6*sizeof(float));
         }
         data->bindings.resize(model.rigidCount);
+        std::fill(data->bindings.begin(),data->bindings.end(),MmvRigidBinding{});
         for(uint32_t i=0;i<model.rigidCount;++i){const auto& rigid=model.rigidTable[i];auto& binding=data->bindings[i];
             RigidBindingMatrix(rigid,binding.boneToBody);
             if(auto* body=static_cast<btRigidBody*>(rigid.body)){binding.valid=1;
                 for(int axis=0;axis<3;++axis)if(body->getInvInertiaDiagLocal()[axis]>0)binding.inertia[axis]=1.f/body->getInvInertiaDiagLocal()[axis];}
         }
         data->joints.resize(model.jointCount);
+        std::fill(data->joints.begin(),data->joints.end(),MmvJointFrames{});
         std::map<int,btGeneric6DofConstraint*> constraints;
         if(model.scenePtr&&model.scenePtr->world)for(int i=0;i<model.scenePtr->world->getNumConstraints();++i){
             auto* c=model.scenePtr->world->getConstraint(i);
@@ -65,18 +79,11 @@ int MMV_CALL PhysicsInput(void*,uint64_t objectId,MmvPhysicsInput* output) {
         next.vertices=data->vertices.data();next.vertexCount=uint32_t(data->vertices.size());
         next.rigidBindings=data->bindings.data();next.rigidCount=uint32_t(data->bindings.size());
         next.jointFrames=data->joints.data();next.jointCount=uint32_t(data->joints.size());
-        // The plugin may query one object more than once during evaluate.
-        // Keep every published array for this frame, even when counts grow.
-        // Render advances frameNumber before entering the synchronous plugin;
-        // existing scene/object removal paths erase this owner's whole entry.
-        auto& cached=physicsSnapshots[objectId];
-        if(cached.frame!=frameNumber){
-            // Allocate before retiring the previous frame, so a failed query
-            // never replaces a previously published snapshot with partial data.
-            std::vector<std::unique_ptr<PhysicsSnapshot>> fresh;
-            fresh.push_back(std::move(data));
-            cached.borrowed.swap(fresh);cached.frame=frameNumber;
-        }else cached.borrowed.push_back(std::move(data));
+        // No throwing work remains. Only this successful publication retires
+        // the previous frame; failures leave its arrays and caller output intact.
+        // Render advances frameNumber before the synchronous plugin call. Scene
+        // and object removal erase both banks through the existing cleanup paths.
+        bank.used=slot+1;cached.active=bankIndex;cached.frame=frameNumber;
         memcpy(output,&next,outputSize);return MMV_OK;
     }catch(...){return MMV_FAILED;}
 }
