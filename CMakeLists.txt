@@ -502,6 +502,18 @@ if (MIKUDANCESTUDIO_BUILD_INPUT_TESTS)
     add_test(NAME keyboard_input_regressions COMMAND keyboard_input_tests)
 endif()
 
+# Production-entry regression tests for the first repair batch.
+add_executable(vmd_load_safety_tests EXCLUDE_FROM_ALL tests/vmd_load_safety_tests.cpp)
+target_link_libraries(vmd_load_safety_tests PRIVATE mikudancestudio_core winmm dsound)
+set_target_properties(vmd_load_safety_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME vmd_load_safety COMMAND vmd_load_safety_tests)
+add_executable(mmv4mms_physics_input_tests EXCLUDE_FROM_ALL
+    tests/mmv4mms_physics_input_tests.cpp src/app/app_ctor.cpp)
+target_include_directories(mmv4mms_physics_input_tests PRIVATE include sdk/mmv4mms/include)
+target_link_libraries(mmv4mms_physics_input_tests PRIVATE BULLET275::BULLET275)
+set_target_properties(mmv4mms_physics_input_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME mmv4mms_physics_input COMMAND mmv4mms_physics_input_tests)
+
 option(MIKUDANCESTUDIO_BUILD_EFFECT_TESTS "Build effect API regression tests" OFF)
 if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     enable_testing()
