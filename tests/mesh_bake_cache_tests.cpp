@@ -1533,6 +1533,33 @@ void CutoffGenerations(const std::filesystem::path& directory, Scene& scene) {
     Check(BindGeneration(scene.Model0(), 111), "the loaded entry binds its object exactly once");
     Check(!BindGeneration(scene.Model0(), 999),
           "the loaded entry is hard-refused once its object changed");
+
+    // The loaded project document still contains v3. Clearing the live cache
+    // must remove that old record at Save, otherwise Load resurrects it.
+    const auto originalBytes=ReadFileBytes(archive);
+    std::vector<std::pair<std::filesystem::path,std::string>> sidecars;
+    for(const auto& file:std::filesystem::directory_iterator(project.parent_path())){
+        if(file.is_regular_file()&&file.path().extension()==".abc")
+            sidecars.emplace_back(file.path(),ReadFileBytes(file.path()));
+    }
+    Check(!sidecars.empty(),"v3 project published an archive to preserve");
+    extension::Set(document,"test.keep-after-cache-clear",{1,2,3});
+    Clear();
+    Check(Save(scene.app,project,document,error),"save a cleared v3 document: "+error);
+    WriteProjectFile(project,document);
+    extension::Document reloaded;std::uint64_t standardSize=0;
+    Check(ReadProjectFile(project,reloaded,standardSize),"read cleared v3 project from disk");
+    Check(standardSize==kStandardPrefixBytes,"clearing preserves the standard PMM prefix");
+    Check(extension::Find(reloaded,"test.keep-after-cache-clear")!=nullptr,
+          "clearing preserves unrelated extension records");
+    Check(ReadFileBytes(archive)==originalBytes,"clear-save preserves the user's original ABC bytes");
+    for(const auto& sidecar:sidecars)
+        Check(ReadFileBytes(sidecar.first)==sidecar.second,"clear-save preserves published sidecar bytes");
+    Check(Load(scene.app,project,reloaded,error),"load the cleared v3 project: "+error);
+    Check(Empty()&&!Has(scene.Model0())&&!Has(scene.Model1()),"cleared v3 caches do not resurrect after save and reload");
+    Check(extension::Find(reloaded,kRecordKey)==nullptr&&
+          extension::Find(reloaded,mikudancestudio::mesh_bake_cache::kRecordKeyV2)==nullptr&&
+          extension::Find(reloaded,kRecordKeyV3)==nullptr,"clear removes all known cache record versions");
     Clear();
     Trace("per-object cutoff layers and generation bindings");
 }

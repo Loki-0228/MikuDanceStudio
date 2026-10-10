@@ -1154,10 +1154,11 @@ bool Save(MMDApp& app, const std::filesystem::path& pmm,
 
     if (live.empty()) {
         // A stale record would otherwise point at sidecars of a cache the user
-        // has already replaced or cleared.  Both known versions go, so a project
+        // has already replaced or cleared. All known versions go, so a project
         // never keeps a record of a cache that is no longer there.
         pmm_extension::Erase(document, kRecordKey);
         pmm_extension::Erase(document, kRecordKeyV2);
+        pmm_extension::Erase(document, kRecordKeyV3);
         return true;
     }
 
