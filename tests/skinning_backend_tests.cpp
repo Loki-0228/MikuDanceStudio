@@ -587,6 +587,14 @@ int main(int argc, char** argv) {
           skinning::GetStartupMeasurements().size()==6,
           "a later launch loads six profiles without benchmarking");
     namespace cache=skinning::calibration_cache;
+    wchar_t executable[32768]{};
+    Check(GetModuleFileNameW(nullptr,executable,32768)!=0,"resolve executable for cache location");
+    const auto expectedCache=std::filesystem::path(executable).parent_path()/L"Data"/L"processor-config-MMS-v1.bin";
+    Check(cache::Path(L"MMS")==expectedCache,"cache is stored next to mmconfig.ini");
+    const auto originalDirectory=std::filesystem::current_path();
+    std::filesystem::current_path(std::filesystem::temp_directory_path());
+    Check(cache::Path(L"MMS")==expectedCache,"opening a project elsewhere cannot relocate the cache");
+    std::filesystem::current_path(originalDirectory);
     const auto cacheFixture=std::filesystem::path(L".local/artifacts/skinning-cache")/L"fixture.bin";
     const auto profiles=skinning::GetStartupMeasurements();
     Check(cache::Save(cacheFixture,L"test-cpu",adapters,profiles),"save complete calibration fixture");

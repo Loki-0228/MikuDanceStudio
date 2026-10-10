@@ -337,13 +337,13 @@ bool Calibrate(MMDApp* app, unsigned char* model, const float world[16],
             }
         }
         report.measurements.push_back(measurement);
-        runtime_log::Write("Startup skinning candidate vertices=%u pmx=%d id=%016llx valid=%d median_ms=%.6f",
+        runtime_log::Write("Startup processor configuration candidate vertices=%u pmx=%d id=%016llx valid=%d median_ms=%.6f",
             record.vertexCount, record.physicsMode == 2,
             static_cast<unsigned long long>(measurement.adapterId), measurement.valid, measurement.milliseconds);
     }
     report.measurements.front().milliseconds = Median(cpuSamples);
     report.selectedAdapterId = FastestMeasurement(report.measurements);
-    runtime_log::Write("Startup skinning vertices=%u pmx=%d cpu_ms=%.6f selected=%016llx",
+    runtime_log::Write("Startup processor configuration vertices=%u pmx=%d cpu_ms=%.6f selected=%016llx",
         record.vertexCount, record.physicsMode == 2, report.measurements.front().milliseconds,
         static_cast<unsigned long long>(report.selectedAdapterId));
     ++status.automaticCalibrations;
@@ -465,7 +465,7 @@ bool UpdateAutomatic(MMDApp* app, unsigned char* model, const float world[16]) {
                 return true;
             }
             if (result == Result::Unsupported) return FallBack(result);
-            runtime_log::Write("Startup skinning device failed; using cached ranking: %s", candidate->device->Error());
+            runtime_log::Write("Startup processor configuration device failed; using cached ranking: %s", candidate->device->Error());
             candidate->device.reset();
         }
         for (auto& measurement : report.measurements)
@@ -480,16 +480,29 @@ void InitializeAutomatic(MMDApp* app, IDirect3DDevice9* device) {
     startupAttempted = true;
     const auto started = std::chrono::steady_clock::now();
     const auto path=calibration_cache::Path(L"MMS");
+    runtime_log::WritePath("Startup processor configuration cache path",path.c_str());
     const auto cpu=calibration_cache::CpuKey();
     const auto& available=AvailableAdapters();
-    if(calibration_cache::Load(path,cpu,available,startupMeasurements)) {
+    bool cached=calibration_cache::Load(path,cpu,available,startupMeasurements);
+    if(!cached) {
+        const auto legacy=calibration_cache::LegacyPath(L"MMS");
+        cached=calibration_cache::Load(legacy,cpu,available,startupMeasurements);
+        if(cached) {
+            // Keep the validated result usable even if the executable's
+            // directory is read-only. Leave the old file intact for older builds.
+            runtime_log::WritePath("Startup processor configuration legacy cache",legacy.c_str());
+            runtime_log::Write("Startup processor configuration cache migration saved=%d",
+                calibration_cache::Save(path,cpu,available,startupMeasurements));
+        }
+    }
+    if(cached) {
         for(const auto& adapter:available)startupDevices.push_back({adapter,{}});
-        runtime_log::Write("Startup skinning cache hit profiles=%zu elapsed_ms=%.3f",
+        runtime_log::Write("Startup processor configuration cache hit profiles=%zu elapsed_ms=%.3f",
             startupMeasurements.size(),std::chrono::duration<double,std::milli>(
                 std::chrono::steady_clock::now()-started).count());
         return;
     }
-    runtime_log::Write("Startup skinning calibration begin");
+    runtime_log::Write("Startup processor configuration calibration begin");
     try {
         for (const auto& adapter : AvailableAdapters()) {
             auto trial = std::make_unique<gpu::Skinning>();
@@ -504,16 +517,16 @@ void InitializeAutomatic(MMDApp* app, IDirect3DDevice9* device) {
                 startupMeasurements.push_back(std::move(sample));
         }
     } catch (const std::exception& error) {
-        runtime_log::Write("Startup skinning calibration incomplete; CPU fallback: %s", error.what());
+        runtime_log::Write("Startup processor configuration calibration incomplete; CPU fallback: %s", error.what());
     }
     // Keep initialized devices/pipelines, not the temporary calibration data.
     for (auto& candidate : startupDevices)
         if (candidate.device && !candidate.device->ReleaseWorkingBuffers()) candidate.device.reset();
     input = {};
     std::vector<gpu::Output>().swap(output);
-    runtime_log::Write("Startup skinning cache saved=%d",
+    runtime_log::Write("Startup processor configuration cache saved=%d",
         calibration_cache::Save(path,cpu,available,startupMeasurements));
-    runtime_log::Write("Startup skinning calibration end profiles=%zu elapsed_ms=%.3f",
+    runtime_log::Write("Startup processor configuration calibration end profiles=%zu elapsed_ms=%.3f",
         startupMeasurements.size(), std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - started).count());
 }
