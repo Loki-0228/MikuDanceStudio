@@ -1,11 +1,13 @@
 // Exercise the real LoadVmdMotion entry, key registrars, and extension loaders.
 // No windows or D3D device are created. Each case can also run in isolation:
 // vmd_load_safety_tests.exe --case overflow|short|counts|valid|tails|camera|ik
+// vmd_load_safety_tests.exe --benchmark [warmup iterations]
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -323,10 +325,122 @@ void Ik() {
               "SeekModelFrame applies imported display flags to real IK chains");
     }
 }
+
+constexpr std::uint32_t kBenchmarkKeyCount = 1000;
+std::array<float, 3> BenchmarkPosition(std::uint32_t frame) {
+    return {{1.f + static_cast<float>(frame) * .125f,
+             -static_cast<float>(frame % 17) * .25f,
+             static_cast<float>(frame % 13) * .5f}};
+}
+Bytes BenchmarkMotion() {
+    Bytes bytes;
+    bytes.reserve(74 + 111 * kBenchmarkKeyCount);
+    Text(bytes, "Vocaloid Motion Data 0002", 30); Text(bytes, "sample", 20);
+    U32(bytes, kBenchmarkKeyCount);
+    for (std::uint32_t frame = 0; frame < kBenchmarkKeyCount; ++frame) {
+        Text(bytes, "bone", 15); U32(bytes, frame);
+        for (float value : BenchmarkPosition(frame)) Put(bytes, value);
+        for (float value : {0.f, 0.f, 0.f, 1.f}) Put(bytes, value);
+        bytes.resize(bytes.size() + 64, 20);
+    }
+    // Keep this ordinary VMD valid in both production revisions. Empty morph,
+    // camera, light, shadow, and display sections avoid the repaired boundaries.
+    for (int section = 0; section < 5; ++section) U32(bytes, 0);
+    return bytes;
+}
+std::uint64_t BenchmarkChecksum(const Fixture& fixture) {
+    // FNV-1a over imported values, with fixed little-endian scalar encoding.
+    // Do not hash pointers, pool indices, padding, or undo ring positions.
+    std::uint64_t checksum = 14695981039346656037ull;
+    const auto byte = [&](std::uint8_t value) { checksum = (checksum ^ value) * 1099511628211ull; };
+    const auto word = [&](std::uint32_t value) {
+        for (unsigned shift = 0; shift < 32; shift += 8) byte(static_cast<std::uint8_t>(value >> shift));
+    };
+    const auto scalar = [&](float value) {
+        std::uint32_t bits = 0; std::memcpy(&bits, &value, sizeof(bits)); word(bits);
+    };
+    std::uint32_t index = 0, previous = 0;
+    for (std::uint32_t frame = 0; frame < kBenchmarkKeyCount; ++frame) {
+        Check(index < fixture.boneKeys.size(), "benchmark key chain stays within the fixture pool");
+        const auto& key = fixture.boneKeys[index];
+        Check(key.frame == frame && key.previous == previous && key.allocated == 1,
+              "benchmark imports every ordered bone key with intact links");
+        word(key.frame);
+        const auto expected = BenchmarkPosition(frame);
+        for (std::size_t component = 0; component < expected.size(); ++component) {
+            Check(key.position[component] == expected[component], "benchmark imports each position component");
+            scalar(key.position[component]);
+        }
+        for (std::size_t component = 0; component < 4; ++component) {
+            Check(key.rotation[component] == (component == 3 ? 1.f : 0.f), "benchmark imports identity rotations");
+            scalar(key.rotation[component]);
+        }
+        for (auto value : key.interpolation) {
+            Check(value == 20, "benchmark imports all interpolation controls"); byte(value);
+        }
+        Check(key.physicsDisabled == 0, "benchmark preserves the ordinary physics flag"); byte(key.physicsDisabled);
+        if (frame + 1 == kBenchmarkKeyCount)
+            Check(key.next == 0, "benchmark imports exactly the requested key count");
+        else
+            Check(key.next != 0, "benchmark key chain includes the next frame");
+        previous = index; index = key.next;
+    }
+    Check(fixture.model->maxFrame == kBenchmarkKeyCount - 1, "benchmark updates the model timeline extent");
+    return checksum;
+}
+unsigned BenchmarkCount(const char* text) {
+    unsigned count = 0;
+    if (*text == 0) return 0;
+    for (; *text; ++text) {
+        if (*text < '0' || *text > '9' || count > 10000) return 0;
+        count = count * 10 + static_cast<unsigned>(*text - '0');
+    }
+    return count <= 100000 ? count : 0;
+}
+void Benchmark(unsigned warmup, unsigned iterations) {
+    // Construct the fixture and write the file once, before any measured load.
+    // Warmup creates the chain, so every timed load overwrites the same keys.
+    Fixture fixture;
+    const auto motion = BenchmarkMotion(); fixture.file.Write(motion);
+    std::vector<double> samples(iterations);
+    std::uint64_t checksum = 0;
+    for (unsigned i = 0; i < warmup; ++i) {
+        Check(LoadVmdMotion(fixture.app.get(), fixture.file.path) == 1, "benchmark warmup completes the real model load");
+        const auto actual = BenchmarkChecksum(fixture);
+        if (i != 0) Check(actual == checksum, "benchmark warmup preserves imported values");
+        checksum = actual;
+    }
+    double elapsed = 0;
+    for (unsigned i = 0; i < iterations; ++i) {
+        const auto start = std::chrono::steady_clock::now();
+        const int result = LoadVmdMotion(fixture.app.get(), fixture.file.path);
+        const auto end = std::chrono::steady_clock::now();
+        samples[i] = std::chrono::duration<double, std::milli>(end - start).count();
+        elapsed += samples[i];
+        Check(result == 1, "benchmark measured load completes through the production entry");
+        Check(BenchmarkChecksum(fixture) == checksum, "benchmark measured load preserves every imported value");
+    }
+    std::printf("{\"benchmark\":\"vmd_repeat_import\",\"warmup\":%u,\"iterations\":%u,"
+                "\"file_bytes\":%zu,\"key_count\":%u,\"elapsed_ms\":%.6f,\"mean_ms\":%.6f,"
+                "\"checksum\":\"%016llx\",\"samples_ms\":[",
+                warmup, iterations, motion.size(), static_cast<unsigned>(kBenchmarkKeyCount),
+                elapsed, elapsed / iterations, static_cast<unsigned long long>(checksum));
+    for (unsigned i = 0; i < iterations; ++i) std::printf("%s%.6f", i ? "," : "", samples[i]);
+    std::printf("]}\n");
+}
 } // namespace
 
 int main(int argc, char** argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    if (argc >= 2 && std::strcmp(argv[1], "--benchmark") == 0) {
+        const unsigned warmup = argc == 2 ? 3 : argc == 4 ? BenchmarkCount(argv[2]) : 0;
+        const unsigned iterations = argc == 2 ? 20 : argc == 4 ? BenchmarkCount(argv[3]) : 0;
+        if (!warmup || !iterations) {
+            std::fprintf(stderr, "Usage: --benchmark [warmup iterations], each count in 1..100000\n");
+            return 2;
+        }
+        Benchmark(warmup, iterations); return 0;
+    }
     struct Case { const char* name; void (*run)(); };
     const Case cases[]{{"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}};
     if (argc == 3 && std::strcmp(argv[1], "--case") == 0) {
