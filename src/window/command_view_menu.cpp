@@ -2307,6 +2307,12 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         D3DRenderer* locale = app->Renderer();
         const std::int32_t oldW = locale->screenWidth;   // 0x1D4E4
         const std::int32_t oldH = locale->screenHeight;  // 0x1D4E8
+        // TimelineAdvance restores the backbuffer from recRTW/recRTH after
+        // the still image has been captured. Unlike video recording, this
+        // path never initializes those fields; leaving them at zero makes
+        // PostDeviceReset pick the desktop-sized default backbuffer.
+        app->state.recRTW = oldW;
+        app->state.recRTH = oldH;
         const std::int32_t renderW =
             app->RenderWidth();
         const std::int32_t renderH =
