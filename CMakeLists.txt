@@ -602,6 +602,14 @@ if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     add_test(NAME device_reset_regressions COMMAND device_reset_tests)
 endif()
 
+if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_bake_attributes_tests.cpp")
+    add_executable(native_bake_attributes_tests EXCLUDE_FROM_ALL tests/native_bake_attributes_tests.cpp)
+    target_link_libraries(native_bake_attributes_tests PRIVATE mikudancestudio_core Alembic::Alembic winmm dsound)
+    set_target_properties(native_bake_attributes_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME native_bake_attributes COMMAND native_bake_attributes_tests "${CMAKE_BINARY_DIR}/native-bake-attributes-artifacts")
+endif()
+
 option(MIKUDANCESTUDIO_BUILD_ENCODING_TESTS "Build filename encoding regression tests" OFF)
 if (MIKUDANCESTUDIO_BUILD_ENCODING_TESTS)
     enable_testing()

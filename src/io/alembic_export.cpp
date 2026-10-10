@@ -245,13 +245,12 @@ Result Export(MMDApp& app,const std::filesystem::path& path,const Options& optio
                             Geom::OPolyMesh shape(root,mesh.name,sampling);
                             if(mesh.vertexPatch)
                                 Abc::OBoolProperty(shape.getSchema().getUserProperties(),"mdsVertexPatch").set(true);
-                            // A layer bake stores the original vertex mapping
-                            // for the complete object too: the replay maps every
-                            // unrecordable field through it, and generated
-                            // vertices carry their explicit no-source marker.
-                            if(mesh.vertexPatch||layerBake){
+                            // Complete native bakes also need the original rows:
+                            // capture reorders and duplicates vertices by material.
+                            // Generated vertices keep their no-source marker.
+                            if(options.bakeIntoProject){
                                 if(mesh.sourceVertices.size()!=mesh.positions.size())
-                                    throw std::runtime_error("This mesh has no source-vertex mapping for a layer bake");
+                                    throw std::runtime_error("This mesh has no source-vertex mapping for a project bake");
                                 sourceMaps.emplace(mesh.name,Abc::OUInt32ArrayProperty(shape.getSchema().getUserProperties(),"mdsSourceVertices",sampling));
                             }
                             for(unsigned i=0;i<result.samples;++i)WriteSample(shape,nullptr,sourceMaps.count(mesh.name)?&sourceMaps.at(mesh.name):nullptr);

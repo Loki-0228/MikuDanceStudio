@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
 #include <MinHook.h>
 #include <CommCtrl.h>
 using namespace mikudancestudio;
@@ -181,6 +182,30 @@ void Fixture(const std::filesystem::path& path){
     Put(f,0u);Put(f,1u);Text(f,L"Root");Text(f,L"Root");Put(f,uint8_t(1));Put(f,1u);Put(f,uint8_t(0));Put(f,int8_t(0));
     Put(f,0u);Put(f,0u);Check(bool(f),"write fixture PMX");
 }
+void AttributeFixture(const std::filesystem::path& path){
+    std::ofstream f(path,std::ios::binary);f.write("PMX ",4);Put(f,2.f);
+    for(uint8_t v:{8,0,4,1,1,1,1,1,1})Put(f,v); // Four additional UV sets.
+    Text(f,L"Mapped attributes");Text(f,L"Mapped attributes");Text(f,L"");Text(f,L"");
+    Put(f,4u);
+    for(int i=0;i<4;++i){
+        Put(f,float(i%2));Put(f,10.f+float(i/2));Put(f,0.f);
+        Put(f,0.f);Put(f,0.f);Put(f,-1.f);Put(f,float(i%2));Put(f,float(i/2));
+        for(int c=0;c<16;++c)Put(f,float(i*16+c+1)*.125f);
+        Put(f,uint8_t(0));Put(f,int8_t(0));Put(f,.25f*float(i+1));
+    }
+    Put(f,6u);for(uint8_t i:{2,0,1,2,3,0})Put(f,i);Put(f,0u);
+    Put(f,2u);
+    for(int material=0;material<2;++material){
+        Text(f,L"surface");Text(f,L"surface");
+        for(float v:{.8f,.8f,.8f,1.f,0.f,0.f,0.f,1.f,.4f,.4f,.4f})Put(f,v);
+        Put(f,uint8_t(0x11));for(float v:{0.f,0.f,0.f,1.f})Put(f,v);Put(f,1.f);
+        Put(f,int8_t(-1));Put(f,int8_t(-1));Put(f,uint8_t(0));Put(f,uint8_t(1));Put(f,uint8_t(0));Text(f,L"");Put(f,3u);
+    }
+    Put(f,1u);Text(f,L"root");Text(f,L"root");for(int i=0;i<3;++i)Put(f,0.f);
+    Put(f,int8_t(-1));Put(f,0u);Put(f,uint16_t(0x1a));for(int i=0;i<3;++i)Put(f,0.f);
+    Put(f,0u);Put(f,1u);Text(f,L"Root");Text(f,L"Root");Put(f,uint8_t(1));Put(f,1u);Put(f,uint8_t(0));Put(f,int8_t(0));
+    Put(f,0u);Put(f,0u);Check(bool(f),"write mapped attribute PMX");
+}
 struct Sample{std::vector<Abc::V3f> positions;size_t faces=0;};
 std::vector<Sample> Read(const std::filesystem::path& path,int samples,double start,double step){
     std::ifstream stream(path,std::ios::binary);std::vector<std::istream*> streams{&stream};
@@ -218,6 +243,103 @@ void Same(const std::vector<Sample>& actual,const std::vector<Sample>& expected,
         }}
 }
 void Frame(MMDApp& app){app.DeltaTime()=1.f/30;app.state.messageSeen=1;FrameDriver(&app);}
+std::vector<float> VertexFloats(void* pointer,unsigned count,unsigned floats){
+    auto* buffer=static_cast<IDirect3DVertexBuffer9*>(pointer);Check(buffer!=nullptr,"vertex buffer exists");
+    D3DVERTEXBUFFER_DESC description{};Check(SUCCEEDED(buffer->GetDesc(&description)),"vertex buffer size");
+    Check(size_t(count)*floats*sizeof(float)<=description.Size,"vertex readback bounds");
+    void* bytes=nullptr;Check(SUCCEEDED(buffer->Lock(0,0,&bytes,D3DLOCK_READONLY)),"lock vertex buffer for attribute check");
+    std::vector<float> result(size_t(count)*floats);std::memcpy(result.data(),bytes,result.size()*sizeof(float));buffer->Unlock();return result;
+}
+void CheckVertexValue(float actual,float expected,size_t row,size_t component,const char* why){
+    const bool equal=std::isfinite(actual)&&std::abs(actual-expected)<.0001f;
+    if(!equal)std::printf("vertex mismatch row=%zu component=%zu actual=%.9g expected=%.9g: %s\n",row,component,actual,expected,why);
+    Check(equal,why);
+}
+void AttributeRoundtrip(MMDApp& app,const std::filesystem::path& out,bool benchmark){
+    const auto modelPath=out/L"attributes.pmx";AttributeFixture(modelPath);LoadModelFile(&app,modelPath.c_str(),false);
+    auto* raw=app.ModelSlot(0);Check(raw!=nullptr,"load mapped attributes fixture");auto& model=*mdl::Mdl(raw);
+    Check(model.vertexCount==4&&model.materialCount==2&&model.pmxAdditionalUvCount==4,"attribute fixture structure");
+    for(unsigned i=0;i<4;++i)model.pmxVertices[i].hasPmxEdgeData=i%2?1:0;
+    // FrameDriver evaluates the loaded pose after rendering. The following
+    // capture frame skins that pose and uploads both buffers before readback.
+    Frame(app);
+    native_mesh::SetBakeCapture(true);Frame(app);
+    std::vector<deformed_mesh_capture::Mesh> captured;std::string error;
+    Check(native_mesh::ReadBakeCapture(captured,error),"read production capture");native_mesh::SetBakeCapture(false);
+    const auto original=VertexFloats(model.vertexBuffer,4,24),originalEdges=VertexFloats(model.vertexBuffer2,4,4);
+    for(unsigned i=0;i<4;++i){
+        const float position[]{float(i%2),10.f+float(i/2),0.f},normal[]{0.f,0.f,-1.f};
+        for(unsigned c=0;c<3;++c){
+            CheckVertexValue(original[i*24+c],position[c],i,c,"fixture main buffer contains the evaluated pose");
+            CheckVertexValue(original[i*24+3+c],normal[c],i,c,"fixture main buffer contains skinned normals");
+        }
+        for(unsigned c=0;c<2;++c)
+            CheckVertexValue(originalEdges[i*4+c],position[c],i,c,"fixture outline contains the evaluated pose");
+        if(i%2)Check(std::isfinite(originalEdges[i*4+2])&&originalEdges[i*4+2]<0,"fixture enabled outline is expanded");
+        else CheckVertexValue(originalEdges[i*4+2],.005f,i,2,"fixture disabled outline is inset");
+    }
+    CheckVertexValue(originalEdges[3*4+2],2*originalEdges[1*4+2],3,2,"fixture outline uses the non-unit edge scales");
+    const std::vector<std::vector<uint32_t>> expected{{2,1,0},{2,0,3}};
+    Check(captured.size()==expected.size(),"capture preserves two material partitions");
+    for(size_t i=0;i<expected.size();++i)Check(captured[i].sourceVertices==expected[i],"capture records reordered and repeated original rows");
+
+    using Clock=std::chrono::steady_clock;
+    alembic_export::Options options;options.lastFrame=benchmark?29:2;options.bakeIntoProject=true;
+    const unsigned warmup=benchmark?1:0,iterations=benchmark?3:1;
+    double exportMs=0;std::filesystem::path archive;
+    for(unsigned iteration=0;iteration<warmup+iterations;++iteration){
+        native_mesh::ClearMeshBake(&app,false);
+        archive=out/(L"attributes-"+std::to_wstring(iteration)+L".abc");
+        const auto begin=Clock::now();const auto result=alembic_export::Export(app,archive,options);
+        const auto elapsed=std::chrono::duration<double,std::milli>(Clock::now()-begin).count();
+        Check(result.success&&result.baked&&result.abcWritten,"real export captures, writes and installs complete bake");
+        if(iteration>=warmup)exportMs+=elapsed;
+    }
+    unsigned explicitMaps=0;
+    {
+        std::ifstream stream(archive,std::ios::binary);std::vector<std::istream*> streams{&stream};
+        Abc::IArchive abc(Alembic::AbcCoreOgawa::ReadArchive(streams),"stream");
+        for(size_t i=0;i<abc.getTop().getNumChildren();++i){
+            Geom::IPolyMesh mesh(abc.getTop(),abc.getTop().getChildHeader(i).getName());
+            const auto properties=mesh.getSchema().getUserProperties();
+            if(properties.valid()&&properties.getPropertyHeader("mdsSourceVertices")){
+                ++explicitMaps;
+                const auto ids=Abc::IUInt32ArrayProperty(properties,"mdsSourceVertices").getValue();
+                if(!benchmark)Check(ids&&ids->size()==expected[i].size()&&std::equal(expected[i].begin(),expected[i].end(),ids->get()),"ABC retains explicit material source rows");
+            }
+        }
+    }
+    std::vector<deformed_mesh_capture::Mesh> samples;
+    Check(mesh_bake_cache::Sample(raw,0,samples,error),"read the installed production archive");
+    if(!benchmark){
+        Check(explicitMaps==2,"complete project bake writes source properties for both materials");
+        Check(samples.size()==expected.size(),"cache restores two material partitions");
+        for(size_t i=0;i<expected.size();++i)Check(samples[i].sourceVertices==expected[i],"cache retains explicit source rows");
+    }
+    const unsigned replayWarmup=10,replayIterations=benchmark?100:1;
+    for(unsigned i=0;i<replayWarmup;++i)Frame(app);
+    const auto begin=Clock::now();
+    for(unsigned i=0;i<replayIterations;++i)Frame(app);
+    const auto replayMs=std::chrono::duration<double,std::milli>(Clock::now()-begin).count();
+    auto* render=native_mesh::RenderModel(raw);Check(render!=raw,"complete cache publishes real render proxy");
+    const auto& proxy=*mdl::Mdl(render);Check(proxy.vertexCount==6,"material partition duplicates shared original vertices");
+    const auto actual=VertexFloats(proxy.vertexBuffer,6,24),actualEdges=VertexFloats(proxy.vertexBuffer2,6,4);
+    double attributeChecksum=0,expectedChecksum=0;size_t output=0;
+    for(const auto& material:expected)for(auto source:material){
+        for(size_t c=8;c<24;++c){
+            attributeChecksum+=actual[output*24+c];expectedChecksum+=original[source*24+c];
+            if(!benchmark)Check(actual[output*24+c]==original[source*24+c],"replayed additional UV follows original vertex across materials");
+        }
+        if(!benchmark)for(size_t c=0;c<3;++c)
+            CheckVertexValue(actualEdges[output*4+c],originalEdges[source*4+c],output,c,"real outline buffer preserves mapped edge scale and disabled flag");
+        ++output;
+    }
+    Check(VertexFloats(model.vertexBuffer,4,24)==original,"capture and replay never overwrite host vertices");
+    std::printf("BAKE_EXPORT_BENCHMARK warmup=%u iterations=%u samples=%d meshes=2 vertices=6 export_ms=%.6f mean_export_ms=%.6f replay_frames=%u replay_cpu_ms=%.6f abc_bytes=%llu explicit_maps=%u attribute_checksum=%.6f expected_checksum=%.6f\n",
+        warmup,iterations,options.lastFrame+1,exportMs,exportMs/iterations,replayIterations,replayMs,
+        static_cast<unsigned long long>(std::filesystem::file_size(archive)),explicitMaps,attributeChecksum,expectedChecksum);
+    native_mesh::ClearMeshBake(&app,false);
+}
 void KeyframeMenuState(MMDApp& app,bool enabled,const char* context){
     bake::RefreshMenu(&app);
     MENUITEMINFOW popup{sizeof popup};popup.fMask=MIIM_SUBMENU;
@@ -243,6 +365,12 @@ int wmain(int argc,wchar_t** argv){
     Check(InitMainWindowAndD3D(app,GetModuleHandleW(nullptr),SW_HIDE),"hidden renderer initialization");
     Check(!IsWindowVisible(app->MainWindow()),"test remains hidden");app->EnglishUI()=1;
     Check(bool(GetModuleHandleW(L"MMEffect.dll"))==mme,"expected MME runtime");Check((GetModuleHandleW(L"MMV.dll")!=nullptr)==(mmv||extra),"expected MMV runtime");Frame(*app);
+    if(mode==L"attributes"||mode==L"attributes-benchmark"){
+        AttributeRoundtrip(*app,out,mode==L"attributes-benchmark");
+        Check(unexpectedDialogs==0,"attribute export requires no modal interaction");
+        ShutdownCleanup(app);g_Block=nullptr;delete app;UnhookWindowsHookEx(hide);UnhookWindowsHookEx(dialogs);
+        std::puts("PASS: native bake attribute capture, ABC, cache and replay");return 0;
+    }
     const auto modelPath=out/L"triangle.pmx";Fixture(modelPath);LoadModelFile(app,modelPath.c_str(),false);
     auto* raw=app->ModelSlot(0);Check(raw!=nullptr,"load triangle fixture");auto& m=*mdl::Mdl(raw);
     auto& key=m.boneKeys[1];key=m.boneKeys[0];key.frame=2;key.position[0]=2;key.previous=0;key.next=0;key.allocated=1;

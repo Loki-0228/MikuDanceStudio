@@ -457,18 +457,24 @@ void ApplyBakedMesh(Snapshot& snapshot,double seconds) {
     if(!mesh_bake_cache::Sample(source,seconds,samples,error))throw std::runtime_error(error);
     auto& mesh=snapshot.mesh;
     const bool patch=std::any_of(samples.begin(),samples.end(),[](const auto& m){return m.vertexPatch;});
-    if(!patch){mesh.vertices.clear();mesh.triangles.clear();}
+    // Validate every source row before changing this snapshot. Missing maps in
+    // old complete archives are unknown, not an implied identity mapping.
+    for(const auto& sample:samples){
+        if(patch&&!sample.vertexPatch)throw std::runtime_error("Invalid source-vertex cache patch");
+        if((patch||!sample.sourceVertices.empty())&&sample.sourceVertices.size()!=sample.positions.size())
+            throw std::runtime_error("Invalid source-vertex map in baked mesh");
+        for(const auto index:sample.sourceVertices)
+            if(index!=UINT32_MAX&&index>=mesh.vertices.size())
+                throw std::runtime_error("Baked vertex no longer exists in the source model");
+    }
     d3dx::D3DXMATRIXF inverse{};
     if(!d3dx::Get().inverse(&inverse,nullptr,reinterpret_cast<const d3dx::D3DXMATRIXF*>(snapshot.object.world)))throw std::runtime_error("Baked accessory has a singular transform");
     if(patch){
         // Source IDs are checked before any write. A malformed sample is discarded
         // with this private snapshot; the live source records remain read-only.
         for(const auto& sample:samples){
-            if(!sample.vertexPatch||sample.sourceVertices.size()!=sample.positions.size())
-                throw std::runtime_error("Invalid source-vertex cache patch");
             for(size_t i=0;i<sample.positions.size();++i){
                 const auto index=sample.sourceVertices[i];if(index==UINT32_MAX)continue;
-                if(index>=mesh.vertices.size())throw std::runtime_error("Baked vertex no longer exists in the source model");
                 const auto& p=sample.positions[i];float point[3]{p[0],p[1],-p[2]},transformed[4]{};
                 d3dx::Get().vec3Transform(transformed,point,&inverse);
                 if(!std::isfinite(transformed[3])||std::abs(transformed[3])<1e-8f)throw std::runtime_error("Invalid baked vertex transform");
@@ -484,13 +490,36 @@ void ApplyBakedMesh(Snapshot& snapshot,double seconds) {
         }
         mesh.revision=++generation;return;
     }
+    // Allocate once for the final mesh, before moving its source attributes.
+    // MeshView and triangle indices use uint32_t even on a 64-bit host.
+    std::vector<mesh_data::Vertex> vertices;
+    const size_t maxVertices=std::min(vertices.max_size(),size_t(UINT32_MAX));
+    size_t vertexCount=0;
+    for(const auto& sample:samples){
+        if(sample.positions.size()>maxVertices-vertexCount)
+            throw std::runtime_error("Baked mesh vertex count is out of range");
+        vertexCount+=sample.positions.size();
+    }
+    vertices.reserve(vertexCount);
+    // Keep the source attributes without copying the entire vertex table.
+    const auto sourceVertices=std::move(mesh.vertices);
+    mesh.vertices=std::move(vertices);mesh.triangles.clear();
     for(const auto& sample:samples){
         const auto marker=sample.name.find("_material_");
         const unsigned material=unsigned(std::stoul(sample.name.substr(marker+10)));
         if(material>=65536)throw std::runtime_error("Baked material index is out of range");
         while(mesh.materials.size()<=material){mesh_data::Material m;m.key="baked:"+std::to_string(mesh.materials.size());m.name=m.key;m.nameEn=m.name;m.value.sourceMaterial=-1;m.value.diffuse[0]=m.value.diffuse[1]=m.value.diffuse[2]=m.value.diffuse[3]=1;m.value.flags=1;mesh.materials.push_back(std::move(m));}
         const auto base=uint32_t(mesh.vertices.size());
-        for(size_t i=0;i<sample.positions.size();++i){mesh_data::Vertex v{};const auto& p=sample.positions[i];float point[3]{p[0],p[1],-p[2]},transformed[4]{};
+        for(size_t i=0;i<sample.positions.size();++i){mesh_data::Vertex v{};
+            v.sourceVertex=sample.sourceVertices.empty()?UINT32_MAX:sample.sourceVertices[i];
+            if(v.sourceVertex!=UINT32_MAX){
+                const auto& original=sourceVertices[v.sourceVertex];
+                std::copy_n(original.additionalUv,16,v.additionalUv);
+                v.edgeScale=original.edgeScale;v.flags=original.flags;
+            }
+            // Generated vertices and legacy archives without a map retain the
+            // existing zero additional UVs, enabled edge and unit edge scale.
+            const auto& p=sample.positions[i];float point[3]{p[0],p[1],-p[2]},transformed[4]{};
             d3dx::Get().vec3Transform(transformed,point,&inverse);
             if(!std::isfinite(transformed[3])||std::abs(transformed[3])<1e-8f)throw std::runtime_error("Invalid baked vertex transform");
             for(int c=0;c<3;++c)v.position[c]=transformed[c]/transformed[3];
@@ -498,7 +527,7 @@ void ApplyBakedMesh(Snapshot& snapshot,double seconds) {
                 const auto& n=sample.normals[i];const float worldNormal[3]{n[0],n[1],-n[2]};
                 for(int r=0;r<3;++r)for(int c=0;c<3;++c)v.normal[r]+=snapshot.object.world[r*4+c]*worldNormal[c];
             }
-            if(i<sample.uvs.size()){v.uv[0]=sample.uvs[i][0];v.uv[1]=1-sample.uvs[i][1];}v.sourceVertex=UINT32_MAX;v.edgeScale=1;mesh.vertices.push_back(v);}
+            if(i<sample.uvs.size()){v.uv[0]=sample.uvs[i][0];v.uv[1]=1-sample.uvs[i][1];}mesh.vertices.push_back(v);}
         for(size_t i=0;i<sample.indices.size();i+=3){mesh_data::Triangle triangle{{base+unsigned(sample.indices[i]),base+unsigned(sample.indices[i+2]),base+unsigned(sample.indices[i+1])},material};mesh.triangles.push_back(triangle);
             auto* a=mesh.vertices[triangle.vertex[0]].position;auto* b=mesh.vertices[triangle.vertex[1]].position;auto* c=mesh.vertices[triangle.vertex[2]].position;
             float u[3]{b[0]-a[0],b[1]-a[1],b[2]-a[2]},v[3]{c[0]-a[0],c[1]-a[1],c[2]-a[2]},n[3]{u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]};

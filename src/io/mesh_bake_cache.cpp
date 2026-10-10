@@ -352,16 +352,13 @@ bool ReadMesh(const Archive& archive, const Child& child, std::size_t index,
         // layer bake stores it for the complete object too, because the replay
         // maps every unrecordable field through it.  The map is taken verbatim
         // - UINT32_MAX entries mean "no source row" and cover both generated
-        // vertices and the unselected rows of a partial patch.  A legacy
-        // archive without the map keeps the identity mapping it always
-        // implied; a partial patch without the map is refused.
+        // vertices and the unselected rows of a partial patch. A legacy
+        // complete archive without the map has unknown source rows and leaves
+        // the vector empty; a partial patch without the map is refused.
         if(vertexCount&&properties.valid()&&properties.getPropertyHeader("mdsSourceVertices")){
             const auto sourceIds=Abc::IUInt32ArrayProperty(properties,"mdsSourceVertices").getValue(selector);
             if(!sourceIds||sourceIds->size()!=vertexCount){error="Invalid source-vertex map in baked mesh";return false;}
             out.sourceVertices.assign(sourceIds->get(),sourceIds->get()+sourceIds->size());
-        }else if(vertexCount&&!out.vertexPatch){
-            out.sourceVertices.resize(vertexCount);
-            for(std::size_t i=0;i<vertexCount;++i)out.sourceVertices[i]=std::uint32_t(i);
         }else if(out.vertexPatch&&vertexCount){error="Invalid source-vertex map in baked mesh";return false;}
         // A frame the exporter back-filled with an empty sample carries no
         // positions; its index stream is left over from a later frame and is
