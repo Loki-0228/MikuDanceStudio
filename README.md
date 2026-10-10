@@ -109,9 +109,13 @@ The final MMS package is `D:/MMD-Next/MMS/build/Release/`, with
 DirectShow push source used for AVI is linked into the executable, and MP4
 recording uses Windows Media Foundation; neither recording path requires an
 external `MMDxShow.dll`. Other build products stay out of the runtime directory
-(static/import libraries in `build/lib`, PDBs in `build/symbols`). The toon
-textures (`toon01.bmp..toon10.bmp`, etc.) must
-be placed under a `Data/` directory in the working directory. A release tree
+(static/import libraries in `build/lib`, PDBs in `build/symbols`). Default Toon
+textures are embedded in the executable, so no extra Toon files are required.
+To change the default rendering style, place any of `toon01.bmp` through
+`toon10.bmp` in the `Data/` directory next to `MikuMikuDance.exe`, then restart
+MMS. Each readable file overrides its corresponding embedded texture.
+Missing or unreadable files fall back to the embedded defaults. Models with
+their own Toon textures continue to use those textures. A release tree
 contains the shipped files only:
 
 ```bat
@@ -295,7 +299,11 @@ build/Release/
 └── Data/
 ```
 
-运行所需的 toon 纹理仍需自行补充到 `Data/`。
+默认 Toon 贴图已内置，无需额外放置 Toon 文件。
+如需改变默认渲染风格，可将 `toon01.bmp` 至 `toon10.bmp` 中任意所需的文件放入
+`MikuMikuDance.exe` 同目录下的 `Data/`，然后重启 MMS。
+程序优先读取这些同名文件，分别覆盖对应的内置 Toon；缺失或读取失败时使用内置贴图。
+模型自带并指定的 Toon 贴图仍按模型设置加载。
 静态库、导入库、PDB 和回归测试程序不随此命令安装。
 源码仓库不包含编译后的发行包；GitHub Release 中的压缩包属于二进制分发文件，不是源码。仓库里的 `res/assets/` 是程序使用的资源文件，`docs/images/` 是文档配图。
 
@@ -445,8 +453,12 @@ cmake --build build --config Release
 DirectShow プッシュソースは実行ファイルに静的リンクされ、MP4 録画は Windows Media
 Foundation を使用します。いずれも外部の `MMDxShow.dll` を配置・登録する必要はありません。
 静的／インポートライブラリ（`build/lib`）と PDB（`build/symbols`）は実行ディレクトリに入りません。
-実行時にはトゥーンテクスチャ
-（`toon01.bmp..toon10.bmp` 等）を作業ディレクトリの `Data/` 以下に配置する必要があります。
+既定のトゥーンテクスチャは実行ファイルに内蔵されているため、追加の配置は不要です。
+既定の描画スタイルを変更する場合は、`toon01.bmp` から `toon10.bmp` のうち必要なファイルを
+`MikuMikuDance.exe` と同じディレクトリの `Data/` に配置し、MMS を再起動してください。
+読み込める同名ファイルが対応する内蔵テクスチャより優先されます。
+ファイルがない場合や読み込みに失敗した場合は、内蔵テクスチャを使用します。
+モデル独自のトゥーンテクスチャは、引き続きモデルの設定に従って読み込まれます。
 テスト実行ファイルは `EXCLUDE_FROM_ALL` のため既定のビルドにも配布物にも含まれません。
 配布ディレクトリには配布ファイルのみが含まれます：
 

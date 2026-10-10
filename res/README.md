@@ -30,7 +30,7 @@ gen_menus_listing.txt  解码后的菜单树（信息性，不参与构建）
 | `sidebar_icon_sheet.bmp` | BITMAP 101 | 帧面板 11×11 行图标（骨骼/表情/IK 开关，五列掩码） |
 | `playing_indicator.bmp` | BITMAP 119 | "再生中" 状态角标（49×24 blit） |
 | `hud_sprites.png` | PNG 102 | 视口 HUD 精灵图集（相机/骨骼图标等） |
-| `toon00.png` … `toon10.png` | PNG 103–113 | 内嵌卡通渐变；`data/toonNN.bmp` 缺失时的回退 |
+| `toon00.png` … `toon10.png` | PNG 103–113 | 内置 Toon；程序目录 `Data/toon01.bmp` 至 `toon10.bmp` 优先覆盖对应贴图，缺失或读取失败时回退。`toon00.png` 为内部默认槽 |
 | `accessory_helper.png` | PNG 114 | 附件放置辅助纹理 |
 | `app.ico` | GROUP_ICON 100 + ICON 1–6 | 应用图标（128/64/48/32/24/16 六档） |
 | `axis.x` | XFILE 115 | 坐标轴 gizmo 的 DirectX 文本网格 |
