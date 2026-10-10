@@ -32,6 +32,20 @@
 
 这些区间没有覆盖全部启动步骤。内置特效创建和音频初始化是缓存命中后主要的已测耗时，不能把剩余等待都归因于测速。
 
+## 与原版 9.26 的差异
+
+对照用户指定目录中的 `MikuMikudance.exe`，其 SHA-256 为 `72c34b7ab607aef7b18974742ae18ce62f115f6a614bbedc1a4310e4a5406f72`。两侧均为空场景、相同 `mmconfig.ini`、隐藏且未最小化的窗口，按原版、MMS、MMS、原版顺序运行。原版保留其附带的 MME DLL，MMS 保留 MMV4MMS，因此这组结果是用户运行包的比较，不用于单独归因插件成本。
+
+本组就绪标准是原生帧率计数大于 1 且主窗口可响应消息，比前文的 `INIT complete` 更晚。原版两次为 **2.82、2.33 秒**，MMS 两次为 **4.23、4.07 秒**。不能混用两组判定标准计算加速比例。
+
+进一步提取原版 RCDATA 118 的 HLSL，与 MMS 的 `res/assets/skin_effect_sm3.fx` 进行独立编译对照。两侧使用同一个 `d3dx9_43.dll`、`D3DXCreateEffectCompiler`、`CompileEffect` 和零编译标志，按原版、MMS、MMS、原版顺序调用。原版编译为 **0.187、0.200 秒**，MMS 为 **1.594、1.609 秒**。编译结果大小分别为 35,660 和 118,840 字节。
+
+这项隔离对照排除了窗口、音频、运算器测速和插件加载的影响。当前更复杂的内置特效每次启动都重新编译，较原版增加约 **1.41 秒**，可解释实际启动差距的大部分。MMS 源码中的阴影接收过滤、双线性及三次重建等计算会进入多项着色技术；本次没有通过删减这些效果降低画质。
+
+优先优化方向是保留相同着色器与编译选项，把编译移到构建阶段，或复用有效的编译结果。微软的 [D3DXCreateEffectFromResource 文档](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dxcreateeffectfromresource) 确认该接口支持文本及二进制特效。该优化尚未实现，需要验证 MME 拦截和渲染结果兼容性。
+
+原始记录在 `.local/artifacts/startup-cache-20261010/original-comparison/results.json` 及 `effect-compile/results.json`。
+
 ## 修改验收
 
 前后构建均基于 `fc015a882200ed1787b455271bd556a89c5dea7b`，VS 2022 x64 Release，DX12 开启，`MIKUDANCESTUDIO_PERF=OFF`、`MIKUDANCESTUDIO_DIAG=OFF`。后构建仅增加本次缓存与测试改动。工作区其他正在修改的功能没有进入这组对照。
