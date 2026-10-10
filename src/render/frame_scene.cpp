@@ -29,6 +29,7 @@
 #include "mikudancestudio/transparent_triangles.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/effect_api.hpp"
+#include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/runtime_log.hpp"
 
 namespace mikudancestudio {
@@ -292,7 +293,7 @@ inline void DumpAccessoryScreenTexture(MMDApp*, IDirect3DDevice9*) {}
 
 void ComposeSelfShadow(MMDApp* app, D3DRenderer* sub,
                        IDirect3DDevice9* device) { // 0x46DE61
-    if (app->SelfShadowCompositionEnabled() == 0 ||
+    if (sub->effect == nullptr || app->SelfShadowCompositionEnabled() == 0 ||
         app->SelfShadowMode() <= 0)
         return;
     device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
@@ -410,6 +411,8 @@ void RenderFrameScene(MMDApp* app) {
     if (device == nullptr)
         return;
 
+    UpdateDefaultEffect(app);
+
     for (int slot=0; slot<kModelSlotCount; ++slot)
         if (auto* model=app->ModelSlot(slot)) bone_scale::ApplyTransforms(model);
     SetupFrameWorldTransform(app);
@@ -479,7 +482,8 @@ void RenderFrameScene(MMDApp* app) {
     }
     InstallEffectMenuCompatibility(app);
 
-    const bool effectRenderer = mmvResult == 0 && UseEffectModelRenderer(app);
+    const bool effectRenderer = mmvResult == 0 && sub->effect != nullptr &&
+        UseEffectModelRenderer(app);
     if (effectRenderer) {
         runtime_log::SetPhase("frame: shadow map");
         RenderShadowMap(app, reinterpret_cast<const float*>(&frameWorld));

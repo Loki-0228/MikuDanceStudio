@@ -5,3 +5,5 @@
 阴影、录制预览与 MME 显示修复的基线工作树为 `.local/worktrees/shadow-preview-before/`（`d1e88fb`），独立基线构建为 `.local/builds/shadow-preview-before/`。它们作为本次验收参考保留。更早的构建快照位于 `.local/releases/shadow-preview-before/`，开发构建为 `.local/builds/mme-926-profile/`。原始采样、失败记录、版本与哈希清单位于 `.local/artifacts/shadow-preview-20261010/01/`，见[验收说明](SHADOW_PREVIEW_MME_20261011.md)。这些目录不进入发布包。
 
 `v2026.10.11.1` 使用独立发布工作树 `.local/worktrees/shadow-preview-release/` 与构建目录 `.local/builds/shadow-preview-release/`，关闭诊断和阶段计时。发布 EXE 与来源清单存放于 `.local/releases/v2026.10.11.1/`；上传、公开下载核验和旧版本归档记录位于 `.local/artifacts/github-release/v2026.10.11.1/`。替换正式目录前的程序备份位于 `.local/archives/shadow-preview-release/`。工作树作为已验收的发布参考保留。
+
+空场景默认着色器后台编译的源码快照、前后启动对照和隐藏窗口测试记录位于 `.local/artifacts/deferred-effect-20261011/`。独立构建为 `.local/builds/deferred-effect-x64-20261011/`，最终验证包为 `.local/releases/deferred-effect-20261011-integrated/`，性能对照包为 `.local/releases/deferred-effect-20261011/`。这些版本作为验收参考保留，不替换正式发布包。见[启动验收记录](STARTUP_DEFERRED_EFFECT_20261011.md)。

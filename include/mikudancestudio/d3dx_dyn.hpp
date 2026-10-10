@@ -37,6 +37,9 @@ using FnCreateTexture = HRESULT(WINAPI*)(
 using FnCreateEffectFromResA = HRESULT(WINAPI*)(
     IDirect3DDevice9*, HMODULE, LPCSTR, const void*, const void*, DWORD,
     void*, void**, void*);
+using FnCreateEffect = HRESULT(WINAPI*)(
+    IDirect3DDevice9*, LPCVOID, UINT, const void*, const void*, DWORD,
+    void*, void**, void**);
 using FnMatrixPerspectiveFovLH = D3DXMATRIXF*(WINAPI*)(
     D3DXMATRIXF*, float, float, float, float);
 using FnMatrixOp1 = D3DXMATRIXF*(WINAPI*)(D3DXMATRIXF*, float);
@@ -91,6 +94,9 @@ __declspec(dllimport) HRESULT WINAPI D3DXCreateTexture(
 __declspec(dllimport) HRESULT WINAPI D3DXCreateEffectFromResourceA(
     IDirect3DDevice9*, HMODULE, LPCSTR, const void*, const void*, DWORD,
     void*, void**, void*);
+__declspec(dllimport) HRESULT WINAPI D3DXCreateEffect(
+    IDirect3DDevice9*, LPCVOID, UINT, const void*, const void*, DWORD,
+    void*, void**, void**);
 __declspec(dllimport) D3DXMATRIXF* WINAPI D3DXMatrixPerspectiveFovLH(
     D3DXMATRIXF*, float, float, float, float);
 __declspec(dllimport) D3DXMATRIXF* WINAPI D3DXMatrixRotationX(
@@ -143,6 +149,8 @@ static_assert(std::is_same<decltype(&D3DXCreateTexture), FnCreateTexture>::value
               "d3dx import signature");
 static_assert(std::is_same<decltype(&D3DXCreateEffectFromResourceA),
                            FnCreateEffectFromResA>::value, "d3dx import signature");
+static_assert(std::is_same<decltype(&D3DXCreateEffect),
+                           FnCreateEffect>::value, "d3dx import signature");
 static_assert(std::is_same<decltype(&D3DXMatrixPerspectiveFovLH),
                            FnMatrixPerspectiveFovLH>::value, "d3dx import signature");
 static_assert(std::is_same<decltype(&D3DXMatrixRotationX), FnMatrixOp1>::value,
@@ -186,6 +194,7 @@ struct Api {
     FnCreateTexFromFileExW fromFileExW = nullptr;
     FnCreateTexture createTexture = nullptr;
     FnCreateEffectFromResA createEffectFromResA = nullptr;
+    FnCreateEffect createEffect = nullptr;
     FnMatrixPerspectiveFovLH perspectiveFovLH = nullptr;
     FnMatrixOp1 rotX = nullptr;
     FnMatrixOp1 rotY = nullptr;
@@ -226,6 +235,7 @@ struct Api {
         fromFileExW = D3DXCreateTextureFromFileExW;
         createTexture = D3DXCreateTexture;
         createEffectFromResA = D3DXCreateEffectFromResourceA;
+        createEffect = D3DXCreateEffect;
         perspectiveFovLH = D3DXMatrixPerspectiveFovLH;
         rotX = D3DXMatrixRotationX;
         rotY = D3DXMatrixRotationY;
@@ -272,6 +282,8 @@ struct Api {
             module, "D3DXCreateTexture"));
         createEffectFromResA = reinterpret_cast<FnCreateEffectFromResA>(
             GetProcAddress(module, "D3DXCreateEffectFromResourceA"));
+        createEffect = reinterpret_cast<FnCreateEffect>(
+            GetProcAddress(module, "D3DXCreateEffect"));
         perspectiveFovLH = reinterpret_cast<FnMatrixPerspectiveFovLH>(
             GetProcAddress(module, "D3DXMatrixPerspectiveFovLH"));
         rotX = reinterpret_cast<FnMatrixOp1>(

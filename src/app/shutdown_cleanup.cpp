@@ -1,3 +1,4 @@
+#include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
@@ -297,6 +298,7 @@ int NvapiStereoDestroyHandle(void* stereoHandle) {
 //     destroy the NVAPI stereo handle stored at +120020 (0x4CB4F0).
 // =========================================================================//
 void DisposeRenderSubsystem(D3DRenderer* sub) {
+    CancelDefaultEffectCompilation(sub);
     InvalidateTextureLookup();
     ClearTransparentPeelingCache();
     ReleaseSlot(sub->effect);             // +120160  0x406BF8

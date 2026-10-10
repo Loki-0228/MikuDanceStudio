@@ -26,6 +26,7 @@
 
 #include "mikudancestudio/d3d_wrapper.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
+#include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/processor_settings.hpp"
@@ -84,37 +85,6 @@ void DumpCreateDeviceFailure(const D3DPRESENT_PARAMETERS& pp,
     std::fclose(stream);
 }
 
-void DumpEffectFailure(HRESULT result, int resourceId, void* errors) {
-    char directory[MAX_PATH]{};
-    DWORD length = GetEnvironmentVariableA(
-        "MIKUDANCESTUDIO_STATE_DUMP_DIR", directory, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) {
-        length = GetEnvironmentVariableA(
-            "MIKUDANCESTUDIO_VB_DUMP_DIR", directory, MAX_PATH);
-    }
-    if (length == 0 || length >= MAX_PATH)
-        return;
-    CreateDirectoryA(directory, nullptr);
-    char path[MAX_PATH]{};
-    std::snprintf(path, sizeof(path), "%s\\effect_create.error.txt",
-                  directory);
-    FILE* stream = nullptr;
-    if (fopen_s(&stream, path, "wb") != 0 || stream == nullptr)
-        return;
-    std::fprintf(stream, "resource=%d HRESULT=0x%08X\r\n", resourceId,
-                 static_cast<unsigned>(result));
-    if (errors != nullptr) {
-        using GetPointer = void*(__stdcall*)(void*);
-        using GetSize = DWORD(__stdcall*)(void*);
-        void** vtable = *reinterpret_cast<void***>(errors);
-        const void* bytes = reinterpret_cast<GetPointer>(vtable[3])(errors);
-        const DWORD size = reinterpret_cast<GetSize>(vtable[4])(errors);
-        if (bytes != nullptr && size != 0)
-            std::fwrite(bytes, 1, size, stream);
-    }
-    std::fclose(stream);
-}
-
 void DumpEffectStatus(bool haveD3dx, int vsMajor, int psMajor,
                       int maxTexW, int maxTexH, D3DRenderer* renderer) {
     char directory[MAX_PATH]{};
@@ -141,7 +111,6 @@ void DumpEffectStatus(bool haveD3dx, int vsMajor, int psMajor,
 #else
 inline void DumpCreateDeviceFailure(const D3DPRESENT_PARAMETERS&,
                                     const HRESULT*, int, D3DFORMAT) {}
-inline void DumpEffectFailure(HRESULT, int, void*) {}
 inline void DumpEffectStatus(bool, int, int, int, int, D3DRenderer*) {}
 #endif
 
@@ -401,49 +370,13 @@ bool InitD3D(MMDApp* app, HWND hwnd, bool english, HMODULE hModule) {
                 if (*spriteSurf) { (*spriteSurf)->Release(); *spriteSurf = nullptr; }
                 if (r->hdrTexture) { r->hdrTexture->Release(); r->hdrTexture = nullptr; }
             } else {
-                void** effect = reinterpret_cast<void**>(&r->effect);
-                void* effectErrors = nullptr;
-                HRESULT effectResult = E_FAIL;
-                int effectResource = 0;
-                if (vsMajor >= 3 && psMajor >= 3) {
-                    effectResource = 118;
-                    effectResult = d3dx->createEffectFromResA(
-                        device, nullptr, MAKEINTRESOURCEA(118), nullptr,
-                        nullptr, 0, nullptr, effect, &effectErrors);
-                    r->shaderModel3 = 1;                            // SM3
-                } else {
-                    effectResource = 117;
-                    effectResult = d3dx->createEffectFromResA(
-                        device, nullptr, MAKEINTRESOURCEA(117), nullptr,
-                        nullptr, 0, nullptr, effect, &effectErrors);
-                    // technique desc first-char 'r' check -> SKII1 = 600/500
-                    if (*effect != nullptr) {
-                        DWORD desc[6] = {};
-                        auto* vt = *reinterpret_cast<void***>(*effect);
-                        reinterpret_cast<void(__stdcall*)(void*, int, void*)>(
-                            vt[0x44 / 4])(*effect, 0, desc);
-                        reinterpret_cast<HRESULT(__stdcall*)(void*, const char*, int)>(
-                            vt[0x68 / 4])(*effect, "SKII1",
-                                          desc[0] == 'r' ? 600 : 500);
-                        r->shaderModel3 =
-                            static_cast<std::uint8_t>(desc[0] == 'r');
-                    }
-                }
-                if (FAILED(effectResult) || *effect == nullptr)
-                    DumpEffectFailure(effectResult, effectResource,
-                                      effectErrors);
-                ReleaseCom(effectErrors);
-                if (*effect == nullptr) {
-                    if (*spriteSurf) { (*spriteSurf)->Release(); *spriteSurf = nullptr; }
-                    if (r->hdrTexture) { r->hdrTexture->Release(); r->hdrTexture = nullptr; }
-                    if (*shadowDepth) {
-                        (*shadowDepth)->Release();
-                        *shadowDepth = nullptr;
-                    }
-                }
+                r->shaderModel3 = vsMajor >= 3 && psMajor >= 3 ? 1 : 0;
+                const int resource = r->shaderModel3 ? 118 : 117;
+                if (!QueueDefaultEffect(r, resource))
+                    r->postProcessEnabled = 0;
             }
         }
-        if (r->effect == nullptr)
+        if (!r->shadowSurface || !r->shadowDepthSurface)
             r->postProcessEnabled = 0;
     }
     DumpEffectStatus(haveD3dx, vsMajor, psMajor, maxTexW, maxTexH, r);

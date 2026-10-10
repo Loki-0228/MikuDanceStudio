@@ -245,6 +245,7 @@ add_library(mikudancestudio_core STATIC
     src/window/alembic_export_dialog.cpp
     src/physics/scene_create.cpp
     src/render/d3d_init.cpp
+    src/render/default_effect.cpp
     src/render/processor_settings.cpp
     src/render/render_states.cpp
     src/render/stereo_nvapi.cpp
@@ -846,6 +847,23 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     set_target_properties(camera_follow_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME camera_follow_regressions COMMAND camera_follow_tests)
+    add_executable(deferred_effect_tests EXCLUDE_FROM_ALL tests/deferred_effect_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(deferred_effect_tests PRIVATE mikudancestudio_core winmm dsound)
+    target_link_options(deferred_effect_tests PRIVATE "/MANIFEST:NO"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(deferred_effect_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_executable(deferred_effect_mme_tests EXCLUDE_FROM_ALL tests/deferred_effect_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_libraries(deferred_effect_mme_tests PRIVATE mikudancestudio_core winmm dsound)
+    target_compile_definitions(deferred_effect_mme_tests PRIVATE REQUIRE_MME=1)
+    target_link_options(deferred_effect_mme_tests PRIVATE "/MANIFEST:NO"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(deferred_effect_mme_tests PROPERTIES
+        OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme/lib/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme/$<CONFIG>")
     add_executable(wave_audio_tests EXCLUDE_FROM_ALL tests/wave_audio_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(wave_audio_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)

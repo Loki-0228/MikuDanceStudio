@@ -24,6 +24,7 @@ EXPORTS
     D3DXCreateTextureFromFileExW
     D3DXCreateTexture
     D3DXCreateEffectFromResourceA
+    D3DXCreateEffect
     D3DXMatrixPerspectiveFovLH
     D3DXMatrixRotationX
     D3DXMatrixRotationY
