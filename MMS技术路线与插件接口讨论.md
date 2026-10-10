@@ -1,6 +1,8 @@
 # MMS 技术路线与插件接口讨论
 
-日期：2026-10-10
+讨论日期：2026-10-10
+
+更新日期：2026-10-11。补充 Windows 兼容范围与工具集选择，原有运行验证日期保持不变。
 
 MMS 的技术路线需要同时满足两类目标：保留原版 MMD 的可观测行为，并为播放性能、画质、界面和第三方插件提供改进空间。建议继续采用 CMake 和 Conan 2，将编译器升级作为独立验证事项。应用架构保留现有 DX9 与 MME 路径，增加可独立替换的渲染和通用仿真接口。
 
@@ -33,10 +35,11 @@ MSVC 仍适合作为 Windows 正式构建工具。clang-cl 可以作为额外的
 
 Microsoft 对 v143、v145 等工具集提供有条件的二进制兼容承诺：链接器与运行库版本必须满足约束，启用 `/GL` 或 `/LTCG` 的产物还有更严格的版本要求。这些承诺不等于 Bullet 的逐帧数值结果完全相同。[MSVC 二进制兼容说明](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017)、[Visual Studio 2026 发布说明](https://learn.microsoft.com/en-us/visualstudio/releases/2026/release-notes)。
 
-对 MMS 而言，升级需要分别回答三个问题：
+对 MMS 而言，升级需要分别回答四个问题：
 
 | 层面 | 需要确认的结果 |
 | --- | --- |
+| 目标系统 | 宿主和插件所需的系统 API、运行库及图形能力符合最低运行系统要求。 |
 | 编译与链接 | 旧 Bullet 源码和其他依赖能按预期构建，运行库和链接选项一致。 |
 | ABI 与内存管理 | 对齐、结构布局、对象释放方式和 DLL 边界保持正确。 |
 | 行为与数值 | 相同初始状态、时间步长和求解顺序下，骨骼、刚体及最终画面满足兼容目标。 |
@@ -44,6 +47,50 @@ Microsoft 对 v143、v145 等工具集提供有条件的二进制兼容承诺：
 项目中的 `/Zc:alignedNew-` 与旧 Bullet 分配和释放约定有关，升级时不应未经验证就删除。浮点选项、指令生成和优化变化也需要纳入对照。保留 `/fp:precise` 等设置本身不能证明跨编译器结果完全一致。
 
 建议先让新工具链在独立构建中通过验证，再决定是否替换正式基线。工具链升级与 Bullet 版本升级分开评估，便于定位差异。[当前构建选项](/D:/MMD-Next/MMS/CMakeLists.txt)。
+
+### Windows 目标系统与开发环境
+
+截至 2026-10-11，v145 及其配套运行库的官方目标平台范围如下。该范围说明工具链支持哪些系统，不等于 MMS 和所有插件已经在这些系统上通过验证。
+
+| 程序运行的系统 | v145 配套运行库的官方支持 |
+| --- | --- |
+| Windows 11 | 支持。 |
+| Windows 10 | 支持。具体最低版本还取决于应用和依赖调用的系统 API。 |
+| Windows 7 SP1、Windows 8、Windows 8.1 | 不在支持范围。 |
+| Windows Vista、Windows XP | 不支持。 |
+| Windows Server 2016、2019、2022、2025 | 支持。 |
+
+依据：[Visual Studio 2026 目标平台](https://learn.microsoft.com/en-us/visualstudio/releases/2026/compatibility)、[Visual C++ 运行库要求](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist/)。
+
+开发机的系统要求与上述运行目标不同。Visual Studio 2026 当前官方安装支持列表为受支持的 Windows 11 版本，以及 Windows Server 2019、2022、2025。可以在符合要求的开发机上编译面向 Windows 10 的程序，用户运行 MMS 无需安装 Visual Studio。[Visual Studio 2026 系统要求](https://learn.microsoft.com/en-us/visualstudio/releases/2026/vs-system-requirements)。
+
+动态链接 MSVC 运行库时，部署的运行库版本不能早于构建应用所用的工具集版本。因此，给 v145 程序配一个支持 Win7 的旧运行库，不能恢复 Win7 兼容。仅修改最低系统版本宏或链接器设置也不足以解决依赖缺失的系统 API。
+
+### 保留 Win7 兼容时的工具集选择
+
+面向 Win7 的最后一代 MSVC 工具集是 v143 的 14.44 系列，对应 Visual Studio 2022 17.14。VS 2022 的目标平台表仍列出 Windows 7。微软 STL 的变更记录则明确从 14.50 开始取消 Windows 7、Windows 8 和 Windows 8.1 目标支持，并直接调用较新系统的 API。[VS 2022 目标平台](https://learn.microsoft.com/en-us/visualstudio/releases/2022/compatibility)、[MSVC STL 14.50 变更记录](https://github.com/microsoft/STL/wiki/Changelog#msvc-build-tools-1450)。
+
+| 项目 | Win7 兼容路线 |
+| --- | --- |
+| MSVC 工具集 | v143，14.44 系列。 |
+| 对应 Visual Studio 版本 | Visual Studio 2022 17.14。该对应关系不表示 VS 2022 本身可安装在 Win7 上。 |
+| MSVC 运行库 | 14.44 系列。官方生命周期表列出 `14.44.35211`，具体部署补丁版本需要与构建产物核对。 |
+| MMS 的候选运行目标 | Windows 7 SP1 x64，仍需完成应用与依赖验证。 |
+
+14.44 系列的补丁版本可能继续更新，不能将 `14.44.35211` 视为固定的最终补丁号。[MSVC 工具集与运行库版本表](https://learn.microsoft.com/en-us/lifecycle/faq/visual-c-faq)、[VS 2022 系统与运行库要求](https://learn.microsoft.com/en-us/visualstudio/releases/2022/system-requirements)。
+
+如果 MMS 要保留 Win7 用户，建议继续以 v143 的 14.44 系列作为兼容构建基线，无需仅为 Win7 而退回 VS 2019 工具集。该选择仍需配套检查宿主、依赖库、MME 和其他 DLL 的系统 API，并在 Win7 SP1 上验证。编译通过不能替代目标系统运行验证。
+
+### 最低系统版本对插件方案的影响
+
+是否正式保留 Win7 支持尚未决定。工具链与发布路线可以按目标系统选择：
+
+- 面向 Windows 10 x64 和 Windows 11 x64 时，可以评估 v145，并继续执行 Bullet 行为与 MME 兼容性对照。
+- 保留 Windows 7 SP1 x64 时，采用 v143 的 14.44 系列兼容构建，并固定匹配的依赖、运行库和构建选项。
+
+插件 SDK 还应声明最低系统版本和必需的图形能力。稳定的 C ABI 解决模块交互约定，不能替代操作系统兼容性。宿主采用 v143，也不能保证一个用 v145 构建的插件可以在 Win7 上加载。
+
+如果保留 Win7 路线，DX12 或其他较新系统专用能力应作为经过能力检查后启用的可选后端，不能让其必需依赖阻止兼容路径启动。具体加载方式和回退行为需要在接口实现时验证。布料与软体接口继续保留 CPU 数据路径，让插件能够提供适合目标系统的实现。
 
 ## 播放性能与画质评估
 
