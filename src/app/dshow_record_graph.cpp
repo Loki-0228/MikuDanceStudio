@@ -275,7 +275,8 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
     SendMessageA(hCombo, CB_RESETCONTENT, 0, 0);
     const int builtInRow = static_cast<int>(SendMessageW(
         hCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(english
-            ? L"Built-in H.264 (MP4)" : L"H.264（内置，MP4）")));
+            ? L"Windows Media Foundation H.264 (MP4)"
+            : L"Windows Media Foundation H.264（MP4）")));
     SendMessageW(hCombo, CB_SETITEMDATA, builtInRow, kBuiltInH264Codec);
     SendMessageW(hCombo, CB_SETCURSEL, builtInRow, 0);
     if (rec != nullptr)
@@ -294,7 +295,7 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
         hCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(systemRowName.c_str())));
     SendMessageW(hCombo, CB_SETITEMDATA, systemRow, kSystemH264Codec);
     const int pngRow = static_cast<int>(SendMessageW(hCombo, CB_ADDSTRING, 0,
-        reinterpret_cast<LPARAM>(english == 1 ? L"PNG (built-in, transparent MOV)" : L"PNG（内置，透明 MOV）")));
+        reinterpret_cast<LPARAM>(english == 1 ? L"PNG (transparent MOV)" : L"PNG（透明 MOV）")));
     SendMessageW(hCombo, CB_SETITEMDATA, pngRow, kNativePngMovCodec);
     ICreateDevEnum* devEnum = nullptr;
     if (CoCreateInstance(CLSID_SystemDeviceEnum, nullptr,
