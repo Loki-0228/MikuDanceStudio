@@ -1,0 +1,106 @@
+[
+  {
+    "scene": "stage",
+    "mode": "throughput",
+    "variant": "baseline",
+    "sha256": "a82844938d5cc398da52ac0c90dd6590d7db54a007c273e4b17c8fec4fa725ee",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=12.7888\r\nphase=frame inclusive_ms_per_frame=12.7515 calls=150\r\nphase=scene inclusive_ms_per_frame=9.8750 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.5993 calls=150\r\nphase=morph inclusive_ms_per_frame=0.2681 calls=150\r\nphase=skin inclusive_ms_per_frame=1.3189 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=7.5193 calls=150\r\nphase=materials inclusive_ms_per_frame=8.0131 calls=300\r\nphase=physics inclusive_ms_per_frame=0.7041 calls=150\r\nphase=present inclusive_ms_per_frame=2.1079 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=2.0137 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.4738 calls=4950\r\nphase=pose inclusive_ms_per_frame=0.6129 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0000 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0004 calls=150\r\nphase=physics_step inclusive_ms_per_frame=0.0142 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0105 calls=300\r\nviewport=859x482 samples=150 mean_ms=12.7519 median_ms=12.3197 p95_ms=15.6265 equivalent_fps=78.42\r\n"
+  },
+  {
+    "scene": "stage",
+    "mode": "throughput",
+    "variant": "candidate",
+    "sha256": "dd2a953f93344b2c4cb029d97d26662e7e9dcb28057885b282564077f4292901",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=12.0015\r\nphase=frame inclusive_ms_per_frame=11.9643 calls=150\r\nphase=scene inclusive_ms_per_frame=9.2934 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.3088 calls=150\r\nphase=morph inclusive_ms_per_frame=0.2506 calls=150\r\nphase=skin inclusive_ms_per_frame=1.0540 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=7.2693 calls=150\r\nphase=materials inclusive_ms_per_frame=7.7471 calls=300\r\nphase=physics inclusive_ms_per_frame=0.1045 calls=150\r\nphase=present inclusive_ms_per_frame=2.4587 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.7932 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.4438 calls=4950\r\nphase=pose inclusive_ms_per_frame=0.0102 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0001 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0003 calls=150\r\nphase=physics_step inclusive_ms_per_frame=0.0134 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0159 calls=300\r\nviewport=859x482 samples=150 mean_ms=11.9647 median_ms=11.3738 p95_ms=16.2096 equivalent_fps=83.58\r\n"
+  },
+  {
+    "scene": "stage",
+    "mode": "throughput",
+    "variant": "candidate",
+    "sha256": "dd2a953f93344b2c4cb029d97d26662e7e9dcb28057885b282564077f4292901",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=9.8308\r\nphase=frame inclusive_ms_per_frame=9.8089 calls=150\r\nphase=scene inclusive_ms_per_frame=8.0091 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.6518 calls=150\r\nphase=morph inclusive_ms_per_frame=0.1649 calls=150\r\nphase=skin inclusive_ms_per_frame=0.4848 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=6.8254 calls=150\r\nphase=materials inclusive_ms_per_frame=7.1557 calls=300\r\nphase=physics inclusive_ms_per_frame=0.0904 calls=150\r\nphase=present inclusive_ms_per_frame=1.6550 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.5460 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.2536 calls=4950\r\nphase=pose inclusive_ms_per_frame=0.0092 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0001 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0002 calls=150\r\nphase=physics_step inclusive_ms_per_frame=0.0093 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0098 calls=300\r\nviewport=859x482 samples=150 mean_ms=9.8092 median_ms=9.5168 p95_ms=11.3915 equivalent_fps=101.94\r\n"
+  },
+  {
+    "scene": "stage",
+    "mode": "throughput",
+    "variant": "baseline",
+    "sha256": "a82844938d5cc398da52ac0c90dd6590d7db54a007c273e4b17c8fec4fa725ee",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=12.8012\r\nphase=frame inclusive_ms_per_frame=12.7639 calls=150\r\nphase=scene inclusive_ms_per_frame=9.8693 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.5807 calls=150\r\nphase=morph inclusive_ms_per_frame=0.2588 calls=150\r\nphase=skin inclusive_ms_per_frame=1.3096 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=7.5115 calls=150\r\nphase=materials inclusive_ms_per_frame=8.0223 calls=300\r\nphase=physics inclusive_ms_per_frame=0.7109 calls=150\r\nphase=present inclusive_ms_per_frame=2.1108 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.9365 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.5415 calls=4950\r\nphase=pose inclusive_ms_per_frame=0.6188 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0001 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0004 calls=150\r\nphase=physics_step inclusive_ms_per_frame=0.0131 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0109 calls=300\r\nviewport=859x482 samples=150 mean_ms=12.7643 median_ms=12.7284 p95_ms=14.9382 equivalent_fps=78.34\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "throughput",
+    "variant": "baseline",
+    "sha256": "a82844938d5cc398da52ac0c90dd6590d7db54a007c273e4b17c8fec4fa725ee",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=24.3741\r\nphase=frame inclusive_ms_per_frame=24.3470 calls=150\r\nphase=scene inclusive_ms_per_frame=3.0846 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.3099 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0659 calls=150\r\nphase=skin inclusive_ms_per_frame=0.2357 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.1550 calls=150\r\nphase=materials inclusive_ms_per_frame=2.5109 calls=300\r\nphase=physics inclusive_ms_per_frame=20.8984 calls=150\r\nphase=present inclusive_ms_per_frame=0.2554 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0261 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1208 calls=2550\r\nphase=pose inclusive_ms_per_frame=11.2394 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=1.1865 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=6.3639 calls=150\r\nphase=physics_step inclusive_ms_per_frame=2.0160 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0189 calls=300\r\nviewport=859x482 samples=150 mean_ms=24.3474 median_ms=24.1665 p95_ms=26.4066 equivalent_fps=41.07\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "throughput",
+    "variant": "candidate",
+    "sha256": "dd2a953f93344b2c4cb029d97d26662e7e9dcb28057885b282564077f4292901",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=5.4377\r\nphase=frame inclusive_ms_per_frame=5.4339 calls=150\r\nphase=scene inclusive_ms_per_frame=2.9447 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.1756 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0452 calls=150\r\nphase=skin inclusive_ms_per_frame=0.1290 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.2017 calls=150\r\nphase=materials inclusive_ms_per_frame=2.5368 calls=300\r\nphase=physics inclusive_ms_per_frame=2.2402 calls=150\r\nphase=present inclusive_ms_per_frame=0.1470 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0137 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1813 calls=2550\r\nphase=pose inclusive_ms_per_frame=0.0980 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0110 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0370 calls=150\r\nphase=physics_step inclusive_ms_per_frame=2.0152 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0077 calls=300\r\nviewport=859x482 samples=150 mean_ms=5.4341 median_ms=5.2693 p95_ms=6.3601 equivalent_fps=184.02\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "throughput",
+    "variant": "candidate",
+    "sha256": "dd2a953f93344b2c4cb029d97d26662e7e9dcb28057885b282564077f4292901",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=5.6117\r\nphase=frame inclusive_ms_per_frame=5.6077 calls=150\r\nphase=scene inclusive_ms_per_frame=2.9531 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.2502 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0617 calls=150\r\nphase=skin inclusive_ms_per_frame=0.1863 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.2294 calls=150\r\nphase=materials inclusive_ms_per_frame=2.4636 calls=300\r\nphase=physics inclusive_ms_per_frame=2.2615 calls=150\r\nphase=present inclusive_ms_per_frame=0.2832 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0681 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1538 calls=2550\r\nphase=pose inclusive_ms_per_frame=0.1003 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0130 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0387 calls=150\r\nphase=physics_step inclusive_ms_per_frame=2.0328 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0086 calls=300\r\nviewport=859x482 samples=150 mean_ms=5.6080 median_ms=5.3239 p95_ms=7.1800 equivalent_fps=178.32\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "throughput",
+    "variant": "baseline",
+    "sha256": "a82844938d5cc398da52ac0c90dd6590d7db54a007c273e4b17c8fec4fa725ee",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=23.7373\r\nphase=frame inclusive_ms_per_frame=23.7109 calls=150\r\nphase=scene inclusive_ms_per_frame=2.9466 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.2435 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0582 calls=150\r\nphase=skin inclusive_ms_per_frame=0.1778 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.1355 calls=150\r\nphase=materials inclusive_ms_per_frame=2.4534 calls=300\r\nphase=physics inclusive_ms_per_frame=20.4503 calls=150\r\nphase=present inclusive_ms_per_frame=0.2322 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0291 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.0992 calls=2550\r\nphase=pose inclusive_ms_per_frame=11.0320 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=1.1602 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=6.2281 calls=150\r\nphase=physics_step inclusive_ms_per_frame=1.9507 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0090 calls=300\r\nviewport=859x482 samples=150 mean_ms=23.7113 median_ms=23.5557 p95_ms=24.9529 equivalent_fps=42.17\r\n"
+  },
+  {
+    "scene": "stage",
+    "mode": "serial",
+    "variant": "baseline",
+    "sha256": "a82844938d5cc398da52ac0c90dd6590d7db54a007c273e4b17c8fec4fa725ee",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=serial drained_batch_ms_per_frame=14.6283\r\nphase=frame inclusive_ms_per_frame=10.1510 calls=150\r\nphase=scene inclusive_ms_per_frame=8.1193 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.8027 calls=150\r\nphase=morph inclusive_ms_per_frame=0.1641 calls=150\r\nphase=skin inclusive_ms_per_frame=0.6298 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=6.8808 calls=150\r\nphase=materials inclusive_ms_per_frame=7.0813 calls=300\r\nphase=physics inclusive_ms_per_frame=0.6953 calls=150\r\nphase=present inclusive_ms_per_frame=1.1779 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.5683 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.2853 calls=4950\r\nphase=pose inclusive_ms_per_frame=0.6090 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0000 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0003 calls=150\r\nphase=physics_step inclusive_ms_per_frame=0.0102 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0100 calls=300\r\nviewport=859x482 samples=150 mean_ms=14.6275 median_ms=13.3586 p95_ms=21.3919 equivalent_fps=68.36\r\n"
+  },
+  {
+    "scene": "stage",
+    "mode": "serial",
+    "variant": "candidate",
+    "sha256": "dd2a953f93344b2c4cb029d97d26662e7e9dcb28057885b282564077f4292901",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=serial drained_batch_ms_per_frame=14.8020\r\nphase=frame inclusive_ms_per_frame=11.0136 calls=150\r\nphase=scene inclusive_ms_per_frame=8.7139 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.0742 calls=150\r\nphase=morph inclusive_ms_per_frame=0.1934 calls=150\r\nphase=skin inclusive_ms_per_frame=0.8778 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=6.9360 calls=150\r\nphase=materials inclusive_ms_per_frame=7.4085 calls=300\r\nphase=physics inclusive_ms_per_frame=0.0960 calls=150\r\nphase=present inclusive_ms_per_frame=2.0806 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.5822 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.3242 calls=4950\r\nphase=pose inclusive_ms_per_frame=0.0103 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0001 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0003 calls=150\r\nphase=physics_step inclusive_ms_per_frame=0.0113 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0101 calls=300\r\nviewport=859x482 samples=150 mean_ms=14.8012 median_ms=14.7023 p95_ms=18.1888 equivalent_fps=67.56\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "serial",
+    "variant": "baseline",
+    "sha256": "a82844938d5cc398da52ac0c90dd6590d7db54a007c273e4b17c8fec4fa725ee",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=serial drained_batch_ms_per_frame=27.4303\r\nphase=frame inclusive_ms_per_frame=24.8094 calls=150\r\nphase=scene inclusive_ms_per_frame=3.3640 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.3961 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0723 calls=150\r\nphase=skin inclusive_ms_per_frame=0.3151 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.2708 calls=150\r\nphase=materials inclusive_ms_per_frame=2.6626 calls=300\r\nphase=physics inclusive_ms_per_frame=21.0572 calls=150\r\nphase=present inclusive_ms_per_frame=0.2706 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0211 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.2413 calls=2550\r\nphase=pose inclusive_ms_per_frame=11.2704 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=1.1947 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=6.4088 calls=150\r\nphase=physics_step inclusive_ms_per_frame=2.0931 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0103 calls=300\r\nviewport=859x482 samples=150 mean_ms=27.4296 median_ms=27.2519 p95_ms=31.6845 equivalent_fps=36.46\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "serial",
+    "variant": "candidate",
+    "sha256": "dd2a953f93344b2c4cb029d97d26662e7e9dcb28057885b282564077f4292901",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=serial drained_batch_ms_per_frame=5.8540\r\nphase=frame inclusive_ms_per_frame=5.3359 calls=150\r\nphase=scene inclusive_ms_per_frame=2.8864 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.1967 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0450 calls=150\r\nphase=skin inclusive_ms_per_frame=0.1502 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.1426 calls=150\r\nphase=materials inclusive_ms_per_frame=2.4690 calls=300\r\nphase=physics inclusive_ms_per_frame=2.2011 calls=150\r\nphase=present inclusive_ms_per_frame=0.1793 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0221 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1137 calls=2550\r\nphase=pose inclusive_ms_per_frame=0.0957 calls=300\r\nphase=physics_sync inclusive_ms_per_frame=0.0118 calls=150\r\nphase=physics_readback inclusive_ms_per_frame=0.0374 calls=150\r\nphase=physics_step inclusive_ms_per_frame=1.9796 calls=150\r\nphase=bone_morph inclusive_ms_per_frame=0.0078 calls=300\r\nviewport=859x482 samples=150 mean_ms=5.8534 median_ms=5.6952 p95_ms=6.9308 equivalent_fps=170.84\r\n"
+  },
+  {
+    "scene": "character",
+    "mode": "throughput",
+    "variant": "candidate_perf_off",
+    "sha256": "e2a9bddeed838327c7cc55375b7f5ce6ee260ff37a95219366f023545ca15356",
+    "exit": 0,
+    "output": "initialize\nload scene\nload dialog encountered\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\nmode=throughput drained_batch_ms_per_frame=5.4822\nviewport=859x482 samples=150 mean_ms=5.4724 median_ms=5.4378 p95_ms=5.7398 equivalent_fps=182.73\n"
+  }
+]

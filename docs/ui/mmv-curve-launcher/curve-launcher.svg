@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MMV 曲线编辑器启动按钮 · 常规图标
+     viewport 20x20，用于 22 px / 24 px 按钮（图标框 18 px / 20 px）。
+     几何与笔画规则见同目录 README.md。 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"
+     role="img" aria-labelledby="curve-launcher-title">
+  <title id="curve-launcher-title">曲线编辑器启动器</title>
+  <g fill="none" stroke="#000000">
+    <path d="M1.5 1.5 H18.5 V18.5 H1.5 Z" stroke-width="1" stroke-linejoin="miter"/>
+    <path d="M4 13.5 C11.5 13.5 8.5 6.5 16 6.5" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+</svg>

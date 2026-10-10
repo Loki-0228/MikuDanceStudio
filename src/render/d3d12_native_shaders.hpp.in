@@ -1,0 +1,3 @@
+#pragma once
+static const char kNativeShader[]=R"MMD_SHADER(@MMD_D3D12_NATIVE_HLSL@)MMD_SHADER";
+static const char kSortShader[]=R"MMD_SHADER(@MMD_D3D12_SORT_HLSL@)MMD_SHADER";

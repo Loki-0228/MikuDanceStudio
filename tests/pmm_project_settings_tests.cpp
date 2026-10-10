@@ -1,0 +1,688 @@
+// MAINTENANCE: regression-keep; PMM settings, portable processor matching and unknown fields.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <string>
+#include <utility>
+#include <vector>
+#include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/pmm_project_settings.hpp"
+#include "mikudancestudio/view_options.hpp"
+#include "mikudancestudio/bone_scale.hpp"
+#include "mikudancestudio/model.hpp"
+
+using namespace mikudancestudio;
+namespace ext = mikudancestudio::pmm_extension;
+namespace settings = mikudancestudio::pmm_settings;
+namespace {
+// Five tiers, stored as their own enum values.  The five menu ids are
+// contiguous from kTransparentSortPrecisionMenuFirst: Low = 304 .. Maximum = 307
+// and Off = kTransparentSortPrecisionMenuOff = 308.
+constexpr int kTierCount = 5;
+
+// The retired toggle key of the earlier six-tier test format.  The settings
+// module no longer declares it, so this file spells the key out to place it in a
+// fixture as an ordinary unknown record: the loader never looks it up, and a
+// real writer carries it over byte for byte.
+constexpr char kRetiredToggleKey[] = "org.mikudancestudio.view.transparent_sort";
+
+// One label per tier, indexed by the stored TransparentSortPrecision value:
+// Low, Standard, High, Maximum, Off.
+struct TierLabel {
+    const wchar_t* zh;
+    const wchar_t* en;
+    const wchar_t* jp;
+};
+constexpr TierLabel kTierLabels[] = {
+    {L"低", L"Low", L"低"},
+    {L"标准", L"Standard", L"標準"},
+    {L"高", L"High", L"高"},
+    {L"最高", L"Maximum", L"最高"},
+    {L"关闭（默认）", L"Off (default)", L"オフ（既定）"},
+};
+
+void Check(bool ok, const char* message) {
+    if (!ok) { std::fprintf(stderr, "FAIL %s\n", message); std::exit(1); }
+}
+void MatchTypes() {
+    const std::vector<gpu::Adapter> devices{
+        {123, L"Discrete vendor A", false}, {567, L"Integrated vendor B", true},
+        {890, L"Integrated vendor C", true}};
+    const auto integrated = settings::ResolveProcessor(settings::Processor::Integrated, devices);
+    const auto discrete = settings::ResolveProcessor(settings::Processor::Discrete, devices);
+    Check(integrated.adapterId == 567 && integrated.adapterClass == skinning::AdapterClass::Integrated,
+          "integrated class selects local integrated adapter");
+    Check(discrete.adapterId == 123 && discrete.adapterClass == skinning::AdapterClass::Discrete,
+          "discrete class selects local discrete adapter");
+    Check(settings::ResolveProcessor(settings::Processor::Integrated, {devices[0]}).mode == skinning::Mode::Automatic,
+          "missing integrated class falls back to automatic");
+    Check(settings::ResolveProcessor(settings::Processor::Discrete, {devices[1]}).mode == skinning::Mode::Automatic,
+          "missing discrete class falls back to automatic");
+    Check(settings::ResolveProcessor(settings::Processor::Automatic, {}).mode == skinning::Mode::Automatic,
+          "automatic remains automatic");
+    Check(settings::ResolveProcessor(settings::Processor::Cpu, devices).mode == skinning::Mode::Cpu,
+          "CPU remains CPU");
+    Check(settings::ClassifyProcessor(integrated, devices) == settings::Processor::Integrated &&
+          settings::ClassifyProcessor(discrete, devices) == settings::Processor::Discrete,
+          "explicit local adapter converts to a portable class");
+    auto otherComputer = devices;
+    otherComputer[1].id = 9999; otherComputer[1].name = L"Unrelated integrated GPU";
+    Check(settings::ResolveProcessor(settings::Processor::Integrated, otherComputer).adapterId == 9999,
+          "matching ignores vendor, model, LUID and original device order");
+    std::puts("PASS portable processor matching including missing classes");
+}
+int Open(const std::filesystem::path& path, int mode) {
+    int fd = -1;
+    Check(_wsopen_s(&fd, path.c_str(), mode | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE) == 0,
+          "open isolated PMM");
+    return fd;
+}
+void Save(MMDApp& app, const std::filesystem::path& path) {
+    wcscpy_s(app.EnvFileName(), 256, path.c_str());
+    app.SceneModified() = 1;
+    SaveSceneFile(&app);
+    Check(app.SceneModified() == 0 && std::filesystem::file_size(path) > 32, "real PMM save succeeds");
+}
+void Load(MMDApp& app, const std::filesystem::path& path) {
+    wcscpy_s(app.EnvFileName(), 256, path.c_str());
+    LoadSceneFile();
+}
+ext::Document Read(const std::filesystem::path& path, std::uint64_t* boundary = nullptr) {
+    int fd = Open(path, _O_RDONLY);
+    char magic[30]{}; Check(_read(fd, magic, 30) == 30, "read PMM header");
+    Check(std::memcmp(magic, "Polygon Movie maker 0002", 24) == 0, "PMM version remains 0002");
+    ext::Document doc; std::uint64_t size = 0;
+    Check(ext::Read(fd, doc, size) == ext::ReadResult::Loaded, "valid project extension");
+    Check(_telli64(fd) == 30, "extension read restores file position");
+    _close(fd); if (boundary) *boundary = size; return doc;
+}
+// The submenu is found by the command id of its first tier instead of by
+// position, so no unrelated popup can satisfy the search.
+HMENU PrecisionPopup(HWND hwnd) {
+    HMENU view = GetSubMenu(GetMenu(hwnd), 2);
+    if (view == nullptr) return nullptr;
+    for (int pos = 0; pos < GetMenuItemCount(view); ++pos) {
+        HMENU sub = GetSubMenu(view, pos);
+        if (sub != nullptr &&
+            GetMenuState(sub, kTransparentSortPrecisionMenuFirst, MF_BYCOMMAND) !=
+                static_cast<UINT>(-1))
+            return sub;
+    }
+    return nullptr;
+}
+bool TierChecked(HWND hwnd, int tier) {
+    HMENU popup = PrecisionPopup(hwnd);
+    return popup != nullptr &&
+           (GetMenuState(popup, kTransparentSortPrecisionMenuFirst + tier, MF_BYCOMMAND) &
+            MF_CHECKED) != 0;
+}
+std::wstring ItemLabel(HMENU popup, UINT id) {
+    wchar_t buffer[128]{};
+    const int length = GetMenuStringW(popup, id, buffer, 128, MF_BYCOMMAND);
+    return length > 0 ? std::wstring(buffer) : std::wstring();
+}
+// A fixture places exact record bytes, including the retired toggle key, which
+// no current writer produces on its own.  The standard PMM prefix of `source` is
+// copied and the record stream is appended straight through the extension codec.
+void WriteFixture(const std::filesystem::path& source, const std::filesystem::path& target,
+                  std::uint64_t standardSize, const ext::Document& document) {
+    std::filesystem::copy_file(source, target, std::filesystem::copy_options::overwrite_existing);
+    const int fd = Open(target, _O_RDWR);
+    Check(_chsize_s(fd, static_cast<__int64>(standardSize)) == 0,
+          "trim the fixture to its standard PMM prefix");
+    Check(_lseeki64(fd, 0, SEEK_END) == static_cast<__int64>(standardSize),
+          "fixture positioned at the end of the standard data");
+    Check(ext::Append(fd, document), "append the fixture through the extension codec");
+    _close(fd);
+}
+ext::Document FixtureRecords(const std::vector<std::uint8_t>* toggle,
+                             const std::vector<std::uint8_t>* precision) {
+    ext::Document document;
+    if (precision != nullptr) ext::Set(document, settings::kSortingPrecisionKey, *precision);
+    if (toggle != nullptr) ext::Set(document, kRetiredToggleKey, *toggle);
+    return document;
+}
+}
+
+int wmain(int argc, wchar_t** argv) {
+    if (argc < 2 || argc > 4) return 2;
+    const bool capacityOnly = argc == 4 && wcscmp(argv[3], L"--key-capacity") == 0;
+    if (argc == 4 && !capacityOnly) return 2;
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    const auto directory = std::filesystem::absolute(argv[1]);
+    std::filesystem::create_directories(directory);
+    MatchTypes();
+    auto* app = new MMDApp(); g_Block = app;
+    app->state = MMDAppState{}; app->InitDefaults();
+    Check(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "initialize hidden production app");
+    ShowWindow(app->MainWindow(), SW_HIDE);
+    const auto a = directory / L"settings-a.pmm";
+    const auto b = directory / L"settings-b.pmm";
+    const auto legacy = directory / L"legacy.pmm";
+    const auto offFile = directory / L"off-overwrite.pmm";
+    const auto corrupt = directory / L"corrupt.pmm";
+    const auto precisionFile = directory / L"precision.pmm";
+    const auto fixture = directory / L"fixture.pmm";
+    if (argc >= 3) {
+        LoadModelFile(app, argv[2], false);
+        Check(app->ModelSlot(0) != nullptr, "load optional real model fixture");
+    }
+
+
+    if (capacityOnly) {
+        auto* raw = app->ModelSlot(0);
+        auto& model = *mdl::Mdl(raw);
+        Check(model.morphCount > 1, "fixture supplies morphs");
+        Check(mdl::MorphKeyPoolEnsure(model, 25002), "grow real model morph pool");
+        const auto first = std::size_t(model.morphCount) + 20000;
+        Check(mdl::MorphKeyPoolEnsure(model, first + 2), "reserve sparse morph slots");
+        model.morphKeys[1].allocated = 1;
+        model.morphKeys[1].next = static_cast<std::uint32_t>(first);
+        model.morphKeys[first] = {};
+        model.morphKeys[first].frame = 101;
+        model.morphKeys[first].value = .75f;
+        model.morphKeys[first].previous = 1;
+        model.morphKeys[first].next = static_cast<std::uint32_t>(first + 1);
+        model.morphKeys[first].allocated = 1;
+        model.morphKeys[first+1] = {};
+        model.morphKeys[first+1].frame = 202;
+        model.morphKeys[first+1].value = .25f;
+        model.morphKeys[first+1].previous = static_cast<std::uint32_t>(first);
+        model.morphKeys[first+1].allocated = 1;
+        model.maxFrame = 202;
+        Save(*app, a);
+        Load(*app, a);
+        raw = app->ModelSlot(0);
+        Check(raw != nullptr, "reload model with grown sparse morphs");
+        auto& loaded = *mdl::Mdl(raw);
+        Check(mdl::MorphKeyCapacity(loaded) > first + 1, "PMM loader expands for sparse indices");
+        Check(loaded.morphKeys[1].next == first && loaded.morphKeys[first].frame == 101 &&
+                  loaded.morphKeys[first].value == .75f && loaded.morphKeys[first+1].frame == 202 &&
+                  loaded.morphKeys[first+1].value == .25f && loaded.morphKeys[first+1].previous == first,
+              "PMM roundtrip preserves every sparse morph link, frame and value");
+        app->SetSelectedModelSlot(0); app->state.optflag[0] = 0;
+        const auto vmd = directory / L"grown.vmd";
+        SaveVmdFile(vmd.c_str());
+        int fd = Open(vmd, _O_RDONLY);
+        Check(_lseek(fd, 50, SEEK_SET) == 50, "seek VMD motion records");
+        std::uint32_t count = 0; Check(_read(fd, &count, 4) == 4, "read VMD bone count");
+        Check(_lseek(fd, static_cast<long>(count * 111), SEEK_CUR) >= 0, "skip VMD bones");
+        Check(_read(fd, &count, 4) == 4, "read VMD morph count");
+        bool found101 = false, found202 = false;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            char name[15]; std::uint32_t frame; float value;
+            Check(_read(fd, name, 15) == 15 && _read(fd, &frame, 4) == 4 && _read(fd, &value, 4) == 4,
+                  "read complete standard VMD morph key");
+            if (std::memcmp(name, loaded.morphs[1].name, 15) == 0) {
+                found101 |= frame == 101 && value == .75f;
+                found202 |= frame == 202 && value == .25f;
+            }
+        }
+        _close(fd);
+        Check(found101 && found202, "standard VMD exports grown sparse morph keys");
+        Save(*app, b); Load(*app, b);
+        Check(mdl::Mdl(app->ModelSlot(0))->morphKeys[first+1].frame == 202,
+              "grown morph keys survive a second PMM save/load");
+        std::puts("PASS real PMM and standard VMD grown-morph roundtrip");
+        return 0;
+    }
+
+    // ---- the five tiers through the real command, writer and loader --------
+    settings::Reset(*app);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+          "default sort precision is off");
+    Check(!app->AutoTransparentMaterialSortingEnabled(),
+          "the default disables transparent sorting");
+    for (int value = 0; value < kTierCount; ++value) {
+        app->SceneModified() = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + value, 0);
+        Check(static_cast<int>(app->TransparentMaterialSortPrecision()) == value && app->SceneModified(),
+              "tier command changes the value and marks the project dirty");
+        Check(app->AutoTransparentMaterialSortingEnabled() ==
+                  (value != static_cast<int>(TransparentSortPrecision::Off)),
+              "only the off entry reports transparent sorting as disabled");
+        app->SceneModified() = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + value, 0);
+        Check(!app->SceneModified(), "selecting the same tier again is not an edit");
+        Save(*app, precisionFile);
+        const auto saved = Read(precisionFile);
+        const auto* stored = ext::Find(saved, settings::kSortingPrecisionKey);
+        Check(stored != nullptr &&
+              stored->value == std::vector<std::uint8_t>{static_cast<std::uint8_t>(value)},
+              "the real writer stores exactly the selected tier byte");
+        Check(ext::Find(saved, kRetiredToggleKey) == nullptr,
+              "the real writer stores no retired toggle record");
+        Load(*app, precisionFile);
+        Check(static_cast<int>(app->TransparentMaterialSortPrecision()) == value,
+              "the real loader restores the stored tier");
+        Check(app->AutoTransparentMaterialSortingEnabled() ==
+                  (value != static_cast<int>(TransparentSortPrecision::Off)),
+              "the restored tier drives the sorting state");
+        for (int tier = 0; tier < kTierCount; ++tier)
+            Check(TierChecked(app->MainWindow(), tier) == (tier == value),
+                  "the stored tier marks exactly one radio entry");
+    }
+    std::puts("PASS five stored tiers through the real command, writer, loader and radio marks");
+
+    // ---- one popup, five entries, one label per language, all radio --------
+    const auto language = app->EnglishUI();
+    for (int lang : {2, 1, 0, 2}) {
+        app->EnglishUI() = lang; RefreshMenuLanguage(app);
+        HMENU view = GetSubMenu(GetMenu(app->MainWindow()), 2);
+        Check(view != nullptr, "the view menu exists");
+        int count = 0;
+        for (int pos = 0; pos < GetMenuItemCount(view); ++pos) {
+            HMENU sub = GetSubMenu(view, pos);
+            if (sub == nullptr ||
+                GetMenuState(sub, kTransparentSortPrecisionMenuFirst, MF_BYCOMMAND) ==
+                    static_cast<UINT>(-1))
+                continue;
+            ++count;
+            Check(GetMenuItemCount(sub) == kTierCount, "five limit entries after a language switch");
+            Check(GetMenuState(sub, kAutoTransparentMaterialSortingMenuId, MF_BYCOMMAND) ==
+                      static_cast<UINT>(-1),
+                  "the retired 303 toggle has no entry inside the limit popup");
+            Check(GetMenuState(sub, kTransparentSortPrecisionMenuOff + 1, MF_BYCOMMAND) ==
+                      static_cast<UINT>(-1),
+                  "no sixth entry survives above the five tiers");
+            for (int tier = 0; tier < kTierCount; ++tier) {
+                MENUITEMINFOW item{};
+                item.cbSize = sizeof(item);
+                item.fMask = MIIM_FTYPE;
+                Check(GetMenuItemInfoW(sub, kTransparentSortPrecisionMenuFirst + tier, FALSE, &item) &&
+                      (item.fType & MFT_RADIOCHECK) != 0,
+                      "every tier entry is drawn as a radio item");
+                const wchar_t* expected = lang == 2 ? kTierLabels[tier].zh
+                                                      : (lang == 1 ? kTierLabels[tier].en
+                                                                   : kTierLabels[tier].jp);
+                Check(ItemLabel(sub, kTransparentSortPrecisionMenuFirst + tier) == expected,
+                      "localized tier entry label");
+                const bool checked =
+                    (GetMenuState(sub, kTransparentSortPrecisionMenuFirst + tier, MF_BYCOMMAND) &
+                     MF_CHECKED) != 0;
+                Check(checked == (tier == static_cast<int>(app->TransparentMaterialSortPrecision())),
+                      "exactly one tier entry carries the mark of the running tier");
+            }
+            // The low tier is a bare label: no bracketed hint, unlike Standard.
+            Check(ItemLabel(sub, kTransparentSortPrecisionMenuFirst).find(L'（') == std::wstring::npos &&
+                  ItemLabel(sub, kTransparentSortPrecisionMenuFirst).find(L'(') == std::wstring::npos,
+                  "the low entry carries no bracketed hint");
+            wchar_t title[128]{}; GetMenuStringW(view, pos, title, 128, MF_BYPOSITION);
+            Check(wcscmp(title, lang == 2 ? L"透明排序上限"
+                                          : lang == 1 ? L"Transparent sort limit"
+                                                      : L"透明ソート上限") == 0,
+                  "localized transparent sort limit menu title");
+        }
+        Check(count == 1, "a language switch does not duplicate the limit menu");
+        Check(GetMenuState(view, kAutoTransparentMaterialSortingMenuId, MF_BYCOMMAND) ==
+                  static_cast<UINT>(-1),
+              "the retired 303 toggle has no separate view-menu entry");
+    }
+    app->EnglishUI() = language; RefreshMenuLanguage(app);
+    std::puts("PASS one five-entry radio popup with a title per language and no 303 entry");
+
+    // ---- processor and unknown records stay independent of the tier --------
+    settings::Reset(*app);
+    const bone_scale::Matrix savedScale{{1.4f, .2f, 0, 0, .8f, .1f, 0, 0, 1.2f}};
+    if (argc == 3) {
+        auto* model = app->ModelSlot(0);
+        Check(mdl::Mdl(model)->boneCount > 0, "fixture has a bone");
+        mdl::Mdl(model)->boneSelection[0] = 1;
+        Check(bone_scale::SetPose(model, 0, savedScale), "set real model scale");
+        RegisterSelectedBoneKeys(model, 0, 0);
+    }
+    skinning::SetPreference({skinning::Mode::Cpu}); settings::ProcessorChanged(*app);
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 2, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::High,
+          "the tier does not depend on the processor class");
+    ext::Set(app->PmmProjectSettings().document, "example.thirdparty.opaque", {0, 255, 3, 0, 17});
+    Save(*app, a);
+    std::uint64_t boundary = 0; auto doc = Read(a, &boundary);
+    Check(ext::Find(doc, settings::kProcessorKey) == nullptr,
+          "PMM stores no processor class any more (per-user processor.ini owns it)");
+    Check(ext::Find(doc, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{2},
+          "PMM stores the selected tier byte");
+    Check(ext::Find(doc, kRetiredToggleKey) == nullptr, "PMM stores no retired toggle record");
+    skinning::SetPreference({}); // a different running choice before opening
+    settings::Reset(*app); Load(*app, a);
+    if (argc == 3) {
+        auto* model = app->ModelSlot(0);
+        Check(model != nullptr, "standard model data survives PMM extension round-trip");
+        Check(bone_scale::Pose(model, 0) == savedScale && bone_scale::Key(model, 0) == savedScale,
+              "real PMM loader restores the affine pose and registered scale key");
+    }
+    Check(skinning::GetPreference().mode == skinning::Mode::Automatic,
+          "opening a project never changes the running processor settings");
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::High,
+          "the real loader restores the tier");
+    Check(TierChecked(app->MainWindow(), 2) && !TierChecked(app->MainWindow(), 1),
+          "the restored tier moves the radio mark");
+    Save(*app, b);
+    const auto reloaded = Read(b);
+    Check(ext::Find(reloaded, "example.thirdparty.opaque")->value == std::vector<std::uint8_t>({0, 255, 3, 0, 17}),
+          "unknown record survives real load and save-as");
+    Check(doc.records.size() == reloaded.records.size(), "round-trip does not duplicate extension blocks");
+    for (std::size_t i=0; i<doc.records.size(); ++i)
+        Check(doc.records[i].key == reloaded.records[i].key && doc.records[i].value == reloaded.records[i].value,
+              "all extension records retain byte values and order");
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 3, 0);
+    Save(*app, b);
+    const auto afterEdit = Read(b);
+    Check(ext::Find(afterEdit, settings::kProcessorKey) == nullptr &&
+          ext::Find(afterEdit, "example.thirdparty.opaque")->value == std::vector<std::uint8_t>({0, 255, 3, 0, 17}),
+          "a tier edit leaves the processor record absent and unknown keys alone");
+    std::puts("PASS real PMM save/load/save-as with no processor data and unknown records preserved");
+
+    // The retired processor record is removed on save and never rewrites the
+    // per-user processor settings.
+    ext::Set(app->PmmProjectSettings().document, settings::kProcessorKey, {2});
+    skinning::SetPreference({skinning::Mode::Cpu}); // the running choice stays
+    Check(ext::Find(settings::Capture(*app), settings::kProcessorKey) == nullptr,
+          "saving removes the retired processor record");
+    Check(skinning::GetPreference().mode == skinning::Mode::Cpu,
+          "saving a project never changes the running processor settings");
+    // An old-style record inside a project file is ignored on load.
+    {
+        ext::Document document;
+        ext::Set(document, settings::kProcessorKey, {2});
+        ext::Set(document, settings::kSortingPrecisionKey, {1});
+        WriteFixture(a, fixture, boundary, document);
+        settings::Reset(*app);
+        Load(*app, fixture);
+        Check(skinning::GetPreference().mode == skinning::Mode::Cpu,
+              "an old processor record in a project is ignored on load");
+    }
+
+    // ---- a stored byte takes the five-tier meaning, not the earlier one ----
+    // The earlier six-tier experiment used 3 for its extra tier and 4 for its
+    // maximum.  This reader never translates those bytes: 3 is Maximum now and 4
+    // is Off, and the earlier off byte 5 is simply unknown.
+    {
+        const std::pair<std::uint8_t, TransparentSortPrecision> cases[] = {
+            {0, TransparentSortPrecision::Low},
+            {1, TransparentSortPrecision::Standard},
+            {2, TransparentSortPrecision::High},
+            {3, TransparentSortPrecision::Maximum},
+            {4, TransparentSortPrecision::Off},
+        };
+        for (const auto& plainCase : cases) {
+            ext::Document document;
+            ext::Set(document, settings::kSortingPrecisionKey, {plainCase.first});
+            WriteFixture(a, fixture, boundary, document);
+            settings::Reset(*app);
+            Load(*app, fixture);
+            Check(app->TransparentMaterialSortPrecision() == plainCase.second,
+                  "a stored byte takes the five-tier meaning of that value");
+        }
+        ext::Document earlierOff;
+        ext::Set(earlierOff, settings::kSortingPrecisionKey, {5});
+        WriteFixture(a, fixture, boundary, earlierOff);
+        settings::Reset(*app);
+        Load(*app, fixture);
+        Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+              "the earlier off byte is unknown now and runs the off default");
+    }
+    std::puts("PASS stored bytes take the five-tier meaning with no earlier-format translation");
+
+    // ---- re-selecting the running tier is not an edit ----------------------
+    settings::Reset(*app);
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuOff, 0);
+    Check(!app->SceneModified() && app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+          "selecting the running default on a new project is not an edit");
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 2, 0);
+    Check(app->SceneModified(), "selecting another tier is an edit");
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 2, 0);
+    Check(!app->SceneModified(), "re-selecting the same unsaved tier is not an edit");
+    settings::Reset(*app); Load(*app, a);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::High,
+          "the saved project stores the high tier");
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 2, 0);
+    Check(!app->SceneModified(), "re-selecting the tier the file already stores is not an edit");
+    Save(*app, b);
+    const auto rewritten = Read(b);
+    Check(ext::Find(rewritten, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{2},
+          "re-selecting the stored tier rewrites the same byte");
+    settings::Reset(*app); Load(*app, b);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::High,
+          "the untouched tier survives save-as and reopen");
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 3, 0);
+    Check(app->SceneModified(), "selecting a different stored tier is an edit");
+    std::puts("PASS re-selecting the running tier never marks the project dirty");
+
+    // ---- a file without the tier field runs off -----------------------
+    {
+        ext::Document empty;
+        WriteFixture(a, fixture, boundary, empty);
+        settings::Reset(*app);
+        Load(*app, fixture);
+        Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+              "a project without the tier field runs off");
+        app->SceneModified() = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuOff, 0);
+        Check(!app->SceneModified(),
+              "the missing field normalizes itself on save, so off is not an edit");
+        Save(*app, b);
+        const auto started = Read(b);
+        Check(ext::Find(started, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{4},
+              "the save starts the tier field at the off byte");
+    }
+    std::puts("PASS a project without the tier field runs and stores off");
+
+    // ---- off overwrites the tier stored before it --------------------------
+    settings::Reset(*app);
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 3, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Maximum && app->SceneModified(),
+          "the maximum tier is reachable by its command id");
+    Check(TierChecked(app->MainWindow(), 3), "the maximum tier carries the radio mark");
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuOff, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off && app->SceneModified(),
+          "the off entry is reachable by its command id");
+    Check(!app->AutoTransparentMaterialSortingEnabled(), "the off entry disables transparent sorting");
+    Check(TierChecked(app->MainWindow(), 4) && !TierChecked(app->MainWindow(), 3),
+          "off moves the radio mark off the previously selected tier");
+    Save(*app, offFile);
+    doc = Read(offFile);
+    Check(ext::Find(doc, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{4},
+          "off overwrites the tier that was stored before it");
+    Check(ext::Find(doc, kRetiredToggleKey) == nullptr, "off stores no second flag");
+    settings::Reset(*app); Load(*app, offFile);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off &&
+          !app->AutoTransparentMaterialSortingEnabled(),
+          "off survives a reopen");
+    Check(TierChecked(app->MainWindow(), 4), "the reopened radio mark sits on off");
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 2, 0);
+    Save(*app, b);
+    doc = Read(b);
+    Check(ext::Find(doc, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{2},
+          "the off byte leaves no earlier tier behind when another tier is picked");
+    settings::Reset(*app); Load(*app, offFile);
+    Save(*app, b);
+    doc = Read(b);
+    Check(ext::Find(doc, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{4},
+          "save-as keeps the single off byte and remembers no earlier tier");
+    std::puts("PASS maximum then off stores a single off byte through save, reopen and save-as");
+
+    // ---- the 303 compatibility command keeps its off/on swap ---------------
+    settings::Reset(*app);
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 1, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Standard,
+          "303 starts from the standard tier");
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kAutoTransparentMaterialSortingMenuId, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off && app->SceneModified(),
+          "303 turns transparent sorting off through the tier field");
+    Check(TierChecked(app->MainWindow(), 4), "303 moves the radio mark to off");
+    app->SceneModified() = 0;
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuOff, 0);
+    Check(!app->SceneModified(), "re-selecting the unsaved off entry is not a second edit");
+    SendMessageW(app->MainWindow(), WM_COMMAND, kAutoTransparentMaterialSortingMenuId, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Standard,
+          "303 turns transparent sorting back on at the standard tier");
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 2, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::High &&
+          app->AutoTransparentMaterialSortingEnabled(),
+          "a tier picked after off re-enables sorting at that tier");
+    std::puts("PASS the 303 compatibility command swaps off and standard through the tier field");
+
+    // ---- the retired toggle key is an ordinary unknown record --------------
+    const auto loadFixture = [&](const std::vector<std::uint8_t>* toggle,
+                                 const std::vector<std::uint8_t>* precision) {
+        WriteFixture(a, fixture, boundary, FixtureRecords(toggle, precision));
+        settings::Reset(*app);
+        Load(*app, fixture);
+    };
+    // Neither value the old toggle ever held selects a tier any more: the loader
+    // does not look the retired key up at all.
+    for (int value = 0; value <= 1; ++value) {
+        const std::vector<std::uint8_t> toggle{static_cast<std::uint8_t>(value)};
+        loadFixture(&toggle, nullptr);
+        Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+              "the retired toggle no longer selects a tier");
+        Save(*app, b);
+        const auto saved = Read(b);
+        Check(ext::Find(saved, kRetiredToggleKey)->value == toggle,
+              "the retired toggle is preserved byte for byte");
+        Check(ext::Find(saved, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{4},
+              "a file with only the retired toggle starts the tier field at off");
+    }
+    // The retired record sits next to a real tier field without changing it.
+    for (int value = 0; value < kTierCount; ++value) {
+        for (int toggleValue = 0; toggleValue <= 1; ++toggleValue) {
+            const std::vector<std::uint8_t> toggle{static_cast<std::uint8_t>(toggleValue)};
+            const std::vector<std::uint8_t> precision{static_cast<std::uint8_t>(value)};
+            loadFixture(&toggle, &precision);
+            Check(static_cast<int>(app->TransparentMaterialSortPrecision()) == value,
+                  "a retired toggle does not override the stored tier");
+            Save(*app, b);
+            const auto saved = Read(b);
+            Check(ext::Find(saved, settings::kSortingPrecisionKey)->value == precision &&
+                  ext::Find(saved, kRetiredToggleKey)->value == toggle,
+                  "both the tier field and the retired toggle survive save-as unchanged");
+        }
+    }
+    // A malformed retired toggle is unknown data like any other.
+    for (const std::vector<std::uint8_t>& raw : {std::vector<std::uint8_t>{255}, {2, 99}, {}}) {
+        loadFixture(&raw, nullptr);
+        Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+              "a malformed retired toggle has no effect on the running tier");
+        Save(*app, b);
+        const auto saved = Read(b);
+        Check(ext::Find(saved, kRetiredToggleKey)->value == raw &&
+              ext::Find(saved, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{4},
+              "a malformed retired toggle is carried over next to the off byte");
+    }
+    // An explicit pick writes the tier field only; the retired record stays.
+    {
+        const std::vector<std::uint8_t> toggle{0};
+        loadFixture(&toggle, nullptr);
+        app->SceneModified() = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 3, 0);
+        Check(app->SceneModified() &&
+              app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Maximum,
+              "an explicit tier on a toggle-only file is an edit");
+        Save(*app, b);
+        const auto saved = Read(b);
+        Check(ext::Find(saved, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{3} &&
+              ext::Find(saved, kRetiredToggleKey)->value == toggle,
+              "the explicit tier is written and the retired record is left alone");
+    }
+    std::puts("PASS the retired toggle key is carried over as unknown data and never selects a tier");
+
+    // ---- an unknown tier byte stays raw until the user picks one -----------
+    for (const std::vector<std::uint8_t>& raw : {std::vector<std::uint8_t>{5}, {255}, {2, 99}, {}}) {
+        ext::Document document;
+        ext::Set(document, settings::kSortingPrecisionKey, raw);
+        ext::Set(document, settings::kProcessorKey, {255, 9});
+        ext::Set(document, kRetiredToggleKey, {0});
+        WriteFixture(a, fixture, boundary, document);
+        settings::Reset(*app);
+        Load(*app, fixture);
+        Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+              "an unknown tier byte runs the off default");
+        Check(TierChecked(app->MainWindow(), 4), "the off default carries the radio mark");
+        Save(*app, b);
+        const auto unchanged = Read(b);
+        Check(ext::Find(unchanged, settings::kSortingPrecisionKey)->value == raw,
+              "an unknown tier byte survives an unchanged save");
+        Check(ext::Find(unchanged, kRetiredToggleKey)->value == std::vector<std::uint8_t>{0},
+              "the retired toggle beside an unknown tier byte is carried over too");
+        Check(ext::Find(unchanged, settings::kProcessorKey) == nullptr,
+              "the retired processor record is removed on save, unlike unknown data");
+        app->SceneModified() = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuFirst + 1, 0);
+        Check(app->SceneModified() && app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Standard,
+              "selecting standard edits an unknown tier byte");
+        Save(*app, b);
+        const auto replaced = Read(b);
+        Check(ext::Find(replaced, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{1},
+              "an explicit standard replaces the unknown tier byte");
+        Check(ext::Find(replaced, kRetiredToggleKey)->value == std::vector<std::uint8_t>{0},
+              "the replacement leaves the retired toggle alone");
+        Check(ext::Find(replaced, settings::kProcessorKey) == nullptr,
+              "the replacement still drops the retired processor record");
+    }
+    std::puts("PASS unknown tier bytes stay raw until an explicit selection replaces them");
+
+    // ---- a legacy file without an extension and a brand new project --------
+    std::filesystem::copy_file(a, legacy, std::filesystem::copy_options::overwrite_existing);
+    int fd = Open(legacy, _O_RDWR);
+    Check(_chsize_s(fd, static_cast<__int64>(boundary)) == 0, "strip extension for legacy fixture");
+    _close(fd);
+    Load(*app, legacy);
+    Check(!app->AutoTransparentMaterialSortingEnabled() &&
+          app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off &&
+          app->PmmProjectSettings().document.records.empty(),
+          "legacy project without an extension resets defaults and unknown data");
+    Check(skinning::GetPreference().mode == skinning::Mode::Cpu,
+          "a legacy project does not change the per-user processor settings");
+    Save(*app, b);
+    doc = Read(b);
+    Check(ext::Find(doc, settings::kSortingPrecisionKey)->value == std::vector<std::uint8_t>{4},
+          "a plain project starts the tier field at the off byte");
+    Check(ext::Find(doc, kRetiredToggleKey) == nullptr, "a plain project writes no retired toggle record");
+    Load(*app, a);
+    ResetAppState(app);
+    Check(!app->AutoTransparentMaterialSortingEnabled() &&
+          app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off &&
+          app->PmmProjectSettings().document.records.empty(),
+          "new project resets both settings and extensions");
+    Check(skinning::GetPreference().mode == skinning::Mode::Cpu,
+          "a new project does not change the per-user processor settings");
+    std::puts("PASS legacy PMM without an extension and new-project isolation");
+
+    // ---- a damaged trailer never leaks the last project's settings ---------
+    settings::Reset(*app);
+    SendMessageW(app->MainWindow(), WM_COMMAND, kTransparentSortPrecisionMenuOff, 0);
+    Check(app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off,
+          "the app runs off before the corrupt load");
+    std::filesystem::copy_file(a, corrupt, std::filesystem::copy_options::overwrite_existing);
+    fd = Open(corrupt, _O_RDWR); _lseeki64(fd, -8, SEEK_END); std::uint32_t crc = 0;
+    Check(_read(fd, &crc, 4) == 4, "read CRC"); crc ^= 1;
+    _lseeki64(fd, -8, SEEK_END); Check(_write(fd, &crc, 4) == 4, "damage CRC only"); _close(fd);
+    Load(*app, a); Load(*app, corrupt);
+    Check(!app->AutoTransparentMaterialSortingEnabled() &&
+          app->TransparentMaterialSortPrecision() == TransparentSortPrecision::Off &&
+          app->PmmProjectSettings().document.records.empty(),
+          "corrupt extension never leaks previous settings");
+    Check(skinning::GetPreference().mode == skinning::Mode::Cpu,
+          "a corrupt extension does not change the per-user processor settings");
+    std::puts("PASS corrupt extension keeps the standard project readable");
+    ShutdownCleanup(app); delete app; g_Block = nullptr;
+    std::puts("PASS PMM v2 project settings integration");
+    return 0;
+}

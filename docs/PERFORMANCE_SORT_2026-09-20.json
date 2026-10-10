@@ -1,0 +1,50 @@
+[
+  {
+    "scene": "stage",
+    "variant": "pre-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=12.2817\r\nviewport=859x482 samples=150 mean_ms=12.2440 median_ms=12.0977 p95_ms=13.2827 equivalent_fps=81.67\r\n"
+  },
+  {
+    "scene": "stage",
+    "variant": "post-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=7.1428\r\nviewport=859x482 samples=150 mean_ms=7.1212 median_ms=6.9836 p95_ms=8.0969 equivalent_fps=140.43\r\n"
+  },
+  {
+    "scene": "stage",
+    "variant": "post-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=6.7067\r\nviewport=859x482 samples=150 mean_ms=6.6931 median_ms=6.5496 p95_ms=7.5353 equivalent_fps=149.41\r\n"
+  },
+  {
+    "scene": "stage",
+    "variant": "pre-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=11.1015\r\nviewport=859x482 samples=150 mean_ms=11.0646 median_ms=10.9768 p95_ms=12.0409 equivalent_fps=90.38\r\n"
+  },
+  {
+    "scene": "character",
+    "variant": "pre-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=5.6164\r\nviewport=859x482 samples=150 mean_ms=5.6129 median_ms=5.4512 p95_ms=6.4219 equivalent_fps=178.16\r\n"
+  },
+  {
+    "scene": "character",
+    "variant": "post-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=4.4638\r\nviewport=859x482 samples=150 mean_ms=4.4612 median_ms=4.2647 p95_ms=5.3320 equivalent_fps=224.15\r\n"
+  },
+  {
+    "scene": "character",
+    "variant": "post-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=4.8011\r\nviewport=859x482 samples=150 mean_ms=4.7985 median_ms=4.7981 p95_ms=5.4858 equivalent_fps=208.40\r\n"
+  },
+  {
+    "scene": "character",
+    "variant": "pre-sort",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=5.8474\r\nviewport=859x482 samples=150 mean_ms=5.8438 median_ms=5.7381 p95_ms=6.7144 equivalent_fps=171.12\r\n"
+  }
+]

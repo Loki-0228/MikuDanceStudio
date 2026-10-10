@@ -1,0 +1,43 @@
+; ===========================================================================
+; MikuDanceStudio export table - mirrors MikuMikuDance.exe RVA 0x00141328
+; (37 exports, ordinal base 1, names resolved via 0x001413BC pointer table)
+; Note: no LIBRARY directive - this decorates an EXE, not a DLL.
+; ===========================================================================
+EXPORTS
+    ExpGetFrameTime            @21
+    ExpGetPmdNum               @33
+    ExpGetPmdFilename          @26
+    ExpGetPmdOrder             @34
+    ExpGetPmdMatNum            @28
+    ExpGetPmdMaterial          @29
+    ExpGetPmdBoneNum           @23
+    ExpGetPmdBoneName          @22
+    ExpGetPmdBoneWorldMat      @24
+    ExpGetPmdMorphNum          @31
+    ExpGetPmdMorphName         @30
+    ExpGetPmdMorphValue        @32
+    ExpGetPmdDisp              @25
+    ExpGetPmdID                @27
+    ExpGetAcsNum               @6
+    ExpGetPreAcsNum            @35
+    ExpGetAcsFilename          @2
+    ExpGetAcsOrder             @7
+    ExpGetAcsWorldMat          @13
+    ExpGetAcsX                 @14
+    ExpGetAcsY                 @15
+    ExpGetAcsZ                 @16
+    ExpGetAcsRx                @8
+    ExpGetAcsRy                @9
+    ExpGetAcsRz                @10
+    ExpGetAcsSi                @11
+    ExpGetAcsTr                @12
+    ExpGetAcsID                @3
+    ExpGetAcsMatNum            @4
+    ExpGetAcsMaterial          @5
+    ExpGetAcsDisp              @1
+    ExpGetCurrentObject        @18
+    ExpGetCurrentMaterial      @17
+    ExpGetCurrentTechnic       @19
+    ExpGetEnglishMode          @20
+    ExpGetRenderRepeatCount    @36
+    ExpSetRenderRepeatCount    @37

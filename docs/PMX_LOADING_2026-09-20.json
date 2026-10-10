@@ -1,0 +1,86 @@
+[
+  {
+    "repeat": 0,
+    "asset": "Accessory/ray1.5.2/Skybox/Night_51ST_AND_5TH/Sky with box.pmx",
+    "mode": "--load-unbuffered",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=1367 bones=1 morphs=31 complete=1\r\nload_ms=65.758 dialogs=0 models=1 vertices=1367 accessories=0\r\nbuffered=0 read_requests=16169 system_reads=16169 bytes=88665 model_digest=0c488be65042b164\r\n"
+  },
+  {
+    "repeat": 0,
+    "asset": "Accessory/ray1.5.2/Skybox/Night_51ST_AND_5TH/Sky with box.pmx",
+    "mode": "--load-only",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=1367 bones=1 morphs=31 complete=1\r\nload_ms=69.300 dialogs=0 models=1 vertices=1367 accessories=0\r\nbuffered=1 read_requests=16169 system_reads=2 bytes=88665 model_digest=0c488be65042b164\r\n"
+  },
+  {
+    "repeat": 0,
+    "asset": "Model/PolarisLiveStage/PolarisLiveStage.pmx",
+    "mode": "--load-unbuffered",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=129307 bones=17 morphs=24 complete=1\r\nload_ms=2951.024 dialogs=0 models=1 vertices=129307 accessories=0\r\nbuffered=0 read_requests=3157219 system_reads=3157219 bytes=15667857 model_digest=92c294a6ead2171a\r\n"
+  },
+  {
+    "repeat": 0,
+    "asset": "Model/PolarisLiveStage/PolarisLiveStage.pmx",
+    "mode": "--load-only",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=129307 bones=17 morphs=24 complete=1\r\nload_ms=533.539 dialogs=0 models=1 vertices=129307 accessories=0\r\nbuffered=1 read_requests=3157219 system_reads=240 bytes=15667857 model_digest=92c294a6ead2171a\r\n"
+  },
+  {
+    "repeat": 0,
+    "asset": "Model/SourRIN/White.pmx",
+    "mode": "--load-unbuffered",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=37922 bones=344 morphs=129 complete=1\r\nload_ms=495.551 dialogs=0 models=1 vertices=37922 accessories=0\r\nbuffered=0 read_requests=509451 system_reads=509451 bytes=3017413 model_digest=a5d1279bb19c1924\r\n"
+  },
+  {
+    "repeat": 0,
+    "asset": "Model/SourRIN/White.pmx",
+    "mode": "--load-only",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=37922 bones=344 morphs=129 complete=1\r\nload_ms=121.466 dialogs=0 models=1 vertices=37922 accessories=0\r\nbuffered=1 read_requests=509451 system_reads=47 bytes=3017413 model_digest=a5d1279bb19c1924\r\n"
+  },
+  {
+    "repeat": 1,
+    "asset": "Accessory/ray1.5.2/Skybox/Night_51ST_AND_5TH/Sky with box.pmx",
+    "mode": "--load-only",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=1367 bones=1 morphs=31 complete=1\r\nload_ms=62.659 dialogs=0 models=1 vertices=1367 accessories=0\r\nbuffered=1 read_requests=16169 system_reads=2 bytes=88665 model_digest=0c488be65042b164\r\n"
+  },
+  {
+    "repeat": 1,
+    "asset": "Accessory/ray1.5.2/Skybox/Night_51ST_AND_5TH/Sky with box.pmx",
+    "mode": "--load-unbuffered",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=1367 bones=1 morphs=31 complete=1\r\nload_ms=68.534 dialogs=0 models=1 vertices=1367 accessories=0\r\nbuffered=0 read_requests=16169 system_reads=16169 bytes=88665 model_digest=0c488be65042b164\r\n"
+  },
+  {
+    "repeat": 1,
+    "asset": "Model/PolarisLiveStage/PolarisLiveStage.pmx",
+    "mode": "--load-only",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=129307 bones=17 morphs=24 complete=1\r\nload_ms=508.152 dialogs=0 models=1 vertices=129307 accessories=0\r\nbuffered=1 read_requests=3157219 system_reads=240 bytes=15667857 model_digest=92c294a6ead2171a\r\n"
+  },
+  {
+    "repeat": 1,
+    "asset": "Model/PolarisLiveStage/PolarisLiveStage.pmx",
+    "mode": "--load-unbuffered",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=129307 bones=17 morphs=24 complete=1\r\nload_ms=3015.044 dialogs=0 models=1 vertices=129307 accessories=0\r\nbuffered=0 read_requests=3157219 system_reads=3157219 bytes=15667857 model_digest=92c294a6ead2171a\r\n"
+  },
+  {
+    "repeat": 1,
+    "asset": "Model/SourRIN/White.pmx",
+    "mode": "--load-only",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=37922 bones=344 morphs=129 complete=1\r\nload_ms=165.314 dialogs=0 models=1 vertices=37922 accessories=0\r\nbuffered=1 read_requests=509451 system_reads=47 bytes=3017413 model_digest=a5d1279bb19c1924\r\n"
+  },
+  {
+    "repeat": 1,
+    "asset": "Model/SourRIN/White.pmx",
+    "mode": "--load-unbuffered",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nmodel_slot=0 vertices=37922 bones=344 morphs=129 complete=1\r\nload_ms=635.901 dialogs=0 models=1 vertices=37922 accessories=0\r\nbuffered=0 read_requests=509451 system_reads=509451 bytes=3017413 model_digest=a5d1279bb19c1924\r\n"
+  }
+]

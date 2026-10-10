@@ -1,0 +1,8 @@
+# Binary distribution archives and Windows build products are not source code.
+*.7z binary
+*.cab binary
+*.dll binary
+*.exe binary
+*.msi binary
+*.pdb binary
+*.zip binary

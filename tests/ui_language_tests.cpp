@@ -1,0 +1,559 @@
+// MAINTENANCE: regression-keep; purpose and cleanup conditions in tests/README.md.
+// ===========================================================================
+// User-acceptance regressions for the UI language of model names (defect 3)
+// and for the Japanese captions of the bone-operation panel (defect 4).
+// ===========================================================================
+// Field report (defect 3): with the Chinese UI the bone list showed English
+// bone names while the facial (morph) list showed the model's own Japanese
+// names; the mix drifted with the order in which models and languages were
+// loaded.
+// Root cause: name selection tested the same UI-language byte (0 = Japanese,
+// 1 = English, 2 = Chinese) two different ways - `EnglishUI() == 1` in the
+// morph combos, the panel tree and the palette, but `EnglishUI() != 0` in the
+// bone-combo paths (RefillBoneRegisterCombo, RepopulateBoneCombo, the select
+// dialog, the physics dialog).  The original's byte is two-valued, so `!= 0`
+// meant "English UI"; the port's third value 2 = Chinese is *not* English, so
+// every `!= 0` bone list flipped to the English name fields under the Chinese
+// UI while the morph lists stayed on the model's own names.
+//
+// Field report (defect 4): bone-operation panel buttons had no (or English)
+// captions under the Japanese UI.  Controls 494 ("select all") and 501
+// ("select unregistered") have an empty Japanese caption in the generated
+// creation table (src/window/ui_controls.inc) and previously fell back to the
+// English labels, and 562 ("nothing"/off) carried the byte-shifted mis-read
+// "q_j0W0" of its UTF-16 caption.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#include <commctrl.h>
+
+#include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/model.hpp"
+#include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/ui_language.hpp"
+#include "mikudancestudio/bone_combo.hpp"
+#include "../src/window/ui_controls.inc"  // generated creation table (caption sweep)
+
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+
+namespace mikudancestudio {
+// LocalizeUI's caption lookup and localized-id list (src/window/localize_ui.cpp);
+// not exported through a header because only the UI pass and these tests use
+// them.
+std::wstring UiControlCaption(int id, unsigned char language);
+int UiLocalizedControlCount();
+int UiLocalizedControlId(int index);
+void DrawTimelineLabel(MMDApp*, HDC, const wchar_t*, int, int, COLORREF);
+}  // namespace mikudancestudio
+
+using namespace mikudancestudio;
+
+static void Check(bool condition, const char* description) {
+    if (!condition) {
+        std::fprintf(stderr, "FAIL: %s\n", description);
+        std::exit(1);
+    }
+}
+
+namespace {
+
+const char* LanguageName(unsigned char language) {
+    return language == kUiJapanese ? "Japanese"
+         : language == kUiEnglish  ? "English"
+                                   : "Chinese";
+}
+
+std::wstring ItemTextW(HWND combo, int index) {
+    wchar_t buffer[256]{};
+    SendMessageW(combo, CB_GETLBTEXT, index, reinterpret_cast<LPARAM>(buffer));
+    return buffer;
+}
+
+HWND MakeCombo(HWND parent, int id, bool wide) {
+    return wide ? CreateWindowExW(0, L"COMBOBOX", L"",
+                                  WS_CHILD | CBS_DROPDOWNLIST, 0, 0, 200, 200,
+                                  parent,
+                                  reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+                                  GetModuleHandleW(nullptr), nullptr)
+                : CreateWindowExA(0, "COMBOBOX", "",
+                                  WS_CHILD | CBS_DROPDOWNLIST, 0, 0, 200, 200,
+                                  parent,
+                                  reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+                                  GetModuleHandleW(nullptr), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Defect 3: one language for every list.
+//
+// Use actual Japanese and full PMX Unicode names on non-Japanese Windows.
+// ---------------------------------------------------------------------------
+void NameLanguageRegression() {
+    // The rule itself: Chinese is not English.
+    Check(!UiUsesEnglishNames(kUiJapanese), "Japanese UI uses the model's own names");
+    Check(UiUsesEnglishNames(kUiEnglish), "English UI uses the English names");
+    Check(!UiUsesEnglishNames(kUiChinese),
+          "Chinese UI is not English (regression: `!= 0` sent bone lists to nameEn)");
+
+    HWND parent = CreateWindowExW(0, L"STATIC", L"ui language test", WS_OVERLAPPED,
+                                  0, 0, 320, 240, nullptr, nullptr,
+                                  GetModuleHandleW(nullptr), nullptr);
+    Check(parent != nullptr, "create hidden control owner");
+
+    HWND ikCombo = MakeCombo(parent, panel::kIkChainCombo, true);              // 443
+    HWND boneCombo = MakeCombo(parent, panel::kBoneRegisterCombo, true);       // 450
+    HWND morphCombos[4] = {
+        MakeCombo(parent, panel::kMorphCombo0, true),                           // 504
+        MakeCombo(parent, panel::kMorphCombo1, true),                           // 509
+        MakeCombo(parent, panel::kMorphCombo2, true),                           // 514
+        MakeCombo(parent, panel::kMorphCombo3, true),                           // 519
+    };
+    Check(ikCombo && boneCombo && morphCombos[0] && morphCombos[1] &&
+              morphCombos[2] && morphCombos[3],
+          "create the language test combos");
+
+    std::array<mdl::BoneRecord, 2> bones{};
+    std::strcpy(bones[0].name, "\x83\x5A\x83\x93\x83\x5E\x81\x5B");
+    std::strcpy(bones[0].nameEn, "bone-en");
+    bones[1].jpText = const_cast<wchar_t*>(L"左足ＩＫ_中文_長い骨の名前");
+    bones[1].enText = const_cast<wchar_t*>(L"ik-en");
+    std::strcpy(bones[1].nameEn, "ik-en");
+    bones[1].type = mdl::BoneType::Ik;
+
+    std::array<mdl::MorphRecord, 4> morphs{};
+    const wchar_t* jpMorph[4] = {L"morph-jp0", L"morph-jp1", L"morph-jp2", L"morph-jp3"};
+    const wchar_t* enMorph[4] = {L"morph-en0", L"morph-en1", L"morph-en2", L"morph-en3"};
+    const mdl::MorphPanel panelOf[4] = {
+        mdl::MorphPanel::eyebrow, mdl::MorphPanel::eye,
+        mdl::MorphPanel::mouth, mdl::MorphPanel::other};
+    for (int lane = 0; lane < 4; ++lane) {
+        morphs[lane].jpText = const_cast<wchar_t*>(jpMorph[lane]);
+        morphs[lane].enText = const_cast<wchar_t*>(enMorph[lane]);
+        morphs[lane].panel = panelOf[lane];
+    }
+
+    // The IK chain names its own bone (combo 443) - bone 0 - while the bone
+    // register combo (450) lists every selectable bone, so both lists start
+    // with the same name and can be compared directly.
+    mdl::IkChain chain{};
+    chain.boneIndex = 0;
+
+    auto model = std::make_unique<mdl::ModelRecord>();
+    auto app = std::make_unique<MMDApp>();
+    MMDApp* previousBlock = g_Block;
+    g_Block = app.get();
+
+    app->Hwnd() = parent;
+    app->ModelSlot(0) = reinterpret_cast<unsigned char*>(model.get());
+    app->SetSelectedModelSlot(0);
+    model->hwnd = parent;
+    model->boneTable = bones.data();
+    model->boneCount = static_cast<std::uint32_t>(bones.size());
+    model->morphs = morphs.data();
+    model->morphCount = static_cast<std::uint32_t>(morphs.size());
+    model->ikChains = &chain;
+    model->ikChainCount = 1;
+    model->displayRootBone = 0;
+    for (int lane = 0; lane < 4; ++lane)
+        model->selectedMorphs[lane] = lane;
+
+    const unsigned char languages[] = {kUiJapanese, kUiEnglish, kUiChinese};
+    for (unsigned char language : languages) {
+        app->EnglishUI() = language;
+        const bool englishNames = UiUsesEnglishNames(language);
+        const std::wstring expectedBone = englishNames ? L"bone-en" : L"センター";
+        const std::wstring expectedMorph = englishNames ? L"morph-en1" : L"morph-jp1";
+
+        PostLoadInit(reinterpret_cast<unsigned char*>(model.get()));
+        RefillBoneRegisterCombo(app.get(), 0);
+
+        // IK chain combo 443 and the model/camera follow-bone list (450).
+        Check(ItemTextW(ikCombo, 0) == expectedBone,
+              "IK bone combo follows the UI language");
+        Check(ItemTextW(boneCombo, 0) == expectedBone,
+              "follow-bone list follows the UI language (RefillBoneRegisterCombo)");
+        Check(ItemTextW(boneCombo, 0) == ItemTextW(ikCombo, 0),
+              "the two bone lists must agree");
+
+        // The facial (morph) list is the reference: same language or not.
+        const std::wstring morphName = ItemTextW(morphCombos[1], 0);
+        Check(morphName == expectedMorph, "facial list follows the UI language");
+        const bool bonesEnglish = ItemTextW(boneCombo, 0) == L"bone-en";
+        const bool morphsEnglish = morphName == L"morph-en1";
+        Check(bonesEnglish == morphsEnglish,
+              "bone list and facial list must use one language");
+        Check(ItemTextW(boneCombo, 1) == (englishNames ? L"ik-en" : L"左足ＩＫ_中文_長い骨の名前"),
+              "PMX names retain Unicode and their complete length");
+        SelectBoneCombo(boneCombo, 1);
+        Check(SelectedComboBone(boneCombo, model.get()) == 1, "selection uses bone identity");
+        std::printf("PASS %s UI: Unicode bones and morphs\n", LanguageName(language));
+    }
+
+    // The reported case, from a language switch instead of a fresh load: a
+    // stale per-model language byte must not move the bone list either.
+    app->EnglishUI() = kUiEnglish;
+    PostLoadInit(reinterpret_cast<unsigned char*>(model.get()));
+    RefillBoneRegisterCombo(app.get(), 0);
+    app->EnglishUI() = kUiChinese;
+    PostLoadInit(reinterpret_cast<unsigned char*>(model.get()));
+    RefillBoneRegisterCombo(app.get(), 0);
+    Check(ItemTextW(boneCombo, 0) == L"センター" &&
+              ItemTextW(morphCombos[1], 0) == L"morph-jp1",
+          "EN -> CHS switch keeps bone and facial lists in one language");
+    std::puts("PASS English -> Chinese switch keeps one name language");
+
+    bones[0].jpText = bones[1].jpText;
+    FillBoneCombo(boneCombo, model.get(), false);
+    SelectBoneCombo(boneCombo, 1);
+    Check(SelectedComboBone(boneCombo, model.get()) == 1,
+          "duplicate display names select the requested bone index");
+    bones[0].type = mdl::BoneType::InertTip;
+    FillBoneCombo(boneCombo, model.get(), false);
+    SelectBoneCombo(boneCombo, 1);
+    Check(SendMessageW(boneCombo, CB_GETCURSEL, 0, 0) == 0 &&
+          SelectedComboBone(boneCombo, model.get()) == 1,
+          "filtered bone lists retain actual bone indices");
+
+    g_Block = previousBlock;
+    DestroyWindow(parent);
+}
+
+// ---------------------------------------------------------------------------
+// Defect 4: no bone-operation panel caption may be empty in any language, and
+// the three captions the generated table lost keep their originals.
+//
+// The windowed equivalent (creating all 168 controls and calling LocalizeUI)
+// cannot run headless: LocalizeUI ends in PostLanguageSweep, which walks the
+// loaded model's display groups and the panel back-store, neither of which
+// exists without a device and an open model.  UiControlCaption() is that pass's
+// caption lookup factored out, so asserting on it pins the same strings.
+// ---------------------------------------------------------------------------
+void CaptionRegression() {
+    // 494 全て選択 / 501 未登録選 (bone-operation panel) and 562 なし
+    // (self-shadow mode "off") - recovered originals, see localize_ui.cpp.
+    Check(UiControlCaption(494, kUiJapanese) == std::wstring(L"\u5168\u3066\u9078\u629e"),
+          "494 Japanese caption is 全て選択 (not the English fallback)");
+    Check(UiControlCaption(501, kUiJapanese) == std::wstring(L"\u672a\u767b\u9332\u9078"),
+          "501 Japanese caption is 未登録選 (not the English fallback)");
+    Check(UiControlCaption(562, kUiJapanese) == std::wstring(L"\u306a\u3057"),
+          "562 Japanese caption is なし (not the byte-shifted q_j0W0)");
+    Check(UiControlCaption(494, kUiEnglish) == std::wstring(L"select all") &&
+              UiControlCaption(501, kUiEnglish) == std::wstring(L"unregisted") &&
+              UiControlCaption(562, kUiEnglish) == std::wstring(L"off"),
+          "the English captions are unchanged");
+    Check(UiControlCaption(494, kUiChinese) == std::wstring(L"\u5168\u9009") &&
+              UiControlCaption(501, kUiChinese) == std::wstring(L"\u672a\u767b\u8bb0"),
+          "the Chinese captions are unchanged");
+    std::puts("PASS bone-operation panel captions 494/501 and shadow toggle 562");
+
+    // Every control of the bone-operation panel (option band 4 of
+    // HandleWindowSize: the select/rotate/move group, the keyframe buttons and
+    // the two column toggles) carries a caption in all three languages.
+    const int bonePanel[] = {
+        panel::kBoneSelectRadio, 491, panel::kBoneMoveRadio, panel::kBoneRotateRadio,
+        494, 495, 496, panel::kBonePasteButton, panel::kBoneReversePasteButton,
+        panel::kPhysicsCheckbox, panel::kRegisterFrameButton, 501, 502, 503};
+    for (int id : bonePanel) {
+        for (unsigned char language : {kUiJapanese, kUiEnglish, kUiChinese}) {
+            if (UiControlCaption(id, language).empty()) {
+                std::fprintf(stderr, "FAIL: bone panel control %d has no %s caption\n",
+                             id, LanguageName(language));
+                std::exit(1);
+            }
+        }
+    }
+    std::puts("PASS every bone-operation panel control has a caption in JP/EN/CHS");
+
+    // No control LocalizeUI rewrites may end up blank in any language: the JP
+    // pass used to write L"" over a control whose caption was missing from both
+    // the creation table and the English table.
+    const int localized = UiLocalizedControlCount();
+    Check(localized > 0, "the localized control table is populated");
+    for (int index = 0; index < localized; ++index) {
+        const int id = UiLocalizedControlId(index);
+        Check(id > 0, "localized control id");
+        for (unsigned char language : {kUiJapanese, kUiEnglish, kUiChinese}) {
+            if (UiControlCaption(id, language).empty()) {
+                std::fprintf(stderr, "FAIL: localized control %d has no %s caption\n",
+                             id, LanguageName(language));
+                std::exit(1);
+            }
+        }
+    }
+    std::puts("PASS no localized control loses its caption");
+
+    // Sweep the generated creation table: any BUTTON that carries an English
+    // caption must carry a Japanese one too (icon-only toggles carry neither).
+    int captionedButtons = 0;
+    for (const ui::ControlSpec& control : ui::kControls) {
+        if (control.wcls == nullptr || std::wcscmp(control.wcls, L"BUTTON") != 0)
+            continue;
+        if (UiControlCaption(control.id, kUiEnglish).empty())
+            continue;
+        ++captionedButtons;
+        if (UiControlCaption(control.id, kUiJapanese).empty()) {
+            std::fprintf(stderr, "FAIL: button %d has an English caption but no Japanese one\n",
+                         control.id);
+            std::exit(1);
+        }
+    }
+    Check(captionedButtons > 0, "the creation table advertises captioned buttons");
+    std::printf("PASS %d captioned buttons all keep a Japanese caption\n",
+                captionedButtons);
+}
+
+}  // namespace
+
+static void CheckImportedTimelineNames(mdl::ModelRecord& model,
+                                        const wchar_t* rootName) {
+    // Exercise the actual import -> timeline sweep -> Unicode GDI path. The
+    // independent reference bitmap uses the original fixture names, not the
+    // lossy FrameGroup mirrors that caused this regression on Chinese Windows.
+    constexpr int width = 100, height = 140;
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width; info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32;
+    void* actual = nullptr; void* expected = nullptr;
+    HBITMAP actualBitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &actual, nullptr, 0);
+    HBITMAP expectedBitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &expected, nullptr, 0);
+    HBITMAP blank = CreateBitmap(width, height, 1, 32, nullptr);
+    HDC actualDc = CreateCompatibleDC(nullptr), expectedDc = CreateCompatibleDC(nullptr);
+    HDC blankDc = CreateCompatibleDC(nullptr);
+    Check(actualBitmap && expectedBitmap && blank && actualDc && expectedDc && blankDc,
+          "create timeline name regression bitmaps");
+    auto oldActual = SelectObject(actualDc, actualBitmap);
+    auto oldExpected = SelectObject(expectedDc, expectedBitmap);
+    auto oldBlank = SelectObject(blankDc, blank);
+    PatBlt(blankDc, 0, 0, width, height, WHITENESS);
+    SelectObject(blankDc, oldBlank); DeleteDC(blankDc);
+    auto app = std::make_unique<MMDApp>();
+    app->state = MMDAppState{};
+    auto renderer = std::make_unique<D3DRenderer>();
+    renderer->screenWidth = width; renderer->screenHeight = height;
+    app->Renderer() = renderer.get(); app->PanelDC() = actualDc;
+    app->state.bmpPanelSpare = blank;
+    app->ModelSlot(0) = reinterpret_cast<unsigned char*>(&model);
+    auto* groups = mdl::DisplayGroups(app->ModelSlot(0));
+    for (int i = 0; i < model.groupCount; ++i) groups[i].flags = 1;
+    const auto compareRow = [&](int row, int x, const wchar_t* name, bool group = false) {
+        const int language = app->EnglishUI();
+        Check(row >= 0 && row < 8, "fixture name has a visible timeline row");
+        PatBlt(expectedDc, 0, 0, width, height, WHITENESS);
+        if (group)
+            DrawTimelineLabel(app.get(), expectedDc, language == 1 ? L"-" : L"－",
+                              1, 17 + row * 14, RGB(0, 0, 0));
+        DrawTimelineLabel(app.get(), expectedDc, name, x, 17 + row * 14, RGB(0, 0, 0));
+        GdiFlush();
+        for (int y = 16 + row * 14; y < 30 + row * 14; ++y)
+            for (int px = 12; px < 91; ++px) {
+                if ((static_cast<unsigned*>(actual)[y * width + px] & 0xffffff) !=
+                    (static_cast<unsigned*>(expected)[y * width + px] & 0xffffff))
+                    std::fprintf(stderr, "timeline mismatch: language=%d row=%d pixel=%d,%d actual=%06x expected=%06x\n",
+                        language, row, px, y,
+                        static_cast<unsigned*>(actual)[y * width + px] & 0xffffff,
+                        static_cast<unsigned*>(expected)[y * width + px] & 0xffffff);
+                Check((static_cast<unsigned*>(actual)[y * width + px] & 0xffffff) ==
+                      (static_cast<unsigned*>(expected)[y * width + px] & 0xffffff),
+                      "timeline renders the expected Unicode label in every UI language");
+            }
+    };
+    for (int language : {1, 2, 0, 1}) {
+        app->EnglishUI() = static_cast<unsigned char>(language);
+        PostLanguageSweep(app.get());
+        compareRow(0, 12, rootName);
+        compareRow(static_cast<int>(model.boneKeyIndices[1]), 15,
+                   language == 1 ? L"left arm" : L"左腕");
+        compareRow(static_cast<int>(model.boneKeyIndices[2]), 15, L"右腕");
+        compareRow(static_cast<int>(model.morphKeyIndices[0]), 15, L"まばたき");
+        int groupRow = -1;
+        for (int row = 1; row < 8; ++row)
+            if (model.boneListRowType[row] == 3) groupRow = row;
+        compareRow(groupRow, 12, L"腕", true);
+    }
+    // Built-in tracks follow the UI language, unlike imported model names.
+    // Exercise switching both ways, including returning to Chinese.
+    const wchar_t* headers[][4] = {
+        {L"カメラ", L"照　明", L"セルフ影", L"重　力"},
+        {L"camera", L"light", L"s shadow", L"gravity"},
+        {L"相机", L"照明", L"自阴影", L"重力"},
+    };
+    app->state.optflag[0] = 1;
+    for (int language : {2, 0, 1, 2}) {
+        app->EnglishUI() = static_cast<unsigned char>(language);
+        PostLanguageSweep(app.get());
+        for (int row = 0; row < 4; ++row)
+            compareRow(row, 12, headers[language][row]);
+    }
+    SelectObject(actualDc, oldActual); SelectObject(expectedDc, oldExpected);
+    DeleteDC(actualDc); DeleteDC(expectedDc);
+    DeleteObject(actualBitmap); DeleteObject(expectedBitmap); DeleteObject(blank);
+    app->Renderer() = nullptr; app->ModelSlot(0) = nullptr; app->PanelDC() = nullptr;
+}
+
+static void MissingEnglishPmxRegression() {
+    using namespace mikudancestudio;
+    wchar_t directory[MAX_PATH]{}; GetTempPathW(MAX_PATH, directory);
+    const auto path = std::wstring(directory) + L"MDS-bone-names-" +
+        std::to_wstring(GetCurrentProcessId()) + L".pmx";
+    int fd = -1;
+    Check(_wsopen_s(&fd, path.c_str(), _O_CREAT | _O_TRUNC | _O_RDWR | _O_BINARY | _O_TEMPORARY,
+                   _SH_DENYRW, _S_IREAD | _S_IWRITE) == 0, "create temporary PMX fixture");
+    const auto put = [&](auto value) { Check(_write(fd, &value, sizeof value) == sizeof value, "write fixture field"); };
+    const auto text = [&](const wchar_t* value) {
+        const auto bytes = static_cast<std::uint32_t>(std::wcslen(value) * sizeof(wchar_t));
+        put(bytes); Check(_write(fd, value, bytes) == bytes, "write Unicode fixture name");
+    };
+    // LoadPMX starts just after the three-byte PMX magic consumed by its caller.
+    put(' '); put(2.0f); put(std::uint8_t(8));
+    put(std::uint8_t(0)); put(std::uint8_t(0));
+    for (int i = 0; i < 6; ++i) put(std::uint8_t(1));
+    text(L"名前テスト"); text(L"name test"); text(L"fixture"); text(L"fixture");
+    for (int i = 0; i < 4; ++i) put(std::uint32_t(0)); // vertices, indices, textures, materials
+    constexpr const wchar_t* native[] = {L"センター_中文_長い骨の名前_😀", L"左腕", L"右腕"};
+    put(std::uint32_t(3));
+    for (int i = 0; i < 3; ++i) {
+        text(native[i]); text(i == 1 ? L"left arm" : L"");
+        put(float(i)); put(0.f); put(0.f);
+        put(std::int8_t(-1)); put(std::int32_t(0)); put(std::uint16_t(0x1B));
+        put(std::int8_t(-1)); // visible, rotating bone; no tail
+    }
+    put(std::uint32_t(1)); text(L"まばたき"); text(L"");
+    put(std::uint8_t(2)); put(std::uint8_t(0)); put(std::uint32_t(0)); // empty group morph
+    put(std::uint32_t(3));
+    text(L"Root"); text(L"Root"); put(std::uint8_t(1)); put(std::uint32_t(1));
+    put(std::uint8_t(0)); put(std::int8_t(0));
+    text(L"表情"); text(L""); put(std::uint8_t(1)); put(std::uint32_t(1));
+    put(std::uint8_t(1)); put(std::int8_t(0));
+    text(L"腕"); text(L""); put(std::uint8_t(0)); put(std::uint32_t(2));
+    put(std::uint8_t(0)); put(std::int8_t(1)); put(std::uint8_t(0)); put(std::int8_t(2));
+    put(std::uint32_t(0)); put(std::uint32_t(0)); // rigid bodies, joints
+    Check(_lseek(fd, 0, SEEK_SET) == 0, "rewind PMX fixture");
+    auto model = std::make_unique<mdl::ModelRecord>();
+    auto* raw = reinterpret_cast<unsigned char*>(model.get());
+    ModelInitDefaults(raw);
+    PathResolutionWorkspace paths{};
+    Check(LoadPMX(raw, nullptr, 0, 1, paths, fd), "load actual PMX with missing English names");
+    for (int i = 0; i < 3; ++i) {
+        const auto& bone = model->boneTable[i];
+        Check(text_encoding::BoneName(bone, true) == (i == 1 ? L"left arm" : native[i]),
+              "PMX English name falls back per bone without Null placeholders");
+        Check(text_encoding::BoneName(bone, false) == native[i], "native bone names remain intact");
+        Check(bone.jpText != bone.enText, "fallback buffers have independent ownership");
+    }
+    Check(text_encoding::MorphName(model->morphs[0], true) == L"まばたき", "optional English morph also falls back");
+    Check(std::strcmp(mdl::DisplayGroups(raw)[3].nameEn, mdl::DisplayGroups(raw)[3].name) == 0,
+          "display groups do not introduce English Null placeholders");
+    CheckImportedTimelineNames(*model, native[0]);
+    ModelDispose(raw);
+    std::puts("PASS actual PMX import: missing English names use original Unicode names");
+}
+
+void TimelineLabelRasterRegression() {
+    constexpr int width = 120, height = 112;
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    void* pixels = nullptr;
+    HBITMAP bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+    HDC dc = CreateCompatibleDC(nullptr);
+    Check(bitmap && dc && pixels, "create timeline font raster surface");
+    auto previous = SelectObject(dc, bitmap);
+    auto app = std::make_unique<MMDApp>();
+    app->state = MMDAppState{};
+    const wchar_t* labels[] = {L"操作中心", L"表示・IK・外親", L"上半身（上）",
+                               L"Left shoulder & a very long bone name",
+                               L"カメラ", L"まばたき"};
+    const int labelCount = static_cast<int>(std::size(labels));
+    for (int language = 0; language < 3; ++language) {
+        app->EnglishUI() = static_cast<unsigned char>(language);
+        for (int row = 0; row < labelCount; ++row) {
+            GdiFlush();
+            std::memset(pixels, 0xff, width * height * 4);
+            const int top = 16 + 14 * row;
+            SetTextAlign(dc, TA_BASELINE | TA_RIGHT);
+            DrawTimelineLabel(app.get(), dc, labels[row], 12, top + 1, RGB(0, 0, 0));
+            GdiFlush();
+            Check(GetTextAlign(dc) == (TA_BASELINE | TA_RIGHT), "label drawing restores DC text alignment");
+            int ink = 0;
+            int firstInkY = height, lastInkY = -1;
+            auto* data = static_cast<unsigned*>(pixels);
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    if ((data[y * width + x] & 0xffffff) == 0xffffff) continue;
+                    ++ink;
+                    if (y < firstInkY) firstInkY = y;
+                    if (y > lastInkY) lastInkY = y;
+                    Check(x >= 12 && x < 91 && y >= top && y < top + 14,
+                          "Unicode label stays in its track row and never overlaps the zero-frame column");
+                }
+            }
+            Check(ink > 12, "timeline label actually renders Unicode glyphs");
+            if (language == 2)
+                Check(lastInkY - firstInkY + 1 >= 10,
+                      "Chinese UI keeps Chinese, Japanese and Latin glyphs readable within the row");
+        }
+    }
+    // Optional local preview of the actual GDI result, including row boundaries.
+    char output[MAX_PATH]{};
+    if (GetEnvironmentVariableA("MIKUDANCESTUDIO_TIMELINE_FONT_PREVIEW", output, MAX_PATH)) {
+        GdiFlush();
+        std::memset(pixels, 0xff, width * height * 4);
+        app->EnglishUI() = 2;
+        for (int row = 0; row < labelCount; ++row) {
+            const int top = 16 + row * 14;
+            MoveToEx(dc, 0, top, nullptr);
+            LineTo(dc, width, top);
+            DrawTimelineLabel(app.get(), dc, labels[row], 12, top + 1, RGB(0, 0, 0));
+        }
+        GdiFlush();
+        BITMAPFILEHEADER header{};
+        header.bfType = 0x4d42;
+        header.bfOffBits = sizeof(header) + sizeof(info.bmiHeader);
+        header.bfSize = header.bfOffBits + width * height * 4;
+        FILE* file = nullptr;
+        Check(fopen_s(&file, output, "wb") == 0, "open optional timeline preview");
+        std::fwrite(&header, sizeof(header), 1, file);
+        std::fwrite(&info.bmiHeader, sizeof(info.bmiHeader), 1, file);
+        std::fwrite(pixels, width * height * 4, 1, file);
+        std::fclose(file);
+    }
+    SelectObject(dc, previous);
+    DeleteDC(dc);
+    DeleteObject(bitmap);
+    std::puts("PASS timeline Unicode labels: readable glyph size, row alignment and clipping in all UI languages");
+}
+
+int main() {
+    for (unsigned short language : {0x0804, 0x0404, 0x0c04, 0x1004, 0x1404})
+        Check(ResolveStartupUiLanguage(-1, language) == kUiChinese,
+              "Chinese regions default to Chinese UI");
+    Check(ResolveStartupUiLanguage(-1, 0x0411) == kUiJapanese, "Japanese default");
+    for (unsigned short language : {0x0409, 0x0809, 0x040c, 0x0000})
+        Check(ResolveStartupUiLanguage(-1, language) == kUiEnglish,
+              "English and unsupported languages default to English UI");
+    for (int saved : {0, 1, 2})
+        for (unsigned short language : {0x0804, 0x0411, 0x0409})
+            Check(ResolveStartupUiLanguage(saved, language) == saved,
+                  "Saved language overrides Windows language, including Chinese");
+    Check(ResolveStartupUiLanguage(3, 0x0804) == kUiChinese,
+          "Invalid saved language falls back to Windows");
+    NameLanguageRegression();
+    MissingEnglishPmxRegression();
+    CaptionRegression();
+    TimelineLabelRasterRegression();
+    std::puts("UI language regressions passed");
+    return 0;
+}

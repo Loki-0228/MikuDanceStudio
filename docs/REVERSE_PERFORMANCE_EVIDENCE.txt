@@ -1,0 +1,197 @@
+MMD 926 CHS
+SHA256 72c34b7ab607aef7b18974742ae18ce62f115f6a614bbedc1a4310e4a5406f72
+Preferred VA base 0x140000000
+
+PMD and PMX format branch in shared OpenMP worker
+000000014011f4b0  movzx      ecx, byte ptr [rsi + 0x3ca6]
+000000014011f4b7  cmp        cl, 2
+000000014011f4ba  jne        0x14011f4d1
+000000014011f4bc  mov        rax, qword ptr [rsi + 0x2768]
+000000014011f4c3  cmp        byte ptr [rax + rbx + 0x60], 1
+000000014011f4c8  jne        0x14011f4d1
+000000014011f4ca  mov        edx, 1
+000000014011f4cf  jmp        0x14011f4d3
+000000014011f4d1  xor        edx, edx
+000000014011f4d3  xor        eax, eax
+000000014011f4d5  cmp        cl, 2
+000000014011f4d8  setne      al
+000000014011f4db  or         eax, edx
+000000014011f4dd  je         0x14011f94d
+000000014011f4e3  cmp        cl, 2
+000000014011f4e6  jne        0x14011f536
+000000014011f4e8  mov        rax, qword ptr [rsi + 0x2768]
+000000014011f4ef  movss      xmm0, dword ptr [rax + rbx + 0xc]
+000000014011f4f5  mov        r8d, dword ptr [rax + rbx + 0x68]
+000000014011f4fa  movss      xmm6, dword ptr [rax + rbx + 0x74]
+000000014011f500  mov        edx, dword ptr [rax + rbx + 0x64]
+000000014011f504  mov        dword ptr [rsp + 0x44], r8d
+000000014011f509  movss      xmm7, dword ptr [rax + rbx]
+000000014011f50e  movss      xmm8, dword ptr [rax + rbx + 4]
+000000014011f515  movss      xmm9, dword ptr [rax + rbx + 8]
+000000014011f51c  movss      dword ptr [rsp + 0x38], xmm0
+000000014011f522  movss      xmm0, dword ptr [rax + rbx + 0x10]
+000000014011f528  movss      dword ptr [rsp + 0x48], xmm0
+000000014011f52e  movss      xmm0, dword ptr [rax + rbx + 0x14]
+000000014011f534  jmp        0x14011f597
+000000014011f536  mov        rcx, qword ptr [rsi + 0x2760]
+000000014011f53d  movsx      eax, byte ptr [rcx + r15 + 0x24]
+000000014011f543  movss      xmm0, dword ptr [rcx + r15 + 0xc]
+000000014011f54a  movsx      edx, word ptr [rcx + r15 + 0x20]
+000000014011f550  movss      xmm7, dword ptr [rcx + r15]
+000000014011f556  movss      xmm8, dword ptr [rcx + r15 + 4]
+000000014011f55d  movss      xmm9, dword ptr [rcx + r15 + 8]
+000000014011f564  movd       xmm6, eax
+000000014011f568  movsx      eax, word ptr [rcx + r15 + 0x22]
+000000014011f56e  mov        dword ptr [rsp + 0x44], eax
+000000014011f572  movss      dword ptr [rsp + 0x38], xmm0
+000000014011f578  movss      xmm0, dword ptr [rcx + r15 + 0x10]
+000000014011f57f  cvtdq2ps   xmm6, xmm6
+000000014011f582  mulss      xmm6, dword ptr [rip + 0x1369e]
+000000014011f58a  movss      dword ptr [rsp + 0x48], xmm0
+000000014011f590  movss      xmm0, dword ptr [rcx + r15 + 0x14]
+000000014011f597  movaps     xmm10, xmm3
+
+Lock once, fork, unlock (stride-zero branch)
+00000001400c2a2f  mov        rcx, qword ptr [rbx + 0x10]
+00000001400c2a33  shl        edi, 5
+00000001400c2a36  lea        r9, [rbp - 0x11]
+00000001400c2a3a  mov        rax, qword ptr [rcx]
+00000001400c2a3d  mov        r8d, edi
+00000001400c2a40  xor        edx, edx
+00000001400c2a42  mov        dword ptr [rsp + 0x20], 0
+00000001400c2a4a  call       qword ptr [rax + 0x58]
+00000001400c2a4d  mov        rcx, qword ptr [rbx + 0x18]
+00000001400c2a51  mov        r8d, dword ptr [rbx + 8]
+00000001400c2a55  mov        rax, qword ptr [rcx]
+00000001400c2a58  lea        r9, [rbp - 9]
+00000001400c2a5c  shl        r8d, 4
+00000001400c2a60  xor        edx, edx
+00000001400c2a62  mov        dword ptr [rsp + 0x20], 0
+00000001400c2a6a  call       qword ptr [rax + 0x58]
+00000001400c2a6d  mov        qword ptr [rsp + 0x38], rbx
+00000001400c2a72  lea        rax, [rbp + 0x7f]
+00000001400c2a76  mov        edx, 5
+00000001400c2a7b  mov        qword ptr [rsp + 0x30], rax
+00000001400c2a80  lea        rax, [rbp + 0x5f]
+00000001400c2a84  lea        r9, [rbp - 9]
+00000001400c2a88  mov        qword ptr [rsp + 0x28], rax
+00000001400c2a8d  lea        rax, [rbp - 0x11]
+00000001400c2a91  lea        r8, [rip + 0x5c8d8]
+00000001400c2a98  lea        ecx, [rdx - 4]
+00000001400c2a9b  mov        qword ptr [rsp + 0x20], rax
+00000001400c2aa0  call       0x1401277dc
+00000001400c2aa5  jmp        0x1400c2cab
+
+Shared unlock
+00000001400c2cab  mov        rcx, qword ptr [rbx + 0x10]
+00000001400c2caf  mov        rax, qword ptr [rcx]
+00000001400c2cb2  call       qword ptr [rax + 0x60]
+00000001400c2cb5  mov        rcx, qword ptr [rbx + 0x18]
+00000001400c2cb9  mov        rax, qword ptr [rcx]
+00000001400c2cbc  call       qword ptr [rax + 0x60]
+NexGiMa 373
+SHA256 dcea56dd56df4b6062dc440da55008e3a9c09e6798ac66fddd83a29d8e1c5e22
+Preferred VA base 0x140000000
+
+Compute dispatch and transition to GENERIC_READ
+000000014027d2b9  mulsd      xmm0, qword ptr [rip + 0x16c3bf]
+000000014027d2c1  call       0x140374868
+000000014027d2c6  cvttsd2si  r14, xmm0
+000000014027d2cb  add        r14d, 0x3f
+000000014027d2cf  and        r14d, 0xffffffc0
+000000014027d2d3  mov        r15, qword ptr [rsp + 0x48]
+000000014027d2d8  mov        rax, qword ptr [r15]
+000000014027d2db  mov        rbx, qword ptr [rax + 0x20]
+000000014027d2df  mov        qword ptr [rsp + 0x48], rbx
+000000014027d2e4  test       rbx, rbx
+000000014027d2e7  je         0x14027d2f3
+000000014027d2e9  mov        rax, qword ptr [rbx]
+000000014027d2ec  mov        rcx, rbx
+000000014027d2ef  call       qword ptr [rax + 8]
+000000014027d2f2  nop        
+000000014027d2f3  mov        rax, qword ptr [rbx]
+000000014027d2f6  mov        r9d, 1
+000000014027d2fc  mov        r8d, r9d
+000000014027d2ff  mov        edx, r14d
+000000014027d302  mov        rcx, rbx
+000000014027d305  call       qword ptr [rax + 0x70]
+000000014027d308  nop        
+000000014027d309  mov        rax, qword ptr [rbx]
+000000014027d30c  mov        rcx, rbx
+000000014027d30f  call       qword ptr [rax + 0x10]
+000000014027d312  nop        
+000000014027d313  mov        rdx, qword ptr [rsp + 0x58]
+000000014027d318  mov        r8d, dword ptr [rdx + 0x20]
+000000014027d31c  mov        eax, r8d
+000000014027d31f  and        eax, 0xac3
+000000014027d324  cmp        eax, 0xac3
+000000014027d329  je         0x14027d38b
+000000014027d32b  mov        rcx, qword ptr [r15]
+000000014027d32e  mov        dword ptr [rdx + 0x20], 0xac3
+000000014027d335  mov        rax, qword ptr [rsp + 0x50]
+000000014027d33a  mov        rax, qword ptr [rax + 8]
+000000014027d33e  xor        edx, edx
+000000014027d340  mov        qword ptr [rbp + 0x68], 0xac3
+000000014027d348  mov        qword ptr [rbp + 0x50], rdx
+000000014027d34c  mov        qword ptr [rbp + 0x58], rax
+000000014027d350  mov        dword ptr [rbp + 0x64], r8d
+000000014027d354  mov        dword ptr [rbp + 0x60], 0xffffffff
+000000014027d35b  movups     xmm0, xmmword ptr [rbp + 0x50]
+000000014027d35f  movups     xmmword ptr [rbp + 0x1e0], xmm0
+000000014027d366  movups     xmm1, xmmword ptr [rbp + 0x60]
+000000014027d36a  movups     xmmword ptr [rbp + 0x1f0], xmm1
+000000014027d371  mov        rcx, qword ptr [rcx + 0x20]
+000000014027d375  mov        rax, qword ptr [rcx]
+000000014027d378  lea        r8, [rbp + 0x1e0]
+000000014027d37f  mov        edx, 1
+000000014027d384  call       qword ptr [rax + 0xd0]
+000000014027d38a  nop        
+
+Batch ExecuteCommandLists and Signal
+00000001401225c9  mov        rbx, qword ptr [rbp + 0x58]
+00000001401225cd  mov        rcx, qword ptr [rbp + 8]
+00000001401225d1  mov        rax, qword ptr [rcx]
+00000001401225d4  mov        r9, qword ptr [rax + 0x50]
+00000001401225d8  mov        rdx, qword ptr [rsp + 0x58]
+00000001401225dd  mov        r8, qword ptr [rsp + 0x50]
+00000001401225e2  sub        rdx, r8
+00000001401225e5  sar        rdx, 3
+00000001401225e9  call       r9
+00000001401225ec  mov        rcx, qword ptr [rbp + 8]
+00000001401225f0  mov        rax, qword ptr [rcx]
+00000001401225f3  mov        r8, qword ptr [rbp + 0x58]
+00000001401225f7  mov        rdx, qword ptr [rbp + 0x50]
+00000001401225fb  call       qword ptr [rax + 0x70]
+00000001401225fe  mov        rdx, qword ptr [rbp + 0x58]
+0000000140122602  inc        rdx
+0000000140122605  xchg       qword ptr [rbp + 0x58], rdx
+
+Wait separated from submission
+0000000140122680  mov        qword ptr [rsp + 8], rbx
+0000000140122685  mov        qword ptr [rsp + 0x10], rsi
+000000014012268a  push       rdi
+000000014012268b  sub        rsp, 0x20
+000000014012268f  mov        rsi, rdx
+0000000140122692  mov        rdi, rcx
+0000000140122695  call       0x140122770
+000000014012269a  test       al, al
+000000014012269c  je         0x1401226b0
+000000014012269e  mov        al, 1
+00000001401226a0  mov        rbx, qword ptr [rsp + 0x30]
+00000001401226a5  mov        rsi, qword ptr [rsp + 0x38]
+00000001401226aa  add        rsp, 0x20
+00000001401226ae  pop        rdi
+00000001401226af  ret        
+00000001401226b0  lea        rbx, [rdi + 0x18]
+00000001401226b4  mov        qword ptr [rsp + 0x48], rbx
+00000001401226b9  mov        rcx, rbx
+00000001401226bc  call       qword ptr [rip + 0x275d26] ; KERNEL32.dll!EnterCriticalSection
+00000001401226c2  nop        
+00000001401226c3  mov        rcx, qword ptr [rdi + 0x50]
+00000001401226c7  mov        rax, qword ptr [rcx]
+00000001401226ca  mov        r8, qword ptr [rdi + 0x68]
+00000001401226ce  mov        rdx, rsi
+00000001401226d1  call       qword ptr [rax + 0x48]
+00000001401226d4  mov        edx, 0xffffffff
+00000001401226d9  mov        rcx, qword ptr [rdi + 0x68]
+00000001401226dd  call       qword ptr [rip + 0x275aed] ; KERNEL32.dll!WaitForSingleObject

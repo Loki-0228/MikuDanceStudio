@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>MMV 曲线编辑器启动按钮 · 设计预览</title>
+<style>
+  :root {
+    --face: #f0f0f0;
+    --face-hover: #f7f7f7;
+    --hl: #ffffff;
+    --light: #e4e4e4;
+    --shadow: #8f8f8f;
+    --inner-shadow: #c0c0c0;
+    --ink: #000000;
+    --graytext: #9a9a9a;
+    --line: #c8c8c8;
+    --text: #1a1a1a;
+    --muted: #555555;
+    --page: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+
+  body {
+    margin: 0;
+    padding: 12px 14px 18px;
+    background: var(--page);
+    color: var(--text);
+    font: 13px/1.55 "Segoe UI", "Microsoft YaHei", "MS UI Gothic", system-ui, sans-serif;
+  }
+
+  .wrap { max-width: 820px; }
+
+  h1 { font-size: 18px; line-height: 1.35; font-weight: 600; margin: 0 0 4px; }
+  h2 { font-size: 13px; line-height: 1.4; font-weight: 600; margin: 0 0 6px; }
+  p { margin: 0; }
+
+  .lede { color: var(--muted); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  code {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  section { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+  section:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+
+  .mms-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--face);
+    color: var(--ink);
+    font: inherit;
+    user-select: none;
+    box-shadow:
+      inset 1px 1px 0 0 var(--hl),
+      inset -1px -1px 0 0 var(--shadow),
+      inset 2px 2px 0 0 var(--light),
+      inset -2px -2px 0 0 var(--inner-shadow);
+  }
+
+  button.mms-btn { cursor: pointer; }
+
+  .mms-btn.text {
+    padding: 0 7px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .icon { display: block; }
+
+  .sz24 { width: 24px; height: 24px; }
+  .sz22 { width: 22px; height: 22px; }
+  .sz20 { width: 20px; height: 20px; }
+  .sz18 { width: 18px; height: 18px; }
+  .sz132 { width: 132px; height: 132px; }
+  .sz108 { width: 108px; height: 108px; }
+
+  .h24 { height: 24px; }
+  .h22 { height: 22px; }
+  .h20 { height: 20px; }
+  .h18 { height: 18px; }
+
+  .enlarged-6 {
+    box-shadow:
+      inset 6px 6px 0 0 var(--hl),
+      inset -6px -6px 0 0 var(--shadow),
+      inset 12px 12px 0 0 var(--light),
+      inset -12px -12px 0 0 var(--inner-shadow);
+  }
+
+  .mms-btn:hover:not(.is-disabled),
+  .mms-btn.is-hover { background: var(--face-hover); }
+
+  .mms-btn:active:not(.is-disabled),
+  .mms-btn.is-active {
+    box-shadow:
+      inset 1px 1px 0 0 var(--shadow),
+      inset -1px -1px 0 0 var(--hl),
+      inset 2px 2px 0 0 var(--inner-shadow),
+      inset -2px -2px 0 0 var(--light);
+  }
+
+  .mms-btn:active:not(.is-disabled) > .icon,
+  .mms-btn.is-active > .icon { transform: translate(1px, 1px); }
+
+  .mms-btn:focus-visible,
+  .mms-btn.is-focus { outline: 1px dotted #000000; outline-offset: -4px; }
+
+  .mms-btn:disabled,
+  .mms-btn.is-disabled,
+  .mms-btn:disabled:hover {
+    background: var(--face);
+    color: var(--graytext);
+    cursor: default;
+    box-shadow:
+      inset 1px 1px 0 0 #ffffff,
+      inset -1px -1px 0 0 #d6d6d6,
+      inset 2px 2px 0 0 #ededed,
+      inset -2px -2px 0 0 #e2e2e2;
+  }
+
+  .toolrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 5px 6px;
+    background: var(--face);
+    border: 1px solid var(--line);
+  }
+
+  .sizerow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .sizerow:last-child { margin-bottom: 0; }
+
+  .enlarge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+  }
+
+  .enlarge-row figure { margin: 0; }
+
+  .cap { color: var(--muted); font-size: 12px; }
+
+  .states {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .states li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  #curve-demo[hidden] { display: none; }
+
+  .demo {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    background: #fafafa;
+    padding: 8px 10px;
+  }
+
+  .demo-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .demo-badge {
+    font-size: 12px;
+    color: #444444;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    padding: 0 4px;
+  }
+
+  .demo-plot { display: block; width: 300px; max-width: 100%; height: auto; }
+
+  .foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>MMV 曲线编辑器启动按钮</h1>
+  <p class="lede">黑色方框内绘制 S 型贝塞尔曲线，主尺寸 22 × 22。</p>
+
+  <!-- 图标定义：两个 g 的几何与笔画与交付的 SVG 逐字一致。
+       交付文件用 stroke="#000000"，这里用 currentColor，以便禁用态跟随按钮文字色。 -->
+  <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+    <defs>
+      <g id="cl-regular" fill="none" stroke="currentColor">
+        <path d="M1.5 1.5 H18.5 V18.5 H1.5 Z" stroke-width="1" stroke-linejoin="miter"></path>
+        <path d="M4 13.5 C11.5 13.5 8.5 6.5 16 6.5" stroke-width="1.5" stroke-linecap="round"></path>
+      </g>
+      <g id="cl-compact" fill="none" stroke="currentColor">
+        <path d="M1.5 1.5 H12.5 V12.5 H1.5 Z" stroke-width="1" stroke-linejoin="miter"></path>
+        <path d="M4 9 C7.75 9 6.25 5 10 5" stroke-width="1.5" stroke-linecap="round"></path>
+      </g>
+    </defs>
+  </svg>
+
+  <section>
+    <h2>参数工具行</h2>
+    <div class="toolrow">
+      <button type="button" id="launch" class="mms-btn sz22"
+              title="打开曲线编辑器" aria-label="打开曲线编辑器"
+              aria-controls="curve-demo" aria-expanded="false">
+        <svg class="icon" width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><use href="#cl-regular"></use></svg>
+      </button>
+      <span class="mms-btn text h22">读取 VMD</span>
+      <span class="mms-btn text h22">导出 VMD</span>
+      <span class="mms-btn text h22">烘焙</span>
+    </div>
+    <p class="note">点击曲线图标查看启动演示。</p>
+
+    <div id="curve-demo" class="demo" hidden role="group" aria-label="曲线编辑器界面演示">
+      <div class="demo-head">
+        <span class="demo-badge">界面演示，不修改工程</span>
+        <span class="cap">固定曲线，不可拖动。按 Esc 关闭。</span>
+      </div>
+      <svg class="demo-plot" width="300" height="120" viewBox="0 0 300 120"
+           role="img" aria-label="固定 S 型曲线示意，含三个关键帧方块">
+        <rect x="0.5" y="0.5" width="299" height="119" fill="none" stroke="#c8c8c8" stroke-width="1"></rect>
+        <path d="M24 96 C168 96 132 24 276 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round"></path>
+        <rect x="20.5" y="92.5" width="7" height="7" fill="#ffffff" stroke="#000000" stroke-width="1"></rect>
+        <rect x="146.5" y="56.5" width="7" height="7" fill="#ffffff" stroke="#000000" stroke-width="1"></rect>
+        <rect x="272.5" y="20.5" width="7" height="7" fill="#ffffff" stroke="#000000" stroke-width="1"></rect>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <h2>尺寸</h2>
+
+    <div class="sizerow">
+      <span class="mms-btn sz24" aria-hidden="true">
+        <svg class="icon" width="20" height="20" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+      </span>
+      <span class="mms-btn text h24" aria-hidden="true">读取 VMD</span>
+      <span class="cap">24 × 24</span>
+    </div>
+
+    <div class="sizerow">
+      <span class="mms-btn sz22" aria-hidden="true">
+        <svg class="icon" width="18" height="18" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+      </span>
+      <span class="mms-btn text h22" aria-hidden="true">读取 VMD</span>
+      <span class="cap">22 × 22 · 主尺寸</span>
+    </div>
+
+    <div class="sizerow">
+      <span class="mms-btn sz20" aria-hidden="true">
+        <svg class="icon" width="16" height="16" viewBox="0 0 14 14"><use href="#cl-compact"></use></svg>
+      </span>
+      <span class="mms-btn text h20" aria-hidden="true">读取 VMD</span>
+      <span class="cap">20 × 20</span>
+    </div>
+
+    <div class="sizerow">
+      <span class="mms-btn sz18" aria-hidden="true">
+        <svg class="icon" width="14" height="14" viewBox="0 0 14 14"><use href="#cl-compact"></use></svg>
+      </span>
+      <span class="mms-btn text h18" aria-hidden="true">读取 VMD</span>
+      <span class="cap">18 × 18</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>放大轮廓</h2>
+    <div class="enlarge-row">
+      <figure>
+        <span class="mms-btn sz132 enlarged-6" aria-hidden="true">
+          <svg class="icon" width="108" height="108" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+        </span>
+        <figcaption class="cap">22 像素版 · 6 倍</figcaption>
+      </figure>
+      <figure>
+        <span class="mms-btn sz108 enlarged-6" aria-hidden="true">
+          <svg class="icon" width="84" height="84" viewBox="0 0 14 14"><use href="#cl-compact"></use></svg>
+        </span>
+        <figcaption class="cap">18 像素版 · 6 倍</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>状态</h2>
+    <ul class="states">
+      <li>
+        <span class="mms-btn sz22" aria-hidden="true">
+          <svg class="icon" width="18" height="18" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+        </span>
+        <span class="cap">正常</span>
+      </li>
+      <li>
+        <span class="mms-btn sz22 is-hover" aria-hidden="true">
+          <svg class="icon" width="18" height="18" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+        </span>
+        <span class="cap">悬停</span>
+      </li>
+      <li>
+        <span class="mms-btn sz22 is-active" aria-hidden="true">
+          <svg class="icon" width="18" height="18" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+        </span>
+        <span class="cap">按下</span>
+      </li>
+      <li>
+        <span class="mms-btn sz22 is-focus" aria-hidden="true">
+          <svg class="icon" width="18" height="18" viewBox="0 0 20 20"><use href="#cl-regular"></use></svg>
+        </span>
+        <span class="cap">键盘焦点</span>
+      </li>
+      <li>
+        <button type="button" class="mms-btn sz22" disabled
+                title="打开曲线编辑器" aria-label="打开曲线编辑器">
+          <svg class="icon" width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><use href="#cl-regular"></use></svg>
+        </button>
+        <span class="cap">禁用</span>
+      </li>
+    </ul>
+  </section>
+
+  <p class="note foot">设计预览，尚未接入 MMS。</p>
+
+</div>
+
+<script>
+(function () {
+  var panel = document.getElementById('curve-demo');
+  var trigger = document.getElementById('launch');
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  trigger.addEventListener('click', function () {
+    setOpen(panel.hidden);
+    trigger.focus();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || panel.hidden) {
+      return;
+    }
+    setOpen(false);
+    trigger.focus();
+  });
+}());
+</script>
+</body>
+</html>

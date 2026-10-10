@@ -1,0 +1,58 @@
+[
+  {
+    "repeat": 0,
+    "scene": "stage",
+    "mode": "serial",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=serial drained_batch_ms_per_frame=15.7900\r\nphase=frame inclusive_ms_per_frame=11.8234 calls=150\r\nphase=scene inclusive_ms_per_frame=9.2322 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.2757 calls=150\r\nphase=morph inclusive_ms_per_frame=0.2189 calls=150\r\nphase=skin inclusive_ms_per_frame=1.0455 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=7.1978 calls=150\r\nphase=materials inclusive_ms_per_frame=7.6891 calls=300\r\nphase=physics inclusive_ms_per_frame=0.7235 calls=150\r\nphase=present inclusive_ms_per_frame=1.7877 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.7761 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.3895 calls=4950\r\nviewport=859x482 samples=150 mean_ms=15.7889 median_ms=14.9406 p95_ms=20.4928 equivalent_fps=63.34\r\n"
+  },
+  {
+    "repeat": 0,
+    "scene": "stage",
+    "mode": "throughput",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=13.0475\r\nphase=frame inclusive_ms_per_frame=13.0081 calls=150\r\nphase=scene inclusive_ms_per_frame=9.9525 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.5818 calls=150\r\nphase=morph inclusive_ms_per_frame=0.2706 calls=150\r\nphase=skin inclusive_ms_per_frame=1.2977 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=7.5498 calls=150\r\nphase=materials inclusive_ms_per_frame=8.0783 calls=300\r\nphase=physics inclusive_ms_per_frame=0.7245 calls=150\r\nphase=present inclusive_ms_per_frame=2.2417 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=1.9866 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.5283 calls=4950\r\nviewport=859x482 samples=150 mean_ms=13.0084 median_ms=12.7389 p95_ms=16.8661 equivalent_fps=76.87\r\n"
+  },
+  {
+    "repeat": 0,
+    "scene": "character",
+    "mode": "serial",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=serial drained_batch_ms_per_frame=28.2503\r\nphase=frame inclusive_ms_per_frame=24.6819 calls=150\r\nphase=scene inclusive_ms_per_frame=3.3806 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.4245 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0907 calls=150\r\nphase=skin inclusive_ms_per_frame=0.3244 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.2638 calls=150\r\nphase=materials inclusive_ms_per_frame=2.6282 calls=300\r\nphase=physics inclusive_ms_per_frame=20.8921 calls=150\r\nphase=present inclusive_ms_per_frame=0.2997 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0315 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.2236 calls=2550\r\nviewport=859x482 samples=150 mean_ms=28.2492 median_ms=27.9512 p95_ms=30.8325 equivalent_fps=35.40\r\n"
+  },
+  {
+    "repeat": 0,
+    "scene": "character",
+    "mode": "throughput",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=25.0540\r\nphase=frame inclusive_ms_per_frame=25.0270 calls=150\r\nphase=scene inclusive_ms_per_frame=3.0878 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.3746 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0736 calls=150\r\nphase=skin inclusive_ms_per_frame=0.2917 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.3122 calls=150\r\nphase=materials inclusive_ms_per_frame=2.4294 calls=300\r\nphase=physics inclusive_ms_per_frame=21.5349 calls=150\r\nphase=present inclusive_ms_per_frame=0.2952 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.1225 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1806 calls=2550\r\nviewport=859x482 samples=150 mean_ms=25.0274 median_ms=24.8863 p95_ms=27.0167 equivalent_fps=39.96\r\n"
+  },
+  {
+    "repeat": 1,
+    "scene": "stage",
+    "mode": "serial",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=serial drained_batch_ms_per_frame=21.2413\r\nphase=frame inclusive_ms_per_frame=16.3757 calls=150\r\nphase=scene inclusive_ms_per_frame=12.0129 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=2.1152 calls=150\r\nphase=morph inclusive_ms_per_frame=0.3539 calls=150\r\nphase=skin inclusive_ms_per_frame=1.7447 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=8.8915 calls=150\r\nphase=materials inclusive_ms_per_frame=9.5440 calls=300\r\nphase=physics inclusive_ms_per_frame=0.7647 calls=150\r\nphase=present inclusive_ms_per_frame=3.4642 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=2.6024 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=6.2453 calls=4950\r\nviewport=859x482 samples=150 mean_ms=21.2401 median_ms=20.5583 p95_ms=29.7000 equivalent_fps=47.08\r\n"
+  },
+  {
+    "repeat": 1,
+    "scene": "stage",
+    "mode": "throughput",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=129307 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=14.4922\r\nphase=frame inclusive_ms_per_frame=14.4542 calls=150\r\nphase=scene inclusive_ms_per_frame=10.9541 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=1.9100 calls=150\r\nphase=morph inclusive_ms_per_frame=0.3305 calls=150\r\nphase=skin inclusive_ms_per_frame=1.5636 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=8.1211 calls=150\r\nphase=materials inclusive_ms_per_frame=8.7062 calls=300\r\nphase=physics inclusive_ms_per_frame=0.7396 calls=150\r\nphase=present inclusive_ms_per_frame=2.6640 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=2.2521 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=5.8271 calls=4950\r\nviewport=859x482 samples=150 mean_ms=14.4547 median_ms=14.0592 p95_ms=18.6644 equivalent_fps=69.18\r\n"
+  },
+  {
+    "repeat": 1,
+    "scene": "character",
+    "mode": "serial",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=serial drained_batch_ms_per_frame=27.1426\r\nphase=frame inclusive_ms_per_frame=24.3907 calls=150\r\nphase=scene inclusive_ms_per_frame=3.2737 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.4025 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0845 calls=150\r\nphase=skin inclusive_ms_per_frame=0.3085 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.1802 calls=150\r\nphase=materials inclusive_ms_per_frame=2.5673 calls=300\r\nphase=physics inclusive_ms_per_frame=20.7372 calls=150\r\nphase=present inclusive_ms_per_frame=0.2959 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0215 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1508 calls=2550\r\nviewport=859x482 samples=150 mean_ms=27.1411 median_ms=27.6555 p95_ms=29.3628 equivalent_fps=36.84\r\n"
+  },
+  {
+    "repeat": 1,
+    "scene": "character",
+    "mode": "throughput",
+    "exit": 0,
+    "output": "initialize\r\nload scene\r\nload dialog encountered\r\ngpu=NVIDIA GeForce RTX 4070 Laptop GPU adapter=0 type=1 flags=64 models=1 vertices=37922 accessories=0\r\nmode=throughput drained_batch_ms_per_frame=24.3780\r\nphase=frame inclusive_ms_per_frame=24.3512 calls=150\r\nphase=scene inclusive_ms_per_frame=3.1827 calls=150\r\nphase=vertex_update inclusive_ms_per_frame=0.3924 calls=150\r\nphase=morph inclusive_ms_per_frame=0.0824 calls=150\r\nphase=skin inclusive_ms_per_frame=0.3011 calls=150\r\nphase=transparent_sort inclusive_ms_per_frame=2.1327 calls=150\r\nphase=materials inclusive_ms_per_frame=2.5084 calls=300\r\nphase=physics inclusive_ms_per_frame=20.8141 calls=150\r\nphase=present inclusive_ms_per_frame=0.2793 calls=150\r\nphase=sort_lock inclusive_ms_per_frame=0.0237 calls=150\r\nphase=sort_cpu inclusive_ms_per_frame=2.1008 calls=2550\r\nviewport=859x482 samples=150 mean_ms=24.3516 median_ms=24.1832 p95_ms=25.8384 equivalent_fps=41.07\r\n"
+  }
+]

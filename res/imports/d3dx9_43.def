@@ -1,0 +1,46 @@
+; ===========================================================================
+; d3dx9_43.dll import stubs - MikuMikuEffect compatibility
+; ===========================================================================
+; MME's MMHack.dll hooks the host by rewriting the HOST's import address
+; table: for every API in its list it calls GetProcAddress, walks the import
+; directory ("ImageDirectoryEntryToData(..., IMAGE_DIRECTORY_ENTRY_IAT, ...)")
+; of the host module and VirtualProtects each IAT slot bound to that address.
+; A host that resolves D3DX at runtime exposes no such slot, so the patch loop
+; finds nothing and MME aborts with "Initialize error" - the original
+; MikuMikuDance statically imports these entry points through the DirectX SDK,
+; which is exactly what MME relies on.
+;
+; The shipped build therefore links this import library (generated at build
+; time by lib.exe, so the build itself still needs no DirectX SDK) and takes
+; its D3DX pointers from those slots, which also lets MME's hooks intercept
+; the port's texture / mesh / effect calls.
+;
+; Names must match the DLL's export table exactly (x64 exports are undecorated).
+; ===========================================================================
+LIBRARY d3dx9_43.dll
+EXPORTS
+    D3DXCreateTextureFromFileInMemoryEx
+    D3DXCreateTextureFromFileExA
+    D3DXCreateTextureFromFileExW
+    D3DXCreateTexture
+    D3DXCreateEffectFromResourceA
+    D3DXMatrixPerspectiveFovLH
+    D3DXMatrixRotationX
+    D3DXMatrixRotationY
+    D3DXMatrixRotationZ
+    D3DXMatrixMultiply
+    D3DXMatrixTranslation
+    D3DXMatrixScaling
+    D3DXMatrixLookAtLH
+    D3DXMatrixInverse
+    D3DXVec3Transform
+    D3DXLoadMeshFromXInMemory
+    D3DXLoadMeshFromXW
+    D3DXComputeNormals
+    D3DXQuaternionRotationMatrix
+    D3DXVec3Normalize
+    D3DXQuaternionMultiply
+    D3DXMatrixRotationQuaternion
+    D3DXQuaternionToAxisAngle
+    D3DXQuaternionNormalize
+    D3DXSaveSurfaceToFileW

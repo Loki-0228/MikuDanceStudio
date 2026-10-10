@@ -1,0 +1,6 @@
+# MikuDanceStudio x86 host profile - MikuMikuDance v932 is a 32-bit binary and the
+# restored state-class offsets describe the x86 layout.
+include(default)
+
+[settings]
+arch=x86
