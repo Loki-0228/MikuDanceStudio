@@ -803,15 +803,18 @@ bool RegisterDisplayKeyFromRecord(unsigned char* model, int frameArg,
                     reinterpret_cast<const unsigned char*>(
                         mdl::Bones(m) + mdl::IkChains(m)[i].boneIndex);
                 int k = 0;
-                while (std::strcmp(reinterpret_cast<const char*>(e),
-                                   reinterpret_cast<const char*>(
-                                       chainBone)) != 0) {
+                // Both names are fixed 20-byte fields. A full-width name has
+                // no terminator: its following byte is the serialized IK
+                // switch (or the bone's English name), not part of its name.
+                while (std::strncmp(reinterpret_cast<const char*>(e),
+                                    reinterpret_cast<const char*>(chainBone),
+                                    sizeof(mdl::BoneRecord::name)) != 0) {
                     ++k;
                     e += 21;
                     if (k >= cnt)
                         break;
                 }
-                // The search cursor advances for strcmp, but the original
+                // The search cursor advances for the name comparison, but the original
                 // value load at 0x49FCA4/0x49FB7A/0x49FF58 re-indexes from
                 // the unmodified a5 base (imul index, 0x15), not from the
                 // already-advanced cursor.

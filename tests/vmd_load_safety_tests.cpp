@@ -1,6 +1,6 @@
 // Exercise the real LoadVmdMotion entry, key registrars, and extension loaders.
 // No windows or D3D device are created. Each case can also run in isolation:
-// vmd_load_safety_tests.exe --case overflow|short|counts|valid|tails|camera
+// vmd_load_safety_tests.exe --case overflow|short|counts|valid|tails|camera|ik
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -17,6 +17,8 @@
 #include <string>
 #include <sys/stat.h>
 #include <vector>
+#include "mikudancestudio/accessory_layout.hpp"
+#include "mikudancestudio/accessory_motion_io.hpp"
 #include "mikudancestudio/bone_scale.hpp"
 #include "mikudancestudio/bone_scale_io.hpp"
 #include "mikudancestudio/global_key_layout.hpp"
@@ -110,15 +112,18 @@ struct Fixture {
     std::unique_ptr<MMDApp> app = std::make_unique<MMDApp>();
     std::unique_ptr<D3DRenderer> renderer = std::make_unique<D3DRenderer>();
     std::unique_ptr<mdl::ModelRecord> model = std::make_unique<mdl::ModelRecord>();
-    std::array<mdl::BoneRecord, 1> bones{};
+    std::array<mdl::BoneRecord, 3> bones{};
+    std::array<mdl::IkChain, 3> ikChains{};
     std::array<mdl::MorphRecord, 2> morphs{};
-    std::array<unsigned char, 1> selected{}, physics{};
+    std::array<unsigned char, 3> selected{}, physics{};
     std::vector<mdl::BoneKey> boneKeys = std::vector<mdl::BoneKey>(mdl::kBoneKeyCapacity);
     std::vector<mdl::MorphKey> morphKeys = std::vector<mdl::MorphKey>(mdl::kMorphKeyCapacity);
     std::vector<mdl::DisplayKey> displayKeys = std::vector<mdl::DisplayKey>(mdl::kDisplayKeyCapacity);
     std::vector<mdl::CameraKey> cameraKeys = std::vector<mdl::CameraKey>(mdl::kTimelineKeyCapacity);
     std::vector<mdl::LightKey> lightKeys = std::vector<mdl::LightKey>(mdl::kTimelineKeyCapacity);
     std::vector<mdl::SelfShadowKey> shadowKeys = std::vector<mdl::SelfShadowKey>(mdl::kTimelineKeyCapacity);
+    std::unique_ptr<mdl::AccessoryRecord> accessory;
+    std::vector<mdl::AccessoryKey> accessoryKeys;
     MMDApp* previous = g_Block;
     TempFile file;
     explicit Fixture(bool camera = false) {
@@ -147,6 +152,30 @@ struct Fixture {
         std::memset(slot.bonePose, 0x31, sizeof(mdl::BonePoseSnapshot)); std::memset(slot.auxiliaryPose, 0x42, 192);
         g_Block = app.get();
     }
+    void EnableIk() {
+        model->boneCount = static_cast<std::uint32_t>(bones.size());
+        for (std::size_t i = 1; i < bones.size(); ++i) {
+            bones[i].parent = -1; bones[i].slotIndex = -1; bones[i].rotQuat[3] = 1;
+            bones[i].type = mdl::BoneType::RotateMove; boneKeys[i].rotation[3] = 1;
+        }
+        std::strcpy(bones[1].name, "second");
+        std::memcpy(bones[2].name, "abcdefghijklmnopqrst", 20);
+        model->ikChainCount = static_cast<std::uint32_t>(ikChains.size()); model->ikChains = ikChains.data();
+        // Deliberately differ from both bone order and serialized entry order.
+        ikChains[0].boneIndex = 2; ikChains[1].boneIndex = 0; ikChains[2].boneIndex = 1;
+        for (auto& chain : ikChains) { chain.targetBone = 0; chain.enabled = 1; }
+        for (auto& key : displayKeys) {
+            key.ikStates = static_cast<std::uint8_t*>(std::malloc(ikChains.size()));
+            Check(key.ikStates != nullptr, "allocate real per-display IK flags");
+            std::memset(key.ikStates, 1, ikChains.size());
+        }
+    }
+    void EnableAccessory() {
+        accessory = std::make_unique<mdl::AccessoryRecord>(); accessoryKeys.resize(mdl::kTimelineKeyCapacity);
+        std::strcpy(accessory->name, "prop.x"); accessory->parentModel = -1;
+        accessoryKeys[0].parentModel = -1; accessoryKeys[0].scale = 1; accessoryKeys[0].opacity = 1;
+        app->AccessorySlot(3) = accessory.get(); app->AccessoryKeys(3) = accessoryKeys.data();
+    }
     unsigned char* Raw() { return reinterpret_cast<unsigned char*>(model.get()); }
     ~Fixture() {
         bone_scale::Forget(Raw()); morph_curve::Forget(Raw());
@@ -174,7 +203,7 @@ struct Fixture {
         Check(State() == before, "rejected input preserves all tracks, marks, undo buffers, and app state");
     }
     void Imported(const Bytes& bytes, bool populated = true) {
-        Check(Load(bytes) == 1, "model production load returns completed bone seek");
+        Check(Load(bytes) == static_cast<int>(model->boneCount), "model production load returns completed bone seek");
         Check(model->undoState[0] == 5 && model->undoRings[0].slots[5].operation == 2, "valid input commits undo slot");
         if (populated) {
             Check(boneKeys[0].position[0] == 7 && morphKeys[1].value == .75f, "real registrars import bone and morph values");
@@ -242,11 +271,56 @@ void Tails() {
 void Camera() {
     for (int version : {1, 2}) {
         Fixture fixture(true); Motion motion(version, true);
+        fixture.EnableAccessory();
+        // Real camera exports have a zero display/IK count before the codec
+        // tail. The loader must consume that end code to find MMSXACC1.
+        motion.bytes.resize(motion.counts.back()); U32(motion.bytes, 0);
+        accessory_motion_io::Track track; track.name = "prop.x";
+        accessory_motion_io::Key first; first.frame = 0; first.position[0] = 2.5f; first.position[1] = -3;
+        first.rotation[2] = .25f; first.scale = 2; first.opacity = .375f; first.shadowEnabled = 0;
+        auto second = first; second.frame = 10; second.position[0] = 6; second.visible = 0; second.shadowEnabled = 1;
+        track.keys = {first, second};
+        const auto tail = accessory_motion_io::Encode({track});
+        motion.bytes.insert(motion.bytes.end(), tail.begin(), tail.end());
         Check(fixture.Load(motion.bytes) == 0, "camera path retains its historical return value");
         Check(fixture.cameraKeys[0].distance == -25 && fixture.lightKeys[0].color[0] == .2f, "camera and light production registrars import records");
         Check(fixture.cameraKeys[0].fov == (version == 1 ? 45 : 50), "old camera shared curve layout and new camera fov remain distinct");
         if (version == 2) Check(fixture.shadowKeys[0].mode == 2, "new camera path imports self shadow");
         Check(fixture.model->undoState[0] == 4, "camera load does not modify model undo");
+        const auto& head = fixture.accessoryKeys[0];
+        Check(head.selected && head.position[0] == first.position[0] && head.scale == first.scale && head.opacity == first.opacity,
+              "camera production entry imports accessory head after the standard end code");
+        Check(head.next > 0 && head.next < fixture.accessoryKeys.size(), "accessory tail creates a second linked key");
+        const auto& next = fixture.accessoryKeys[head.next];
+        Check(next.frame == 10 && next.visible == 0 && next.shadowEnabled == 1 && next.position[0] == second.position[0],
+              "accessory second key preserves frame and payload through the real registrar");
+        Check(fixture.accessory->position[0] == first.position[0] && fixture.accessory->opacity == first.opacity,
+              "accessory imported track updates the current scene pose");
+        std::uint32_t minimum = 0xffffffffu;
+        const auto captured = accessory_motion_io::CaptureSelected(fixture.app.get(), minimum);
+        Check(minimum == 0 && captured.size() == 1 && accessory_motion_io::Encode(captured) == tail,
+              "accessory tail roundtrips from codec through production load and native key capture");
+    }
+}
+void Ik() {
+    for (bool longEnabled : {false, true}) {
+        Fixture fixture; fixture.EnableIk(); Motion motion;
+        motion.bytes.resize(motion.counts.back()); U32(motion.bytes, 1);
+        U32(motion.bytes, 0); motion.bytes.push_back(1); U32(motion.bytes, 4);
+        // The unknown full-width entry is followed immediately by a valid
+        // short name. Searches must advance by 21 bytes without mixing names.
+        Text(motion.bytes, "01234567890123456789", 20); motion.bytes.push_back(1);
+        Text(motion.bytes, "second", 20); motion.bytes.push_back(0);
+        Text(motion.bytes, "bone", 20); motion.bytes.push_back(1);
+        Text(motion.bytes, "abcdefghijklmnopqrst", 20); motion.bytes.push_back(longEnabled ? 1 : 0);
+        // Start with the opposite flag so a missed name cannot pass by chance.
+        fixture.displayKeys[0].ikStates[0] = longEnabled ? 0 : 1;
+        fixture.Imported(motion.bytes);
+        const auto* flags = fixture.displayKeys[0].ikStates;
+        Check(flags[1] == 1 && flags[2] == 0, "consecutive IK entries map by name to reordered chains");
+        Check(flags[0] == (longEnabled ? 1 : 0), "a full 20-byte IK name matches for both enable and disable");
+        Check(fixture.ikChains[0].enabled == flags[0] && fixture.ikChains[1].enabled == flags[1] && fixture.ikChains[2].enabled == flags[2],
+              "SeekModelFrame applies imported display flags to real IK chains");
     }
 }
 } // namespace
@@ -254,7 +328,7 @@ void Camera() {
 int main(int argc, char** argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     struct Case { const char* name; void (*run)(); };
-    const Case cases[]{{"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}};
+    const Case cases[]{{"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}};
     if (argc == 3 && std::strcmp(argv[1], "--case") == 0) {
         for (const auto& test : cases) if (std::strcmp(argv[2], test.name) == 0) { test.run(); std::printf("VMD %s: passed\n", test.name); return 0; }
         return 2;
