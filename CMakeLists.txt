@@ -198,6 +198,7 @@ add_library(mikudancestudio_core STATIC
     src/app/app_defaults.cpp
     src/main/charset_conv.cpp
     src/main/text_encoding.cpp
+    src/main/model_name_translation.cpp
     src/window/unicode_window.cpp
     src/math/quat_to_mat3x4.cpp
     src/math/color_lerp.cpp

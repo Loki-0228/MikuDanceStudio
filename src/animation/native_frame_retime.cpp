@@ -944,7 +944,7 @@ bool PlanBones(const art::Rates& rates, const art::Options& options, const Frame
             if (!RecordOnly(pool, mp.bone.capacity, stride, chain, mp.bone.chains, error)) return false;
             continue;
         }
-        const auto name = mp.bones ? text_encoding::BoneName(mdl::Mdl(mp.model)->boneTable[bone], mp.english) : L"";
+        const auto name = mp.bones ? text_encoding::BoneLabel(mdl::Mdl(mp.model)->boneTable[bone], mp.english) : L"";
         const std::wstring channel = mp.tag + L" / " + name + L" [bone " + std::to_wstring(bone) + L"]";
         NoteChain(chain, channel, changes, report);
         mp.maxFrame = std::max(mp.maxFrame, static_cast<std::uint32_t>(chain.groups.back().frame));
@@ -1167,7 +1167,7 @@ bool PlanMorphs(const art::Rates& rates, const art::Options& options, ModelPatch
             if (!RecordOnly(pool, mp.morph.capacity, stride, chain, mp.morph.chains, error)) return false;
             continue;
         }
-        const auto name = mp.morphs ? text_encoding::MorphName(mdl::Mdl(mp.model)->morphs[morph], mp.english) : L"";
+        const auto name = mp.morphs ? text_encoding::MorphLabel(mdl::Mdl(mp.model)->morphs[morph], mp.english) : L"";
         const std::wstring channel = mp.tag + L" / " + name + L" [morph " + std::to_wstring(morph) + L"]";
         NoteChain(chain, channel, changes, report);
         mp.maxFrame = std::max(mp.maxFrame, static_cast<std::uint32_t>(chain.groups.back().frame));
@@ -1714,7 +1714,7 @@ bool PlanModel(MMDApp& app, const art::Rates& rates, const art::Options& options
                 std::wstring name = Wide(track.id);
                 for (std::uint32_t morph = 0; morph < mp.morphCount; ++morph) {
                     if (morph_curve::StableId(morph, record.morphs[morph].name) == track.id) {
-                        name = text_encoding::MorphName(record.morphs[morph], mp.english) +
+                        name = text_encoding::MorphLabel(record.morphs[morph], mp.english) +
                             L" [morph " + std::to_wstring(morph) + L"]";
                         break;
                     }

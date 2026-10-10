@@ -2941,6 +2941,12 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         return;
     }
 
+    case 311:
+        SetModelNameAutoTranslation(!gModelNameAutoTranslation);
+        SaveModelInfoLanguagePreference();
+        LocalizeUI(app);
+        return;
+
     default:
         // def_47E903 (0x482897): only reachable actions are gated on
         // notify == BN_CLICKED and the sending control being

@@ -694,7 +694,7 @@ std::vector<MorphInfo> Enumerate(const unsigned char* model, unsigned language) 
         info.index = static_cast<int>(index);
         info.panel = static_cast<std::uint8_t>(morphs[index].panel);
         info.id = StableId(info.index, morphs[index].name);
-        info.label = text_encoding::MorphName(morphs[index], UiUsesEnglishNames(static_cast<unsigned char>(language)));
+        info.label = text_encoding::MorphLabel(morphs[index], UiUsesEnglishNames(static_cast<unsigned char>(language)));
         if (info.label.empty() && morphs[index].name[0] != '\0') {
             // A Chinese model can carry a CP936 name in the CP932 field, which
             // MorphName() then fails to decode.  Fall back to the active code

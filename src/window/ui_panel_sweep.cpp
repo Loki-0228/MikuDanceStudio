@@ -138,7 +138,7 @@ void DrawFrameName(MMDApp* app, const mdl::DisplayGroup& frame,
     // Model-internal names follow the shared preference: Auto uses English
     // only with an English UI, while Japanese/Chinese UIs show model names.
     const bool english = UiUsesEnglishNames(app->EnglishUI());
-    const auto name = text_encoding::DisplayGroupName(frame, english);
+    const auto name = text_encoding::DisplayGroupLabel(frame, english);
     DrawTimelineLabel(app, hdc, name.c_str(), 12, y, color);
 }
 
@@ -150,8 +150,8 @@ void DrawRecordName(MMDApp* app, const mdl::ModelRecord& model,
     // FrameGroup holds only a truncated SJIS mirror; PMX keeps the original
     // Unicode on the bone/morph itself. Match the names used by the combos.
     const auto name = morph
-        ? text_encoding::MorphName(model.morphs[record.targetIndex], english)
-        : text_encoding::BoneName(model.boneTable[record.targetIndex], english);
+        ? text_encoding::MorphLabel(model.morphs[record.targetIndex], english)
+        : text_encoding::BoneLabel(model.boneTable[record.targetIndex], english);
     DrawTimelineLabel(app, hdc, name.c_str(), 15, y, color);
 }
 
@@ -215,7 +215,7 @@ void PostLanguageSweep(MMDApp* app) {
             static_cast<std::int32_t>(record->displayRootBone);
         unsigned char* const flagTab = record->boneSelection;
         const mdl::BoneRecord& rootBone = mdl::Bones(model)[rootIdx];
-        const auto rootName = text_encoding::BoneName(rootBone, english);
+        const auto rootName = text_encoding::BoneLabel(rootBone, english);
         if (flagTab[rootIdx] != 0) {
             DrawTimelineLabel(app, panel, rootName.c_str(), 12, 17,
                           s.state.themeColors[34]);

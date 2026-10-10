@@ -820,7 +820,7 @@ Error Enumerate(MMDApp& app, Scope scope, std::vector<Group>& groups, std::wstri
         for (unsigned bone = 0; bone < record.boneCount; ++bone) {
             Field field;
             field.id = L"bone" + std::to_wstring(bone);
-            field.label = text_encoding::BoneName(record.boneTable[bone], UiUsesEnglishNames(app.EnglishUI()));
+            field.label = text_encoding::BoneLabel(record.boneTable[bone], UiUsesEnglishNames(app.EnglishUI()));
             group.fields.push_back(std::move(field));
         }
         groups.push_back(std::move(group));
@@ -830,7 +830,7 @@ Error Enumerate(MMDApp& app, Scope scope, std::vector<Group>& groups, std::wstri
             Group group;
             group.kind = Kind::Morph;
             group.slot = static_cast<int>(index);
-            group.label = text_encoding::MorphName(record.morphs[index], UiUsesEnglishNames(app.EnglishUI()));
+            group.label = text_encoding::MorphLabel(record.morphs[index], UiUsesEnglishNames(app.EnglishUI()));
             Field field;
             field.id = L"weight";
             field.label = Text(app, L"ウェイト", L"Weight", L"权重");
@@ -858,7 +858,7 @@ Error Enumerate(MMDApp& app, Scope scope, std::vector<Group>& groups, std::wstri
             field.id = L"ik" + std::to_wstring(chain);
             field.label = std::wstring(L"IK ") + std::to_wstring(chain) +
                           (named ? std::wstring(L": ") +
-                                       text_encoding::BoneName(record.boneTable[bone],
+                                       text_encoding::BoneLabel(record.boneTable[bone],
                                                                UiUsesEnglishNames(app.EnglishUI()))
                                  : std::wstring());
             field.discrete = true;

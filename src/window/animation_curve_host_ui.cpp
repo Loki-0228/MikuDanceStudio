@@ -689,7 +689,7 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
     auto discrete=std::make_shared<std::vector<curve_editor::Channel>>();
     curve_editor::Source source;source.id="bone/"+std::to_string(bone);
     source.linkAdjacentControls=[app]{return IsDlgButtonChecked(app->MainWindow(),panel::kPhysicsFrameCheckbox)==BST_CHECKED;};
-    source.label=text_encoding::ModelLabel(*record,UiUsesEnglishNames(app->EnglishUI()))+L" · "+text_encoding::BoneName(record->boneTable[bone],UiUsesEnglishNames(app->EnglishUI()));
+    source.label=text_encoding::ModelLabel(*record,UiUsesEnglishNames(app->EnglishUI()))+L" · "+text_encoding::BoneLabel(record->boneTable[bone],UiUsesEnglishNames(app->EnglishUI()));
     source.read=[app,identity,bone,alive,graph,discrete,includeDisplay](std::vector<curve_editor::Channel>&channels,std::wstring&error){
         if(!alive()){error=Text(app->EnglishUI(),L"選択中のモデルまたはボーンが変わりました。",L"The selected model or bone has changed.",L"当前选中的模型或骨骼已改变。");return false;}
         const auto&modelRecord=*mdl::Mdl(identity.model);const auto*keys=mdl::BoneKeys(identity.model);
@@ -747,7 +747,7 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
                 curve_editor::Channel channel;channel.id=c==0?"visible":"ik/"+std::to_string(c-1);
                 channel.label=c==0?Text(app->EnglishUI(),L"表示",L"Visible",L"模型显示"):L"IK "+std::to_wstring(c);
                 if(c>0&&modelRecord.ikChains){const int target=modelRecord.ikChains[c-1].boneIndex;
-                    if(target>=0&&std::uint32_t(target)<modelRecord.boneCount)channel.label=L"IK · "+text_encoding::BoneName(modelRecord.boneTable[target],UiUsesEnglishNames(app->EnglishUI()));}
+                    if(target>=0&&std::uint32_t(target)<modelRecord.boneCount)channel.label=L"IK · "+text_encoding::BoneLabel(modelRecord.boneTable[target],UiUsesEnglishNames(app->EnglishUI()));}
                 channel.minimum=0;channel.maximum=1;channel.track.discrete=true;
                 std::uint32_t slot=0;bool complete=false;
                 for(std::size_t visited=0;visited<mdl::kDisplayKeyCapacity;++visited){
@@ -835,7 +835,7 @@ static std::vector<curve_editor::Collection> BoneDisplayCollections(MMDApp*app,u
         if(group<0){
             result.push_back({"display-unassigned",Text(app->EnglishUI(),L"未分類",L"Unassigned",L"未分组")});
         }else{
-            auto label=text_encoding::DisplayGroupName(groups[group],UiUsesEnglishNames(app->EnglishUI()));
+            auto label=text_encoding::DisplayGroupLabel(groups[group],UiUsesEnglishNames(app->EnglishUI()));
             if(label.empty())label=Text(app->EnglishUI(),L"表示枠 ",L"Display frame ",L"显示枠 ")+std::to_wstring(group);
             result.push_back({"display"+std::to_string(group),std::move(label)});
         }
@@ -873,7 +873,7 @@ void OpenInterpolation(MMDApp*app,bool visible){
             if(!entry.source.read(part,error))return false;
             const std::string prefix="bone"+std::to_string(bone);
             const std::wstring object=text_encoding::ModelLabel(record,UiUsesEnglishNames(app->EnglishUI()));
-            const std::wstring name=text_encoding::BoneName(record.boneTable[bone],UiUsesEnglishNames(app->EnglishUI()));
+            const std::wstring name=text_encoding::BoneLabel(record.boneTable[bone],UiUsesEnglishNames(app->EnglishUI()));
             for(std::size_t c=0;c<part.size();++c){
                 auto&channel=part[c];channel.id=prefix+"/"+channel.id;
                 channel.selected=int(bone)==initialBone;

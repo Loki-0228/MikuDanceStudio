@@ -600,7 +600,7 @@ void InitPhysicsModelDialog(HWND hDlg) {  // was Sub45F670, VA 0x0045F670
         // Names follow the shared rule (only the English UI takes nameEn):
         // `englishUI != 0` made the Chinese UI list English bone names here
         // while the main panel's morph combos showed the model's own names.
-        const std::wstring wideName = text_encoding::BoneName(
+        const std::wstring wideName = text_encoding::BoneLabel(
             bones[b], UiUsesEnglishNames(app->state.englishUI));
         SendMessageW(GetDlgItem(hDlg, kBoneCombo), CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(wideName.c_str()));

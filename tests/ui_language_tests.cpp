@@ -555,6 +555,117 @@ void DisplayGroupLifetimeRegression() {
           "model disposal forgets Unicode group names before address reuse");
 }
 
+void ModelNameTranslationRegression() {
+    const auto previousPreference = gModelInfoLanguagePreference;
+    const bool previousTranslation = gModelNameAutoTranslation;
+    mdl::BoneRecord bone{};
+    mdl::MorphRecord morph{};
+    bone.jpText = const_cast<wchar_t*>(L"センター");
+    bone.enText = const_cast<wchar_t*>(L"custom center");
+    morph.jpText = const_cast<wchar_t*>(L"まばたき");
+    morph.enText = const_cast<wchar_t*>(L"custom blink");
+    morph.panel = mdl::MorphPanel::eye;
+    auto model = std::make_unique<mdl::ModelRecord>();
+    auto app = std::make_unique<MMDApp>();
+    HWND parent = CreateWindowExW(0, L"STATIC", L"", WS_OVERLAPPED,
+        0, 0, 320, 240, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    Check(parent != nullptr, "create hidden translated-list owner");
+    HWND bones = MakeCombo(parent, 450, true);
+    HWND morphs = MakeCombo(parent, 509, true);
+    Check(bones && morphs, "create translated name lists");
+    model->hwnd = parent;
+    model->boneTable = &bone; model->boneCount = 1;
+    model->morphs = &morph; model->morphCount = 1;
+    auto* previousApp = g_Block;
+    g_Block = app.get();
+    for (unsigned char ui : {kUiJapanese, kUiEnglish, kUiChinese}) {
+        for (unsigned char preference : {kModelInfoLanguageAuto, kModelInfoLanguageJapanese, kModelInfoLanguageEnglish}) {
+            app->EnglishUI() = ui;
+            SetModelInfoLanguagePreference(preference);
+            const bool english = UiUsesEnglishNames(ui);
+            for (bool enabled : {false, true, false}) {
+                SetModelNameAutoTranslation(enabled);
+                const wchar_t* expectedBone = enabled ? (english ? L"center" : L"センター")
+                    : (english ? L"custom center" : L"センター");
+                const wchar_t* expectedMorph = enabled ? (english ? L"blink" : L"まばたき")
+                    : (english ? L"custom blink" : L"まばたき");
+                FillBoneCombo(bones, model.get(), english);
+                PostLoadInit(reinterpret_cast<unsigned char*>(model.get()));
+                Check(ItemTextW(bones, 0) == expectedBone, "bone list follows translation and default language");
+                Check(ItemTextW(morphs, 0) == expectedMorph, "morph list follows translation and default language");
+                Check(text_encoding::BoneName(bone, true) == L"custom center" &&
+                      text_encoding::MorphName(morph, true) == L"custom blink",
+                      "display translation never changes raw names used by files and motion matching");
+            }
+        }
+    }
+    SetModelNameAutoTranslation(true);
+    bone.jpText = const_cast<wchar_t*>(L"ARM_L"); bone.enText = nullptr;
+    Check(text_encoding::BoneLabel(bone, false) == L"左腕", "English bone names translate back to Japanese");
+    morph.jpText = const_cast<wchar_t*>(L"wink L"); morph.enText = nullptr;
+    Check(text_encoding::MorphLabel(morph, false) == L"ウィンク右", "morph left/right follows the supplied dictionary");
+    bone.jpText = const_cast<wchar_t*>(L"左手捩");
+    Check(text_encoding::BoneLabel(bone, true) == L"wristTwist_L", "bone dictionary uses its supplied English spelling");
+    morph.jpText = const_cast<wchar_t*>(L"上");
+    Check(text_encoding::MorphLabel(morph, true) == L"Up", "duplicate dictionary entries use the first definition");
+    morph.jpText = const_cast<wchar_t*>(L"∧");
+    Check(text_encoding::MorphLabel(morph, false) == L"∧", "native names take precedence over ambiguous aliases");
+    bone.jpText = const_cast<wchar_t*>(L"センター_custom_😀");
+    morph.jpText = const_cast<wchar_t*>(L"自定义表情_😀");
+    Check(text_encoding::BoneLabel(bone, true) == bone.jpText &&
+          text_encoding::MorphLabel(morph, true) == morph.jpText, "unmapped Unicode names remain unchanged");
+    mdl::DisplayGroup group{};
+    text_encoding::SetDisplayGroupName(*model, group, L"センター", L"center");
+    Check(text_encoding::DisplayGroupLabel(group, true) == L"center" &&
+          text_encoding::DisplayGroupLabel(group, false) == L"センター", "known display-group names follow the target language");
+    text_encoding::ForgetDisplayGroupNames(*model);
+    g_Block = previousApp;
+    SetModelInfoLanguagePreference(previousPreference);
+    SetModelNameAutoTranslation(previousTranslation);
+    DestroyWindow(parent);
+    std::puts("PASS dictionary translation: JP/EN/Chinese auto fallback, overrides, toggle, raw names and unknown names");
+}
+
+void ModelLanguagePreferenceRegression() {
+    wchar_t previousDirectory[MAX_PATH]{}, tempDirectory[MAX_PATH]{};
+    Check(GetCurrentDirectoryW(MAX_PATH, previousDirectory) > 0, "read preference-test working directory");
+    Check(GetTempPathW(MAX_PATH, tempDirectory) > 0, "find preference-test temporary directory");
+    const auto directory = std::wstring(tempDirectory) + L"MMS-language-" +
+        std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    const auto dataDirectory = directory + L"\\Data";
+    Check(CreateDirectoryW(directory.c_str(), nullptr) && CreateDirectoryW(dataDirectory.c_str(), nullptr),
+          "create isolated preference directory");
+    Check(SetCurrentDirectoryW(directory.c_str()), "enter isolated preference directory");
+    const auto previousPreference = gModelInfoLanguagePreference;
+    const bool previousTranslation = gModelNameAutoTranslation;
+    for (unsigned char preference : {kModelInfoLanguageAuto, kModelInfoLanguageJapanese, kModelInfoLanguageEnglish}) {
+        for (bool enabled : {false, true}) {
+            SetModelInfoLanguagePreference(preference);
+            SetModelNameAutoTranslation(enabled);
+            SaveModelInfoLanguagePreference();
+            SetModelInfoLanguagePreference(kModelInfoLanguageAuto);
+            SetModelNameAutoTranslation(!enabled);
+            LoadModelInfoLanguagePreference();
+            Check(gModelInfoLanguagePreference == preference && gModelNameAutoTranslation == enabled,
+                  "language and translation setting survive save/reload");
+        }
+    }
+    FILE* file = nullptr;
+    Check(fopen_s(&file, "Data\\model_info_language.ini", "wt") == 0, "write old preference format");
+    std::fputs("2\n", file); std::fclose(file);
+    LoadModelInfoLanguagePreference();
+    Check(gModelInfoLanguagePreference == kModelInfoLanguageEnglish && !gModelNameAutoTranslation,
+          "old one-value preferences retain language and default translation off");
+    Check(DeleteFileW(L"Data\\model_info_language.ini"), "remove temporary preference file");
+    LoadModelInfoLanguagePreference();
+    Check(gModelInfoLanguagePreference == kModelInfoLanguageAuto && !gModelNameAutoTranslation,
+          "missing preference file restores Auto with translation off");
+    SetModelInfoLanguagePreference(previousPreference);
+    SetModelNameAutoTranslation(previousTranslation);
+    Check(SetCurrentDirectoryW(previousDirectory), "restore preference-test working directory");
+    Check(RemoveDirectoryW(dataDirectory.c_str()) && RemoveDirectoryW(directory.c_str()), "remove temporary preference directories");
+}
+
 void TimelineLabelRasterRegression() {
     constexpr int width = 120, height = 112;
     BITMAPINFO info{};
@@ -663,6 +774,8 @@ int main(int argc, char** argv) {
     Check(_wsetlocale(LC_ALL, L"Japanese_Japan.932") != nullptr, "set Japanese CRT locale");
     MissingEnglishPmxRegression(true);
     DisplayGroupLifetimeRegression();
+    ModelNameTranslationRegression();
+    ModelLanguagePreferenceRegression();
     CaptionRegression();
     TimelineLabelRasterRegression();
     std::puts("UI language regressions passed");

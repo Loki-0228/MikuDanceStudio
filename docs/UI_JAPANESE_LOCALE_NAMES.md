@@ -51,7 +51,9 @@ this record accepts UI correctness only.
 ## Local outputs
 
 - `.local/worktrees/ui-japanese-names/` isolates this repair from unrelated live
-  edits. Its build uses this document's commit and the same Release options.
+  edits. It is also reused for the subsequent
+  [model name translation build](MODEL_NAME_TRANSLATION.md), with the same
+  Release options and its final source revision recorded in the artifacts.
 - `.local/releases/ui-japanese-names-before/` preserves the failing baseline.
 - `.local/releases/ui-japanese-names-after/` preserves the verified repair.
 - `.local/archives/ui-japanese-names/` preserves the previously installed EXE.

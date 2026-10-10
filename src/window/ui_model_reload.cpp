@@ -58,36 +58,6 @@ void EnableMenuCommands(HMENU menu, const int* ids, std::size_t count,
         EnableMenuItem(menu, ids[i], state);
 }
 
-// The original Help popup, found through a stable command of its own submenu
-// ("About", 201 in both menu templates of res/templates/menu/menus.rc).  The
-// port inserts its baking popup directly in front of Help, so top-level index 7
-// no longer names Help.
-HMENU HelpMenuFromBar(HMENU menu) {
-    const int count = GetMenuItemCount(menu);
-    for (int i = 0; i < count; ++i) {
-        MENUITEMINFOW entry{};
-        entry.cbSize = sizeof(entry);
-        entry.fMask = MIIM_SUBMENU;
-        if (!GetMenuItemInfoW(menu, UINT(i), TRUE, &entry) || entry.hSubMenu == nullptr)
-            continue;
-        if (GetMenuState(entry.hSubMenu, 201, MF_BYCOMMAND) != UINT(-1))
-            return entry.hSubMenu;
-    }
-    return nullptr;
-}
-
-void SetPhysicsMenuState(HWND hwnd, UINT state) {
-    HMENU submenu = HelpMenuFromBar(GetMenu(hwnd));
-    if (submenu == nullptr)
-        return;
-    MENUITEMINFOA info{};
-    info.cbSize = sizeof(info);
-    info.fMask = MIIM_STATE;
-    info.fState = state;
-    SetMenuItemInfoA(submenu, 2, TRUE, &info);
-    DrawMenuBar(hwnd);
-}
-
 mikudancestudio::mdl::BoneRecord* BoneAt(unsigned char* model, int boneIndex) {
     return mikudancestudio::mdl::Bones(model) + boneIndex;
 }
@@ -467,7 +437,6 @@ void ApplyModelComboSelection(MMDApp* app) {  // was Sub44D940, 0x44D940
             DestroyWindow(optionWindow);
             app->state.edgeThicknessDialog = nullptr;
         }
-        SetPhysicsMenuState(hwnd, MFS_DISABLED);
         SetModelExtensionMenuEnabled(app, false);
     } else {
         const int selectedSlot = FindModelSlotByComboId(app, selection);
@@ -555,10 +524,6 @@ void ApplyModelComboSelection(MMDApp* app) {  // was Sub44D940, 0x44D940
                              mikudancestudio::mdl::Mdl(model)->edgeScale *
                              100.0f));
         }
-        SetPhysicsMenuState(
-            hwnd, model != nullptr && mdl::Mdl(model)->physicsMode == 2
-                      ? MFS_DISABLED
-                      : MFS_ENABLED);
         SetModelExtensionMenuEnabled(app, model != nullptr);
     }
 

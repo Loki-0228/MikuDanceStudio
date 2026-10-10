@@ -46,6 +46,7 @@
 #include "mikudancestudio/bone_key_pool.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/ui_language.hpp"
+#include "mikudancestudio/text_encoding.hpp"
 
 namespace mikudancestudio {
 
@@ -182,9 +183,8 @@ void InitSelectNavDialog(MMDApp* app, HWND hDlg) {  // was Sub466630, VA 0x00466
         mdl::BoneRecord* const bones = mdl::Bones(model);
         do {
             const int boneIdx = records[item].boneIndex;             // 0x46679D
-            const char* name =
-                EnglishNames(app) ? bones[boneIdx].nameEn : bones[boneIdx].name;
-            AddSelectNavString(combo669, name);                      // 0x4667C1
+            const auto name = text_encoding::BoneLabel(bones[boneIdx], EnglishNames(app));
+            SendMessageW(combo669, CB_ADDSTRING, 0, StrParam(name.c_str()));
             if (mdl::Mdl(model)->selectedBone == boneIdx)  // 0x4667F1
                 selItem = item;
             ++item;
@@ -219,7 +219,6 @@ void InitSelectNavDialog(MMDApp* app, HWND hDlg) {  // was Sub466630, VA 0x00466
         operator new(static_cast<std::size_t>(4 * modelCount)));     // 0x4668DE
     app->AccessoryOrderArray() = order;
 
-    char Buffer[256];                                                // 0x466906
     int nOrder = 0;
     // x64 twin sub_7FF7CB4BA7B0: order and slot walks both run to 255
     // (cmp esi, 0FFh at 0x7FF7CB4BABB2 / cmp edi, 0FFh at 0x7FF7CB4BAB0D).
@@ -238,14 +237,9 @@ void InitSelectNavDialog(MMDApp* app, HWND hDlg) {  // was Sub466630, VA 0x00466
         if (m == nullptr)
             continue;                                                // LABEL_40
         const mdl::ModelRecord* const mrec = mdl::Mdl(m);
-        const char* name =
-            EnglishNames(app) ? mrec->nameEn : mrec->name;  // x64 0x22F2 / 0x22C0
-        if (slot == app->SelectedModelSlot()) {                      // 0x46692A
-            sprintf_s(Buffer, 0x100, "(%s)", name);                  // 0x466951
-            AddSelectNavString(combo673, Buffer);
-        } else {
-            AddSelectNavString(combo673, name);
-        }
+        auto name = text_encoding::ModelName(*mrec, EnglishNames(app));
+        if (slot == app->SelectedModelSlot()) name = L"(" + name + L")";
+        SendMessageW(combo673, CB_ADDSTRING, 0, StrParam(name.c_str()));
         order[nOrder++] = slot;                                      // 0x4669CA
     }
 
@@ -339,8 +333,8 @@ void RebuildTargetBoneList(MMDApp* app, HWND hDlg, int keepSelection) {  // was 
         const mdl::BoneType type = bones[i].type;
         if (type < mdl::BoneType::InertTip ||
             type == mdl::BoneType::FixedAxis) {
-            const char* name = EnglishNames(app) ? bones[i].nameEn : bones[i].name;
-            AddSelectNavString(combo677, name);                      // 0x43D4AC
+            const auto name = text_encoding::BoneLabel(bones[i], EnglishNames(app));
+            SendMessageW(combo677, CB_ADDSTRING, 0, StrParam(name.c_str()));
             boneIds[n++] = i;                                        // 0x43D4BC
         }
     }

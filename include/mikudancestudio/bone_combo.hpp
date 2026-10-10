@@ -10,7 +10,7 @@ inline void FillBoneCombo(HWND combo, const mdl::ModelRecord* model, bool englis
     for (std::uint32_t i = 0; i < model->boneCount; ++i) {
         const auto& bone = model->boneTable[i];
         if (bone.type >= mdl::BoneType::InertTip && bone.type != mdl::BoneType::FixedAxis) continue;
-        const auto name = text_encoding::BoneName(bone, english);
+        const auto name = text_encoding::BoneLabel(bone, english);
         const auto row = SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         if (row >= 0) SendMessageW(combo, CB_SETITEMDATA, row, i);
     }

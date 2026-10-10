@@ -237,24 +237,6 @@ static bool LoadPngTexture(MMDApp* app, IDirect3DDevice9* device,
 
 void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify);
 
-// Locates the original Help popup by a command of its own submenu instead of
-// by top-level index.  "About" carries command 201 in both menu templates of
-// res/templates/menu/menus.rc, and the port inserts its baking popup directly
-// in front of Help, so top-level index 7 no longer names Help.
-static HMENU HelpMenuFromBar(HMENU menu) {
-    const int count = GetMenuItemCount(menu);
-    for (int i = 0; i < count; ++i) {
-        MENUITEMINFOW entry{};
-        entry.cbSize = sizeof(entry);
-        entry.fMask = MIIM_SUBMENU;
-        if (!GetMenuItemInfoW(menu, UINT(i), TRUE, &entry) || entry.hSubMenu == nullptr)
-            continue;
-        if (GetMenuState(entry.hSubMenu, 201, MF_BYCOMMAND) != UINT(-1))
-            return entry.hSubMenu;
-    }
-    return nullptr;
-}
-
 bool CreateUIControls(MMDApp* app, HWND hwnd) {
     auto& s = *app;
 
@@ -722,10 +704,6 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     // ---- 0x46AF24..0x46AFCE: submenu state and dynamic full-screen label --
     MENUITEMINFOA mii{};
     mii.cbSize = sizeof(mii);
-    mii.fMask = MIIM_STATE;
-    mii.fState = MFS_DISABLED | MFS_GRAYED;
-    if (HMENU help = HelpMenuFromBar(menu))
-        SetMenuItemInfoA(help, 2, TRUE, &mii);
     SetModelExtensionMenuEnabled(app, false);
     DrawMenuBar(hwnd);
 

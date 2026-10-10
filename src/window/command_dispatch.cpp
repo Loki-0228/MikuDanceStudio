@@ -559,7 +559,7 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
         }
         if (id >= 200 && id <= 250) {
             CmdFileMenu(app, hwnd, id, notification);
-        } else if (id >= 251 && id <= 310) {  // 303..308 = port-added view ids
+        } else if (id >= 251 && id <= 311) {  // includes model-language settings
             CmdViewMenu(app, hwnd, id, notification);
         } else if (id >= 400 && id <= 449) {
             CmdControl400(app, hwnd, id, notification);

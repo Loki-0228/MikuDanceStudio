@@ -17,6 +17,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/model.hpp"
+#include "mikudancestudio/ui_language.hpp"
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -206,6 +207,40 @@ int RunResource(const wchar_t* resourceName) {
     renderer->stereoEnabled = 0;
     app.Renderer() = nullptr;
     sweep(2, L"chinese-after-stereo");
+
+    const wchar_t* languageCaptions[][3] = {
+        {L"現在のモデルの既定言語：自動", L"現在のモデルの既定言語：日本語", L"現在のモデルの既定言語：英語"},
+        {L"Current model default language: Auto", L"Current model default language: Japanese", L"Current model default language: English"},
+        {L"当前模型默认语言：自动", L"当前模型默认语言：日语", L"当前模型默认语言：英语"}
+    };
+    const wchar_t* translationCaptions[] = {
+        L"モデル名を自動翻訳", L"Model language auto-translation", L"模型语言自动翻译"};
+    for (unsigned char language : {kUiJapanese, kUiEnglish, kUiChinese}) {
+        for (unsigned char preference : {kModelInfoLanguageAuto, kModelInfoLanguageJapanese, kModelInfoLanguageEnglish}) {
+            for (bool enabled : {false, true}) {
+                app.EnglishUI() = language;
+                SetModelInfoLanguagePreference(preference);
+                SetModelNameAutoTranslation(enabled);
+                RefreshMenuLanguage(&app);
+                Check(CaptionIn(helpPopup, 310) == languageCaptions[language][preference],
+                      "model-language caption includes the selected default");
+                Check(CaptionIn(helpPopup, 311) == translationCaptions[language],
+                      "auto-translation caption follows the UI language");
+                const UINT state = GetMenuState(helpPopup, 311, MF_BYCOMMAND);
+                Check(state != UINT(-1) && ((state & MF_CHECKED) != 0) == enabled,
+                      "auto-translation check mark follows its setting");
+                int position = -1;
+                for (int i = 0; i < GetMenuItemCount(helpPopup); ++i)
+                    if (GetMenuItemID(helpPopup, i) == 310) position = i;
+                Check(position >= 0 && GetMenuItemID(helpPopup, position + 1) == 311,
+                      "auto-translation is directly below the model language");
+                Check((state & (MF_GRAYED | MF_DISABLED)) == 0,
+                      "auto-translation remains available without a loaded model");
+            }
+        }
+    }
+    SetModelInfoLanguagePreference(kModelInfoLanguageAuto);
+    SetModelNameAutoTranslation(false);
 
     // Model loading and panel transitions can leave the old parent-popup
     // state behind. Opening Help must use the current mode and selected model.

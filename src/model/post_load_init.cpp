@@ -93,7 +93,7 @@ void RefreshMorphGroup(unsigned char* m, mdl::MorphPanel panel, int comboId,
     for (std::uint32_t i = 0; model->morphs != nullptr && i < model->morphCount; ++i) {
         const auto& morph = model->morphs[i];
         if (morph.panel != panel) continue;
-        const auto name = text_encoding::MorphName(
+        const auto name = text_encoding::MorphLabel(
             morph, g_Block != nullptr && UiUsesEnglishNames(g_Block->EnglishUI()));
         const LRESULT row = SendMessageW(combo, CB_ADDSTRING, 0,
                                          reinterpret_cast<LPARAM>(name.c_str()));
@@ -140,7 +140,7 @@ void PostLoadInit(unsigned char* m) {
         for (int i = 0; i < chainCount; ++i) {
             const std::int32_t boneIdx = mdl::IkChains(m)[i].boneIndex;
             const auto name = boneIdx >= 0 && static_cast<std::uint32_t>(boneIdx) < model->boneCount
-                ? text_encoding::BoneName(bones[boneIdx], useEnglishNames) : std::wstring{};
+                ? text_encoding::BoneLabel(bones[boneIdx], useEnglishNames) : std::wstring{};
             SendMessageW(boneCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
     }
@@ -192,7 +192,7 @@ void PostLoadInit(unsigned char* m) {
         addScope(FrameScope::AllFrames, L"All frame", kJpAllFrame, L"全部帧");
         if (bones != nullptr && model->displayRootBone >= 0 &&
             static_cast<std::uint32_t>(model->displayRootBone) < model->boneCount) {
-            const auto rootName = text_encoding::BoneName(bones[model->displayRootBone], useEnglishNames);
+            const auto rootName = text_encoding::BoneLabel(bones[model->displayRootBone], useEnglishNames);
             SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(rootName.c_str()));
         }
         addScope(FrameScope::Display, L"disp/IK/OP", kJpDispIkOp, L"显示·IK·外亲");
@@ -202,14 +202,14 @@ void PostLoadInit(unsigned char* m) {
         const auto* groups = model->displayFrames;
         for (std::uint8_t g = 0; g < model->facialFrameCount; ++g) {
             if (!model->morphs || groups[g].targetIndex >= model->morphCount) continue;
-            const auto name = text_encoding::MorphName(model->morphs[groups[g].targetIndex], useEnglishNames);
+            const auto name = text_encoding::MorphLabel(model->morphs[groups[g].targetIndex], useEnglishNames);
             SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
         addScope(FrameScope::AllBones, L"All bone", kJpAllBone, L"全部骨骼");
         const auto* frames = static_cast<const mdl::FrameGroup*>(model->rbGroups);
         for (std::uint32_t f = 0; f < model->rigidBodyCount; ++f) {
             if (!bones || frames[f].targetIndex >= model->boneCount) continue;
-            const auto name = text_encoding::BoneName(bones[frames[f].targetIndex], useEnglishNames);
+            const auto name = text_encoding::BoneLabel(bones[frames[f].targetIndex], useEnglishNames);
             SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
     }

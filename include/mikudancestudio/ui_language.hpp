@@ -31,6 +31,11 @@ constexpr unsigned char kModelInfoLanguageAuto = 0;
 constexpr unsigned char kModelInfoLanguageJapanese = 1;
 constexpr unsigned char kModelInfoLanguageEnglish = 2;
 inline unsigned char gModelInfoLanguagePreference = kModelInfoLanguageAuto;
+inline bool gModelNameAutoTranslation = false;
+
+inline void SetModelNameAutoTranslation(bool enabled) {
+    gModelNameAutoTranslation = enabled;
+}
 
 inline void SetModelInfoLanguagePreference(unsigned char preference) {
     gModelInfoLanguagePreference = preference <= kModelInfoLanguageEnglish
@@ -40,18 +45,23 @@ inline void SetModelInfoLanguagePreference(unsigned char preference) {
 inline void LoadModelInfoLanguagePreference() {
     FILE* file = nullptr;
     int preference = kModelInfoLanguageAuto;
+    int translate = 0;
     if (fopen_s(&file, "Data\\model_info_language.ini", "rt") == 0) {
         if (fscanf_s(file, "%d", &preference) != 1 || preference < 0 || preference > 2)
             preference = kModelInfoLanguageAuto;
+        if (fscanf_s(file, "%d", &translate) != 1 || translate != 1)
+            translate = 0;
         fclose(file);
     }
     SetModelInfoLanguagePreference(static_cast<unsigned char>(preference));
+    SetModelNameAutoTranslation(translate != 0);
 }
 
 inline void SaveModelInfoLanguagePreference() {
     FILE* file = nullptr;
     if (fopen_s(&file, "Data\\model_info_language.ini", "wt") == 0) {
-        fprintf(file, "%u\n", static_cast<unsigned>(gModelInfoLanguagePreference));
+        fprintf(file, "%u %u\n", static_cast<unsigned>(gModelInfoLanguagePreference),
+                gModelNameAutoTranslation ? 1u : 0u);
         fclose(file);
     }
 }

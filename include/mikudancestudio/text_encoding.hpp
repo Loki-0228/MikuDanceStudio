@@ -30,6 +30,11 @@ void SetDisplayGroupName(const mdl::ModelRecord& model, const mdl::DisplayGroup&
                          const wchar_t* native, const wchar_t* english);
 void ForgetDisplayGroupNames(const mdl::ModelRecord& model);
 std::wstring DisplayGroupName(const mdl::DisplayGroup& group, bool english);
+// Display-only dictionary translation. Raw name accessors above remain suitable
+// for file formats, motion matching, and plugin identities.
+std::wstring BoneLabel(const mdl::BoneRecord& bone, bool english);
+std::wstring MorphLabel(const mdl::MorphRecord& morph, bool english);
+std::wstring DisplayGroupLabel(const mdl::DisplayGroup& group, bool english);
 // Message boxes whose text comes from the byte-exact Shift-JIS literals of the
 // original image (the JP branches) or from plain ASCII (the EN branches).
 // MessageBoxA would decode those bytes with the *system* code page and garble

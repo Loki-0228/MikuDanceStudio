@@ -774,7 +774,8 @@ constexpr MenuText kMocapMenu[] = {
 
 constexpr MenuText kHelpMenu[] = {
     {0, "Chinese Mode(&C)", "English Mode(&E)", L"日语(&J)", 260 },
-    {1, "Model names: Auto", "Model names: Auto", L"模型名称语言：自动", 310 },
+    {1, "Current model default language: Auto", "Current model default language: Auto", L"当前模型默认语言：自动", 310 },
+    {2, "Model language auto-translation", "Model language auto-translation", L"模型语言自动翻译", 311 },
     {2, "enhance model(&M)",
      "\x83\x82\x83\x66\x83\x8b\x8a\x67\x92\xa3\x28\x26\x4d\x29", L"模型扩展编辑(&M)", 0, 259 },
     {4, "restore texture(&R)",
@@ -1094,9 +1095,9 @@ void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0
         const int help = TopLevelPositionWithCommand(menu, kHelpAboutCommand);
         HMENU popup = help >= 0 ? GetSubMenu(menu, help) : nullptr;
         static const wchar_t* const labels[3][3] = {
-            {L"模型名称语言：自动", L"模型名称语言：日语", L"模型名称语言：英语"},
-            {L"Model names: Auto", L"Model names: Japanese", L"Model names: English"},
-            {L"モデル名の言語：自動", L"モデル名の言語：日本語", L"モデル名の言語：英語"}
+            {L"当前模型默认语言：自动", L"当前模型默认语言：日语", L"当前模型默认语言：英语"},
+            {L"Current model default language: Auto", L"Current model default language: Japanese", L"Current model default language: English"},
+            {L"現在のモデルの既定言語：自動", L"現在のモデルの既定言語：日本語", L"現在のモデルの既定言語：英語"}
         };
         if (popup) {
             const unsigned pref = gModelInfoLanguagePreference;
@@ -1104,6 +1105,12 @@ void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0
             MENUITEMINFOW setting{}; setting.cbSize = sizeof(setting); setting.fMask = MIIM_STRING;
             setting.dwTypeData = const_cast<wchar_t*>(labels[ui][pref <= 2 ? pref : 0]);
             SetMenuItemInfoW(popup, 310, FALSE, &setting);
+            const wchar_t* translationLabels[] = {
+                L"模型语言自动翻译", L"Model language auto-translation", L"モデル名を自動翻訳"};
+            setting.dwTypeData = const_cast<wchar_t*>(translationLabels[ui]);
+            SetMenuItemInfoW(popup, 311, FALSE, &setting);
+            CheckMenuItem(popup, 311, MF_BYCOMMAND |
+                (gModelNameAutoTranslation ? MF_CHECKED : MF_UNCHECKED));
         }
     }
 

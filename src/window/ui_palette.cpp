@@ -626,7 +626,7 @@ void HandlePaletteChanged2(HDC hdc) {
                     auto label = text_encoding::ModelLabel(record, UiUsesEnglishNames(app->EnglishUI()));
                     if (boneIdx >= 0) {
                         const auto& bone = record.boneTable[boneIdx];
-                        label += L" : " + text_encoding::BoneName(bone, UiUsesEnglishNames(app->EnglishUI()));
+                        label += L" : " + text_encoding::BoneLabel(bone, UiUsesEnglishNames(app->EnglishUI()));
                     }
                     const int width = DrawWideUiGlyph(label.c_str(), hdc, 20,
                                                        xBase + 10, hideTop - 25,
