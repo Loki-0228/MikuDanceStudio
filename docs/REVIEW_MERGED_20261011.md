@@ -1,12 +1,12 @@
 # MMS 与 MMV4MMS 合并审查记录
 
-实施更新：F01、F02、F04、F07 已完成第一批专项验收，见[验收记录](REPAIR_BATCH1_20261011.md)。原问题描述和优先级保留用于溯源。实施中另确认 GPU Mesh 输出丢失内联纹理像素，需要在通用 mesh 接入前优先修复；扩展运行时跨层用例的既有失败也已单列，均不计入本批通过范围。
+实施更新：F01、F02、F04、F07 已完成[第一批专项验收](REPAIR_BATCH1_20261011.md)。GPU Mesh 内联纹理和跨层静态测试两项遗留已完成测试并提交，见[遗留项验收](D:/MMD-Next/MMV4MMS/docs/REPAIR_FOLLOWUP_20261011.md)。第二批 F03、F05、F06、F08 已通过专项及整合验收并提交，详见[第二批记录](REPAIR_BATCH2_20261011.md)。原问题描述和优先级保留用于溯源。
 
 本记录合并 2026 年 10 月 11 日两轮审查，保留 10 项缺陷、4 项构建与交付问题，以及 9 项优化候选。严重度与实施批次分别记录。同一文件中的问题交给同一负责人，因此个别 P2 可以随 P1 一起处理。
 
 执行分工见[协同修复方案](D:/MMD-Next/MMS/docs/REPAIR_COORDINATION_20261011.md)。完整任务依赖和文件清单见[合并数据](D:/MMD-Next/MMS/.local/artifacts/size-code-review-20261011/03/consolidated-review.json)。原始记录保留在[第一轮](D:/MMD-Next/MMS/.local/artifacts/size-code-review-20261011/01/review-evidence.json)和[第二轮](D:/MMD-Next/MMS/.local/artifacts/size-code-review-20261011/02/review-evidence.json)，不覆盖原证据。
 
-审查源码基线为 MMS `145cbda5a89c22e0a41b1a122a867e3c333678ce` 和 MMV4MMS `74edd1d`。缺陷来自静态检查和调用链核对，尚未逐项运行复现。下列优先级不表示修复已实施。
+审查源码基线为 MMS `145cbda5a89c22e0a41b1a122a867e3c333678ce` 和 MMV4MMS `74edd1d`。原始缺陷来自静态检查和调用链核对，当时尚未逐项运行复现。最新实施状态以上方更新及各批验收记录为准；下列优先级保留原始排序。
 
 整理期间，另一会话已提交 OpenMP 修复 `6ca7c986f1ee62797b4fe242244b206b53fd538d`，当前源码包含该提交。本轮没有复跑其完整性能和画面对照，因此 O01 更新为已提交、待核对验收，不再重复派发。其后续文件所有权仍须交接。仓库中原技术路线文档的删除状态保留。
 
