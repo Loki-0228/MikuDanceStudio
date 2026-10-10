@@ -1,5 +1,7 @@
 # MMDModern 查找优化移植与前后对比
 
+后续新增的汉化适配包及崩溃风险核对见[新版 DLL 静态审计](MMDMODERN_NEW_DLL_AUDIT_20261010.md)。该核对发现新包默认关闭 `DrawOrderTable`，尚未确认用户提到的旧版崩溃原因。
+
 ## 移植范围
 
 本次把 MMDModern 的三项查找优化写入 MMS 源码。没有把 `dsound.dll` 放入发布目录。
