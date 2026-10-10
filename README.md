@@ -168,7 +168,7 @@ input fixes, crash diagnostics, and build and release organization.
   extensions to MMD. See the [MME introduction coauthored by its creator](https://codezine.jp/article/detail/5997).
 - MME community effect authors and contributors, for sharing effects,
   tools, and knowledge.
-- 老面星星 for continued testing and suggestions ([BowlRoll](https://bowlroll.net/user/182602)); 沙拉酱 for technical guidance; and 微波叮桃子 ([AplayBox](https://www.aplaybox.com/u/972840773)), 靡苦居士 ([Bilibili](https://space.bilibili.com/8545990)), 幽灵_U0 ([Bilibili](https://space.bilibili.com/454701392)), and 低智商鼻嘎 for testing and bug reports.
+- 老面星星 for continued testing and suggestions ([BowlRoll](https://bowlroll.net/user/182602)); 沙拉酱 ([Bilibili](https://space.bilibili.com/3493080791517295)) for technical guidance; and 微波叮桃子 ([AplayBox](https://www.aplaybox.com/u/972840773)), 靡苦居士 ([Bilibili](https://space.bilibili.com/8545990)), 幽灵_U0 ([Bilibili](https://space.bilibili.com/454701392)), and 低智商鼻嘎 for testing and bug reports.
 
 ### License
 
@@ -336,7 +336,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 - 舞力介入P：MikuMikuEffect（MME）原作者，感谢其为 MMD 带来的特效扩展能力。
   可参阅[作者参与撰写的 MME 介绍](https://codezine.jp/article/detail/5997)。
 - MME 社区的特效作者与贡献者：感谢他们创作和分享特效、工具与使用经验。
-- 老面星星（[BowlRoll](https://bowlroll.net/user/182602)）：感谢一直以来持续进行测试并提出建议；感谢沙拉酱提供技术指导；感谢微波叮桃子（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0（[Bilibili](https://space.bilibili.com/454701392)）和低智商鼻嘎参与测试并提交 bug。
+- 老面星星（[BowlRoll](https://bowlroll.net/user/182602)）：感谢一直以来持续进行测试并提出建议；感谢沙拉酱（[Bilibili](https://space.bilibili.com/3493080791517295)）提供技术指导；感谢微波叮桃子（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0（[Bilibili](https://space.bilibili.com/454701392)）和低智商鼻嘎参与测试并提交 bug。
 
 ### 许可
 
@@ -467,7 +467,7 @@ cmake --install build --config Release --prefix build/Release
   [作者が共著した MME 紹介記事](https://codezine.jp/article/detail/5997)もご覧ください。
 - MME コミュニティのエフェクト作者・貢献者の皆様：
   エフェクト、ツール、ノウハウの共有に感謝します。
-- 老面星星氏（[BowlRoll](https://bowlroll.net/user/182602)）：継続的なテストと提案に感謝します。沙拉酱氏には技術指導を、微波叮桃子氏（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士氏（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0 氏（[Bilibili](https://space.bilibili.com/454701392)）、低智商鼻嘎氏にはテストとバグ報告に感謝します。
+- 老面星星氏（[BowlRoll](https://bowlroll.net/user/182602)）：継続的なテストと提案に感謝します。沙拉酱氏（[Bilibili](https://space.bilibili.com/3493080791517295)）には技術指導を、微波叮桃子氏（[AplayBox](https://www.aplaybox.com/u/972840773)）、靡苦居士氏（[Bilibili](https://space.bilibili.com/8545990)）、幽灵_U0 氏（[Bilibili](https://space.bilibili.com/454701392)）、低智商鼻嘎氏にはテストとバグ報告に感謝します。
 
 ### ライセンス
 
