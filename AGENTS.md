@@ -24,6 +24,12 @@ MikuMikuDance v9.32 的行为级移植（C++ / Win64 / DirectX 9），准备开�
 - 本地与线上分叉时，先取回再对比，把差异写清楚，不要直接覆盖任何一侧。
   例：`git fetch origin`，`git rev-list --left-right --count origin/main...main`。
 
+## GitHub Release 更新规则
+
+- 每次发布新的正式 GitHub Release，若本次没有重大操作逻辑改动，必须在新版本上传并验证成功后，删除此前的 GitHub Release 及其对应版本 tag，只保留最新正式版本。
+- 若本次包含重大操作逻辑改动，则保留旧 Release 和 tag，供用户回退。
+- 不能在新版本构建、上传和下载核验成功之前删除旧版本；新版本发布失败时，旧版本必须继续可用。
+
 ## 仓库边界（记忆）
 
 - 目标是自己的仓库（`Loki-0228/MikuDanceStudio-MME`）时，可以提交、推送、开 PR，按用户当次要求执行。
