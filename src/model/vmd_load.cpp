@@ -77,8 +77,11 @@
 #include <fcntl.h>
 #include <float.h>
 #include <io.h>
+#include <memory>
+#include <share.h>
 #include <sys/stat.h>
 #include <vector>
+#include "vmd_read_guard.hpp"
 
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/model.hpp"
@@ -99,6 +102,7 @@ namespace {
 int MotionMessageBox(HWND owner, int language, const wchar_t* japanese,
                      const wchar_t* english, const wchar_t* chinese,
                      UINT flags) {
+    if (!owner) return 0;
     const wchar_t* caption = language == 1 ? L"Load motion data"
         : language == 2 ? L"载入动作数据" : L"モーション読込";
     const wchar_t* body = language == 1 ? english
@@ -150,6 +154,7 @@ const char kJpModelMismatch[] =  // 0x52CB48 "... %s ..."
 
 // ---- VA 0x00434B60 --------------------------------------------------------
 int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x00434B60
+    if (app == nullptr || fileName == nullptr) return 0;
     auto& s = *app;
     unsigned char* const model = app->SelectedModel();
 
@@ -158,15 +163,16 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     char text[256];
     unsigned char rec[96];
     unsigned int scratch;    // k
-    unsigned short word;     // v68
+    unsigned short word = 0; // v68
+    unsigned char flag = 0;
 
     const HWND hwnd = s.state.hwnd;
     const int language = s.EnglishUI();
 
     const errno_t openErr =
         _sopen_s(&fileHandle, fileName,
-                 0x8000 /*_O_BINARY*/, 0x40 /*_O_RDONLY*/, 0x80 /*_S_IREAD*/);
-        if (openErr != 0) {
+                 _O_BINARY | _O_RDONLY, _SH_DENYWR, _S_IREAD);
+    if (openErr != 0) {
         wchar_t message[256]{};
         if (language == 1)
             swprintf_s(message, L"Cannot open file: %d", openErr);
@@ -174,13 +180,31 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
             swprintf_s(message, L"无法打开文件：%d", openErr);
         else
             swprintf_s(message, L"ファイルを読み込めません：%d", openErr);
-        MessageBoxW(hwnd, message, language == 1 ? L"Load motion data"
+        if (hwnd) MessageBoxW(hwnd, message, language == 1 ? L"Load motion data"
             : language == 2 ? L"载入动作数据" : L"モーション読込", MB_OK | MB_ICONWARNING);
         return 0;
     }
 
+    // No registration or undo changes may happen until every standard record
+    // is present. All subsequent standard reads use this immutable snapshot.
+    vmd_read::Input input;
+    bool valid = false;
+    try { valid = input.Load(fileHandle); } catch (const std::exception&) {}
+    if (!valid) {
+        if (hwnd) MotionMessageBox(hwnd, language,
+            L"VMD ファイルが不完全か、レコード数が正しくありません。",
+            L"The VMD file is incomplete or contains invalid record counts.",
+            L"VMD 文件不完整或记录数量无效。", MB_OK | MB_ICONWARNING);
+        _close(fileHandle);
+        return 0;
+    }
+    if (s.state.optflag[0] == 0 && model == nullptr) {
+        _close(fileHandle);
+        return 0;
+    }
+
     // header + model name (the name read overwrites the header buffer)
-    _read(fileHandle, text, 30);
+    input.Read(text, 30);
     text[30] = 0;
     int ver = 0;
     unsigned int flavor = 0;
@@ -197,8 +221,45 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
         _close(fileHandle);
         return 0;
     }
-    _read(fileHandle, text, nameLen);
+    input.Read(text, nameLen);
     text[nameLen] = 0;
+
+    // Prepare optional tail data before importing any standard keys. A broken
+    // or unknown tail remains ignorable, while allocation/I/O exceptions here
+    // still leave the model and global tracks untouched.
+    std::vector<accessory_motion_io::Track> accessoryTracks;
+    std::vector<std::uint8_t> morphBlock;
+    bone_scale_io::VmdExtension scaleExtension;
+    bool hasScaleExtension = false;
+    try {
+        const auto remaining = input.Size() - input.standardEnd;
+        const auto* tail = input.Data(input.standardEnd);
+        if (s.state.optflag[0] != 0) {
+            if (remaining && remaining <= 64u * 1024 * 1024)
+                accessory_motion_io::Decode(tail, remaining, accessoryTracks);
+        } else {
+            std::size_t tailStart = input.standardEnd;
+            const auto total = morph_curve::VmdBlockSize(tail, remaining);
+            if (total && total <= remaining) {
+                std::vector<std::uint8_t> payload;
+                if (morph_curve::DecodeVmdBlock(tail, total, payload) == total) {
+                    morphBlock.assign(tail, tail + total);
+                    tailStart += total;
+                }
+            }
+            wchar_t widePath[MAX_PATH]{};
+            MultiByteToWideChar(CP_ACP, 0, fileName, -1, widePath, MAX_PATH);
+            hasScaleExtension = bone_scale_io::LoadVmdExtension(widePath, scaleExtension,
+                static_cast<std::int64_t>(tailStart)) == bone_scale_io::ExtensionLoad::Loaded;
+        }
+    } catch (const std::exception&) {
+        MotionMessageBox(hwnd, language,
+            L"モーションの追加データを読み込めませんでした。",
+            L"Cannot prepare the motion's extension data.",
+            L"无法读取动作扩展数据。", MB_OK | MB_ICONWARNING);
+        _close(fileHandle);
+        return 0;
+    }
 
     if (s.state.optflag[0] != 0) {
         // ==== camera / light / self-shadow motion =========================
@@ -211,19 +272,19 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
             return 0;
         }
         // discard the bone keys: 15-byte name + 24 dwords each
-        _read(fileHandle, &count, 4);
+        input.Read(&count, 4);
         for (unsigned int i = 0; i < count; ++i) {
-            _read(fileHandle, text, 15);
-            for (int w = 0; w < 24; ++w) _read(fileHandle, &scratch, 4);
+            input.Read(text, 15);
+            for (int w = 0; w < 24; ++w) input.Read(&scratch, 4);
         }
         // discard the morph keys: 15 + 4 + 4
-        _read(fileHandle, &count, 4);
+        input.Read(&count, 4);
         for (unsigned int j = 0; j < count; ++j) {
-            _read(fileHandle, text, 15);
-            _read(fileHandle, &scratch, 4);
-            _read(fileHandle, &scratch, 4);
+            input.Read(text, 15);
+            input.Read(&scratch, 4);
+            input.Read(&scratch, 4);
         }
-        if (_read(fileHandle, &count, 4) == 0) {
+        if (input.Read(&count, 4) == 0) {
             MotionMessageBox(hwnd, language,
                 L"このモーションファイルにカメラ・照明のデータがありません。",
                 L"This motion file has no camera or light data.",
@@ -237,18 +298,18 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
                 std::memset(rec, 0, sizeof rec);
                 *reinterpret_cast<int*>(rec + 64) = -1;
                 *reinterpret_cast<int*>(rec + 68) = 0;
-                _read(fileHandle, rec + 0, 4);    // frame
-                _read(fileHandle, rec + 60, 4);   // distance
-                _read(fileHandle, rec + 4, 4);    // eye xyz
-                _read(fileHandle, rec + 8, 4);
-                _read(fileHandle, rec + 12, 4);
-                _read(fileHandle, rec + 16, 4);   // target xyz
-                _read(fileHandle, rec + 20, 4);
-                _read(fileHandle, rec + 24, 4);
-                _read(fileHandle, rec + 33, 1);   // shared 4-byte curve
-                _read(fileHandle, rec + 45, 1);
-                _read(fileHandle, rec + 39, 1);
-                _read(fileHandle, rec + 51, 1);
+                input.Read(rec + 0, 4);    // frame
+                input.Read(rec + 60, 4);   // distance
+                input.Read(rec + 4, 4);    // eye xyz
+                input.Read(rec + 8, 4);
+                input.Read(rec + 12, 4);
+                input.Read(rec + 16, 4);   // target xyz
+                input.Read(rec + 20, 4);
+                input.Read(rec + 24, 4);
+                input.Read(rec + 33, 1);   // shared 4-byte curve
+                input.Read(rec + 45, 1);
+                input.Read(rec + 39, 1);
+                input.Read(rec + 51, 1);
                 // x64 @0x7FF7CB48D5A5..0x7FF7CB48D5EF: 每个共享字节只填充
                 // 其后的 5 字节（20 次赋值，rec+33/39/45/51 起各成一组
                 // 6 字节均匀曲线）；rec[57] 保持清零不被触碰
@@ -266,71 +327,62 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
                 std::memset(rec, 0, sizeof rec);
                 *reinterpret_cast<int*>(rec + 64) = -1;
                 *reinterpret_cast<int*>(rec + 68) = 0;
-                _read(fileHandle, rec + 0, 4);
-                _read(fileHandle, rec + 60, 4);
-                _read(fileHandle, rec + 4, 4);
-                _read(fileHandle, rec + 8, 4);
-                _read(fileHandle, rec + 12, 4);
-                _read(fileHandle, rec + 16, 4);
-                _read(fileHandle, rec + 20, 4);
-                _read(fileHandle, rec + 24, 4);
+                input.Read(rec + 0, 4);
+                input.Read(rec + 60, 4);
+                input.Read(rec + 4, 4);
+                input.Read(rec + 8, 4);
+                input.Read(rec + 12, 4);
+                input.Read(rec + 16, 4);
+                input.Read(rec + 20, 4);
+                input.Read(rec + 24, 4);
                 for (int c = 0; c < 6; ++c) {     // interleaved curve bytes
-                    _read(fileHandle, rec + c + 33, 1);
-                    _read(fileHandle, rec + c + 45, 1);
-                    _read(fileHandle, rec + c + 39, 1);
-                    _read(fileHandle, rec + c + 51, 1);
+                    input.Read(rec + c + 33, 1);
+                    input.Read(rec + c + 45, 1);
+                    input.Read(rec + c + 39, 1);
+                    input.Read(rec + c + 51, 1);
                 }
-                _read(fileHandle, rec + 28, 4);   // fov
-                _read(fileHandle, &word, 1);
-                rec[32] = static_cast<unsigned char>(word != 0);
+                input.Read(rec + 28, 4);   // fov
+                input.Read(&flag, 1);
+                rec[32] = static_cast<unsigned char>(flag != 0);
                 if (ok && !RegisterCameraKey(app, rec)) ok = 0;
             }
         }
         // light keys
-        _read(fileHandle, &count, 4);
+        count = 0;
+        if (input.lightOffset != vmd_read::Input::absent) {
+            input.Seek(input.lightOffset);
+            input.Read(&count, 4);
+        }
         unsigned char lightOk = 1;
         for (unsigned int k = 0; k < count; ++k) {
             std::memset(rec, 0, sizeof rec);
-            _read(fileHandle, rec + 0, 4);    // frame
-            _read(fileHandle, rec + 16, 4);   // color rgb
-            _read(fileHandle, rec + 20, 4);
-            _read(fileHandle, rec + 24, 4);
-            _read(fileHandle, rec + 4, 4);    // position xyz
-            _read(fileHandle, rec + 8, 4);
-            _read(fileHandle, rec + 12, 4);
+            input.Read(rec + 0, 4);    // frame
+            input.Read(rec + 16, 4);   // color rgb
+            input.Read(rec + 20, 4);
+            input.Read(rec + 24, 4);
+            input.Read(rec + 4, 4);    // position xyz
+            input.Read(rec + 8, 4);
+            input.Read(rec + 12, 4);
             if (lightOk && !RegisterLightKey(app, rec)) lightOk = 0;
         }
         // self-shadow keys (ver 2 only)
         unsigned char shadowOk = 1;
-        if (flavor == 2 && _read(fileHandle, &count, 4) > 0) {
+        if (flavor == 2 && input.shadowOffset != vmd_read::Input::absent) {
+            input.Seek(input.shadowOffset);
+            input.Read(&count, 4);
             for (unsigned int m = 0; m < count; ++m) {
                 std::memset(rec, 0, sizeof rec);
-                _read(fileHandle, rec + 0, 4);
-                _read(fileHandle, rec + 4, 1);
-                _read(fileHandle, rec + 8, 4);
+                input.Read(rec + 0, 4);
+                input.Read(rec + 4, 1);
+                input.Read(rec + 8, 4);
                 if (shadowOk && !RegisterSelfShadowKey(app, rec)) shadowOk = 0;
             }
         }
         // MMS: `.x` accessory keys behind the standard end code
         // (accessory_motion_io.hpp).  Anything else there is ignored, as the
         // original reader ignores it.
-        bool accessoriesApplied = false;
-        {
-            const long long standardEnd = _telli64(fileHandle);
-            const long long fileEnd = _lseeki64(fileHandle, 0, SEEK_END);
-            if (standardEnd >= 0 && fileEnd > standardEnd &&
-                fileEnd - standardEnd <= 64ll * 1024 * 1024) {
-                std::vector<std::uint8_t> tail(
-                    static_cast<std::size_t>(fileEnd - standardEnd));
-                _lseeki64(fileHandle, standardEnd, SEEK_SET);
-                std::vector<accessory_motion_io::Track> tracks;
-                if (_read(fileHandle, tail.data(),
-                          static_cast<unsigned int>(tail.size())) ==
-                        static_cast<int>(tail.size()) &&
-                    accessory_motion_io::Decode(tail.data(), tail.size(), tracks))
-                    accessoriesApplied = accessory_motion_io::Apply(app, tracks) > 0;
-            }
-        }
+        const bool accessoriesApplied = !accessoryTracks.empty() &&
+            accessory_motion_io::Apply(app, accessoryTracks) > 0;
         _close(fileHandle);
         PanelPaint(app);
         SelectionReeval(app);
@@ -363,7 +415,7 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
             swprintf_s(prompt, L"此动作文件属于“%s”。\n只会导入骨骼名称匹配的动作。\n是否继续？", sourceModelName.c_str());
         else
             swprintf_s(prompt, L"このモーションファイルは「%s」用です。\n同じボーン名のモーションのみ読み込みます。\n続行しますか？", sourceModelName.c_str());
-        if (MessageBoxW(hwnd, prompt,
+        if (!hwnd || MessageBoxW(hwnd, prompt,
                         language == 1 ? L"Load motion data"
                             : language == 2 ? L"载入动作数据" : L"モーション読込",
                         MB_OKCANCEL | MB_ICONWARNING) != IDOK) {
@@ -371,8 +423,37 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
             return 0;
         }
     }
-    _read(fileHandle, &count, 4);
+    input.Read(&count, 4);
     const unsigned int boneKeyCount = count;
+
+    // Prepare loader-owned allocations before clearing selections or replacing
+    // an undo slot. The per-record scratch also cannot fail midway through IK.
+    mdl::ModelRecord& record = *mdl::Mdl(model);
+    std::size_t poseBytes = 0, undoBytes = 0;
+    const bool sizesFit = vmd_read::Input::AllocationSize(record.boneCount,
+        sizeof(mdl::BonePoseSnapshot), poseBytes) &&
+        vmd_read::Input::AllocationSize(boneKeyCount, 192, undoBytes);
+    using Allocation = std::unique_ptr<unsigned char, decltype(&std::free)>;
+    Allocation preparedPose(sizesFit && poseBytes ? static_cast<unsigned char*>(std::malloc(poseBytes)) : nullptr, &std::free);
+    Allocation preparedKeys(sizesFit && undoBytes ? static_cast<unsigned char*>(std::malloc(undoBytes)) : nullptr, &std::free);
+    std::vector<unsigned char> ikEntries;
+    bool allocationsReady = sizesFit && (!poseBytes || preparedPose) && (!undoBytes || preparedKeys);
+    if (allocationsReady) {
+        // The registrar compares the legacy fixed-width names with strcmp.
+        // Keep an extra terminator after each populated entry array as well.
+        try { ikEntries.resize(std::size_t(input.maximumIkEntries) * 21 + 1); }
+        catch (const std::exception&) { allocationsReady = false; }
+    }
+    if (!allocationsReady) {
+        MotionMessageBox(hwnd, language,
+            L"モーションを読み込むためのメモリが不足しています。",
+            L"Not enough memory to load this motion.",
+            L"内存不足，无法载入此动作。", MB_OK | MB_ICONWARNING);
+        _close(fileHandle);
+        return 0;
+    }
+    if (poseBytes) std::memset(preparedPose.get(), 0, poseBytes);
+    if (undoBytes) std::memset(preparedKeys.get(), 0, undoBytes);
 
     // clear the allocation marks of all three key arrays
     mikudancestudio::mdl::BoneKey* const bkeys = mikudancestudio::mdl::BoneKeys(model);
@@ -388,7 +469,6 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
 
     EnableWindow(GetDlgItem(hwnd, panel::kUndoButton), TRUE);
     EnableWindow(GetDlgItem(hwnd, panel::kRedoButton), FALSE);
-    mdl::ModelRecord& record = *mdl::Mdl(model);
     record.undoDirty = 1;
     record.redoDirty = 0;
     std::uint32_t& ringIdx = record.undoState[0];
@@ -407,12 +487,8 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     // (boneIndex / trans / rotQuat / 物理标志)，源端等价于按
     // BoneRecord 类型化字段读取（x64 骨骼表 624 字节 stride 下
     // trans@+328、rotQuat@+340），物理标志取 model+12584[b]
-    auto* const snap = static_cast<mikudancestudio::mdl::BonePoseSnapshot*>(
-        operator new(boneCnt * sizeof(mikudancestudio::mdl::BonePoseSnapshot)));
+    auto* const snap = reinterpret_cast<mdl::BonePoseSnapshot*>(preparedPose.release());
     undo.bonePose = snap;
-    std::memset(snap, 0,
-                static_cast<std::size_t>(boneCnt) *
-                    sizeof(mikudancestudio::mdl::BonePoseSnapshot));
     if (boneCnt > 0) {
         mikudancestudio::mdl::BoneRecord* const bones =
             mikudancestudio::mdl::Bones(model);
@@ -428,10 +504,8 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     }
     if (undo.auxiliaryPose != nullptr)
         free(undo.auxiliaryPose);
-    unsigned char* const rawKeys = static_cast<unsigned char*>(
-        operator new(192 * boneKeyCount));
+    unsigned char* const rawKeys = preparedKeys.release();
     undo.auxiliaryPose = rawKeys;
-    std::memset(rawKeys, 0, 192 * boneKeyCount);
     mdl::BoneKeyVisitClear(*mdl::Mdl(model));
     ResetBoneKeyCursor(model);
     (void)rawKeys;  // consumed by the registrar family (0x49D880 et al.)
@@ -447,33 +521,33 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     bone_scale::DefaultCurveScope defaultScaleCurve;
     unsigned char boneOk = 1;
     for (unsigned int k = 0; k < boneKeyCount; ++k) {
-        _read(fileHandle, text, 15);
+        input.Read(text, 15);
         text[15] = 0;
         if (char* nl = std::strchr(text, 10)) *nl = 0;
         strcpy_s(reinterpret_cast<char*>(rec), 30, text);
-        _read(fileHandle, rec + 32, 4);   // frame
-        _read(fileHandle, rec + 52, 4);   // position
-        _read(fileHandle, rec + 56, 4);
-        _read(fileHandle, rec + 60, 4);
-        _read(fileHandle, rec + 36, 4);   // quaternion
-        _read(fileHandle, rec + 40, 4);
-        _read(fileHandle, rec + 44, 4);
-        _read(fileHandle, rec + 48, 4);
+        input.Read(rec + 32, 4);   // frame
+        input.Read(rec + 52, 4);   // position
+        input.Read(rec + 56, 4);
+        input.Read(rec + 60, 4);
+        input.Read(rec + 36, 4);   // quaternion
+        input.Read(rec + 40, 4);
+        input.Read(rec + 44, 4);
+        input.Read(rec + 48, 4);
         for (int ch = 0; ch < 4; ++ch) {
             if (ch != 0) {
-                _read(fileHandle, &scratch, 4);
+                input.Read(&scratch, 4);
                 rec[ch + 65] = static_cast<unsigned char>(scratch);
             } else {
-                _read(fileHandle, &word, 2);
+                input.Read(&word, 2);
                 rec[65] = static_cast<unsigned char>(word);
-                _read(fileHandle, &word, 2);
+                input.Read(&word, 2);
                 rec[64] = static_cast<unsigned char>(word == 3939);
             }
-            _read(fileHandle, &scratch, 4);
+            input.Read(&scratch, 4);
             rec[ch + 69] = static_cast<unsigned char>(scratch);
-            _read(fileHandle, &scratch, 4);
+            input.Read(&scratch, 4);
             rec[ch + 73] = static_cast<unsigned char>(scratch);
-            _read(fileHandle, &scratch, 4);
+            input.Read(&scratch, 4);
             rec[ch + 77] = static_cast<unsigned char>(scratch);
         }
         if (boneOk) {
@@ -485,15 +559,15 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     ResetMorphKeyCursor(model);
 
     // morph keys
-    _read(fileHandle, &count, 4);
+    input.Read(&count, 4);
     unsigned char morphOk = 1;
     for (unsigned int k = 0; k < count; ++k) {
-        _read(fileHandle, text, 15);
+        input.Read(text, 15);
         text[15] = 0;
         if (char* nl = std::strchr(text, 10)) *nl = 0;
         strcpy_s(reinterpret_cast<char*>(rec), 30, text);
-        _read(fileHandle, rec + 32, 4);   // frame
-        _read(fileHandle, rec + 36, 4);   // value
+        input.Read(rec + 32, 4);   // frame
+        input.Read(rec + 36, 4);   // value
         if (!_finite(*reinterpret_cast<float*>(rec + 36)))
             *reinterpret_cast<float*>(rec + 36) = 0.0f;
         if (morphOk) {
@@ -506,29 +580,26 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     if (s.LastRegisteredFrame() < modelMax)
         s.LastRegisteredFrame() = modelMax;
 
-    // camera/light/self-shadow counts are parsed and discarded
-    _read(fileHandle, &count, 4);
-    _read(fileHandle, &count, 4);
-    _read(fileHandle, &count, 4);
-    if (_read(fileHandle, &count, 4) > 0) {
+    // Skip the complete camera/light/shadow records, not just their counts.
+    // Their validated lengths determine where the optional IK section begins.
+    if (input.displayOffset != vmd_read::Input::absent) {
+        input.Seek(input.displayOffset);
+        input.Read(&count, 4);
         ResetDisplayKeyCursor(model);
         unsigned char ikOk = 1;
         for (unsigned int k = 0; k < count; ++k) {
-            _read(fileHandle, rec + 0, 4);   // frame
-            _read(fileHandle, &word, 1);     // visible
-            rec[4] = static_cast<unsigned char>(word != 0);
-            _read(fileHandle, rec + 8, 4);   // IK entry count
+            input.Read(rec + 0, 4);   // frame
+            input.Read(&flag, 1);     // visible
+            rec[4] = static_cast<unsigned char>(flag != 0);
+            input.Read(rec + 8, 4);   // IK entry count
             int n = *reinterpret_cast<int*>(rec + 8);
-            if (*reinterpret_cast<unsigned int*>(rec + 8) > 0x2710u) break;
-            unsigned char* entries = nullptr;
-            if (n > 0)
-                entries = static_cast<unsigned char*>(
-                    operator new(21 * n));
+            unsigned char* entries = n > 0 ? ikEntries.data() : nullptr;
             for (int e = 0; e < n; ++e) {
-                _read(fileHandle, entries + 21 * e, 20);
-                _read(fileHandle, &word, 1);
-                entries[21 * e + 20] = static_cast<unsigned char>(word != 0);
+                input.Read(entries + 21 * e, 20);
+                input.Read(&flag, 1);
+                entries[21 * e + 20] = static_cast<unsigned char>(flag != 0);
             }
+            if (entries) entries[21 * n] = 0;
             *reinterpret_cast<int*>(rec + 16) = 0;
             if (ikOk) {
                 if (!RegisterDisplayKeyFromRecord(model, *reinterpret_cast<int*>(rec), rec[4],
@@ -536,57 +607,19 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
                                s.state.currentFrame))
                     ikOk = 0;
             }
-            if (entries) free(entries);
         }
         modelMax = record.maxFrame;
         if (s.LastRegisteredFrame() < modelMax)
             s.LastRegisteredFrame() = modelMax;
     }
 
-    // Standard keys have been registered.  Two checked tails may follow the
-    // standard body, in this order: the exact morph curve block this port
-    // writes, then the bone-scale extension container bone_scale_io owns.  The
-    // block is consumed first, so the offset handed to the container is still
-    // the byte count its writer fingerprinted.
-    {
-        const __int64 standardEnd = _telli64(fileHandle);
-        __int64 tailStart = standardEnd;
-        std::vector<std::uint8_t> block;
-        if (standardEnd >= 0) {
-            std::vector<std::uint8_t> bytes(16);
-            if (_read(fileHandle, bytes.data(), 16) == 16) {
-                const std::size_t total = morph_curve::VmdBlockSize(bytes.data(), bytes.size());
-                if (total >= bytes.size() && total <= morph_curve::kMaximumPayloadBytes + 16) {
-                    bytes.resize(total);
-                    const unsigned rest = static_cast<unsigned>(total - 16);
-                    if (rest == 0 ||
-                        _read(fileHandle, bytes.data() + 16, rest) == static_cast<int>(rest)) {
-                        std::vector<std::uint8_t> payload;
-                        if (morph_curve::DecodeVmdBlock(bytes.data(), bytes.size(), payload) == total) {
-                            block.swap(bytes);
-                            tailStart = _telli64(fileHandle);
-                        }
-                    }
-                }
-            }
-            // An absent or damaged block must not move the boundary: the read
-            // position is restored either way.
-            if (block.empty()) {
-                _lseeki64(fileHandle, standardEnd, SEEK_SET);
-                tailStart = standardEnd;
-            }
-        }
-        if (!block.empty() && model != nullptr) {
-            morph_curve::ApplyVmd(model, block.data(), block.size(),
-                                  static_cast<int>(s.state.currentFrame));
-        }
-        wchar_t widePath[MAX_PATH] = {};
-        MultiByteToWideChar(CP_ACP, 0, fileName, -1, widePath, MAX_PATH);
-        bone_scale_io::VmdExtension extension;
-        if (tailStart >= 0 && bone_scale_io::LoadVmdExtension(widePath, extension, tailStart) ==
-                bone_scale_io::ExtensionLoad::Loaded)
-            bone_scale_io::ApplyImportedExtension(model, extension, s.state.currentFrame);
-    }
+    // The prepared extensions apply only after the standard keys they refer
+    // to exist. These model-facing APIs retain their own allocation policy.
+    if (!morphBlock.empty())
+        morph_curve::ApplyVmd(model, morphBlock.data(), morphBlock.size(),
+                              static_cast<int>(s.state.currentFrame));
+    if (hasScaleExtension)
+        bone_scale_io::ApplyImportedExtension(model, scaleExtension, s.state.currentFrame);
 
     _close(fileHandle);
     PanelPaint(app);                                    // 0x414610
