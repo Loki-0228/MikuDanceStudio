@@ -8,7 +8,15 @@
 #include <unordered_map>
 
 namespace mikudancestudio::text_encoding {
-namespace { std::unordered_map<const mdl::ModelRecord*,MaterialNames> materialNames; }
+namespace {
+std::unordered_map<const mdl::ModelRecord*,MaterialNames> materialNames;
+struct DisplayGroupText {
+    const mdl::ModelRecord* owner;
+    std::array<std::wstring, 2> names;
+    std::array<std::string, 2> legacy;
+};
+std::unordered_map<const mdl::DisplayGroup*, DisplayGroupText> displayGroupNames;
+}
 void SetMaterialNames(const mdl::ModelRecord& model,MaterialNames names){materialNames[&model]=std::move(names);}
 void ForgetMaterialNames(const mdl::ModelRecord& model){materialNames.erase(&model);}
 std::wstring MaterialName(const mdl::ModelRecord& model,std::size_t index,bool english){
@@ -161,13 +169,35 @@ std::wstring BoneName(const mdl::BoneRecord& bone, bool english) {
     return result;
 }
 
+void SetDisplayGroupName(const mdl::ModelRecord& model, const mdl::DisplayGroup& group,
+                         const wchar_t* native, const wchar_t* english) {
+    displayGroupNames[&group] = {&model, {native ? native : L"", english ? english : L""},
+        {std::string(group.name, strnlen_s(group.name, sizeof(group.name))),
+         std::string(group.nameEn, strnlen_s(group.nameEn, sizeof(group.nameEn)))}};
+}
+
+void ForgetDisplayGroupNames(const mdl::ModelRecord& model) {
+    for (auto it = displayGroupNames.begin(); it != displayGroupNames.end();) {
+        if (it->second.owner == &model) it = displayGroupNames.erase(it);
+        else ++it;
+    }
+}
+
 std::wstring DisplayGroupName(const mdl::DisplayGroup& group, bool english) {
-    const char* narrow = english ? group.nameEn : group.name;
-    if (!*narrow) narrow = english ? group.name : group.nameEn;
-    // These legacy model fields are CP932, unlike accessory display labels.
-    const std::string bounded(narrow, strnlen_s(narrow, sizeof(group.name)));
-    std::wstring result;
-    Decode(bounded.c_str(), 932, result);
+    const auto found = displayGroupNames.find(&group);
+    const auto name = [&](int slot) {
+        const char* narrow = slot ? group.nameEn : group.name;
+        const std::string bounded(narrow, strnlen_s(narrow, sizeof(group.name)));
+        // The English-name editor can rewrite the legacy field. Do not hide
+        // those edits behind the original PMX text.
+        if (found != displayGroupNames.end() && bounded == found->second.legacy[slot])
+            return found->second.names[slot];
+        std::wstring decoded;
+        Decode(bounded.c_str(), 932, decoded);
+        return decoded;
+    };
+    auto result = name(english ? 1 : 0);
+    if (result.empty()) result = name(english ? 0 : 1);
     return result;
 }
 

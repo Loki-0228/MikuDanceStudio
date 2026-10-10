@@ -289,6 +289,7 @@ bool SkipTextBuf(fileio::SequentialFileReader& reader,
 // Release the four model text buffers; ModelDispose owns the other records.
 // Returns false so call sites read `return AbortPmxLoad(...)`.
 bool AbortPmxLoad(fileio::SequentialFileReader& reader, unsigned char* m) {
+    text_encoding::ForgetDisplayGroupNames(*mdl::Mdl(m));
     using mdl::PmxTextBufferSlot;
     static constexpr PmxTextBufferSlot kSlots[] = {
         PmxTextBufferSlot::japaneseName,
@@ -1568,6 +1569,7 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
                 ++w;
             }
         }
+        model.facialFrameCount = static_cast<std::uint8_t>(w);
     }
     // Root bone from the first PMX display frame's first entry: the original
     // only tests that the entry exists and is a *bone* entry (x64
@@ -1630,6 +1632,8 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
                        sizeof(displayGroups[g].name));
             WideToSjis(displayGroups[g].nameEn, frames[frameIndex].nameEn,
                        sizeof(displayGroups[g].nameEn));
+            text_encoding::SetDisplayGroupName(model, displayGroups[g],
+                frames[frameIndex].name, frames[frameIndex].nameEn);
         }
     }
     // bone frame records (m+9944): bone entries from frame 2 on
@@ -1666,6 +1670,9 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
             }
             ++groupIdx;
         }
+        // Allocation includes the special Root frame and invalid entries;
+        // only initialized rows belong in the timeline and registration list.
+        model.rigidBodyCount = static_cast<std::uint32_t>(w);
     }
     for (std::uint32_t f = 0; f < frameCount; ++f) {
         if (frames[f].name)

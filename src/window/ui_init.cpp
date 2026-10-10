@@ -16,10 +16,9 @@
 //   - InitToonTextures (0x00424DC0) - src/render/toon_textures.cpp
 //   - InitSceneFontTexture (0x0042AE80) - src/render/scene_font.cpp
 //
-// Deviation note (resolved): per-control ANSI/wide variants are now issued
-// through CreateWindowExA/W exactly like the original call sites; ANSI
-// captions (".<", ">|", "X", SJIS texts) reach the A entry points as the
-// original .rdata bytes, wide texts as \xXXXX escapes from .rdata.
+// All combo boxes use Unicode so imported names and translated entries do
+// not pass through the Windows ANSI code page. Other controls retain their
+// original ANSI/wide creation variants.
 // ===========================================================================
 #include "mikudancestudio/animation_curve_host.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -57,6 +56,27 @@ static int EvalPos(const ui::PosExpr& e, int sidebar) {
         case 2:  return sidebar / 2 + e.off;    // sidebar/2 + off
         default: return e.off;                  // fixed literal
     }
+}
+
+// Shared with the hidden-window language regression so it exercises the
+// production control creation path without initializing a render device.
+HWND CreateUiPanelControl(const ui::ControlSpec& c, HWND hwnd,
+                          HINSTANCE hInst, int sidebar) {
+    // Legacy combo captions are empty; their contents are populated later.
+    // Even SendMessageW loses names if the receiving combo is an ANSI window.
+    const bool ansiCombo = c.acls && std::strcmp(c.acls, "COMBOBOX") == 0;
+    return (c.wide || ansiCombo)
+        ? CreateWindowExW(c.ex, ansiCombo ? L"COMBOBOX" : c.wcls,
+                          ansiCombo ? L"" : c.wtext, c.style,
+                          EvalPos(c.x, sidebar), EvalPos(c.y, sidebar),
+                          c.w, c.h, hwnd,
+                          reinterpret_cast<HMENU>(static_cast<INT_PTR>(c.id)),
+                          hInst, nullptr)
+        : CreateWindowExA(c.ex, c.acls, c.atext, c.style,
+                          EvalPos(c.x, sidebar), EvalPos(c.y, sidebar),
+                          c.w, c.h, hwnd,
+                          reinterpret_cast<HMENU>(static_cast<INT_PTR>(c.id)),
+                          hInst, nullptr);
 }
 
 // j_??2@YAPAXI@Z - the VC9 throwing operator new(uint) used for the track
@@ -582,22 +602,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     };
 
     for (const ui::ControlSpec& c : ui::kControls) {
-        // Original mixes CreateWindowExW/A per control; the table carries the
-        // exact wire bytes for both variants (wide flag from the original
-        // call site), so ANSI captions reach the A entry points verbatim.
-        const bool modelNames = c.id == 434 || c.id == 443 || c.id == 450 || c.id == 475;
-        HWND control = (c.wide || modelNames)
-            ? CreateWindowExW(c.ex, modelNames ? L"COMBOBOX" : c.wcls,
-                              modelNames ? L"" : c.wtext, c.style,
-                              EvalPos(c.x, sidebar), EvalPos(c.y, sidebar),
-                              c.w, c.h, hwnd,
-                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(c.id)),
-                              hInst, nullptr)
-            : CreateWindowExA(c.ex, c.acls, c.atext, c.style,
-                              EvalPos(c.x, sidebar), EvalPos(c.y, sidebar),
-                              c.w, c.h, hwnd,
-                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(c.id)),
-                              hInst, nullptr);
+        HWND control = CreateUiPanelControl(c, hwnd, hInst, sidebar);
         if (control == nullptr)
             return false;   // original exits the process from WM_CREATE
         ApplyUiFontToControl(app, control, c.id);

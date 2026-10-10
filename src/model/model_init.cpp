@@ -29,6 +29,7 @@ void ModelInitDefaults(unsigned char* m) {                   // 0x4A8DC0
     morph_curve::Forget(m);
     mdl::ModelRecord& model = *mdl::Mdl(m);
     text_encoding::ForgetMaterialNames(model);
+    text_encoding::ForgetDisplayGroupNames(model);
     model.physicsMode = 0;
     // 9388..9404: the four PMX text buffers (name/comment JP/EN).
     for (wchar_t*& text : model.pmxTextBuffers)

@@ -25,6 +25,10 @@ std::wstring MaterialName(const mdl::ModelRecord&,std::size_t index,bool english
 std::wstring ModelLabel(const mdl::ModelRecord& model, bool english);
 std::wstring MorphName(const mdl::MorphRecord& morph, bool english);
 std::wstring BoneName(const mdl::BoneRecord& bone, bool english);
+// Preserve PMX group names outside the fixed legacy display-group layout.
+void SetDisplayGroupName(const mdl::ModelRecord& model, const mdl::DisplayGroup& group,
+                         const wchar_t* native, const wchar_t* english);
+void ForgetDisplayGroupNames(const mdl::ModelRecord& model);
 std::wstring DisplayGroupName(const mdl::DisplayGroup& group, bool english);
 // Message boxes whose text comes from the byte-exact Shift-JIS literals of the
 // original image (the JP branches) or from plain ASCII (the EN branches).

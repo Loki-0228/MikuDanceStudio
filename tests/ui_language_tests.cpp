@@ -45,6 +45,7 @@
 #include <io.h>
 #include <share.h>
 #include <sys/stat.h>
+#include <clocale>
 
 namespace mikudancestudio {
 // LocalizeUI's caption lookup and localized-id list (src/window/localize_ui.cpp);
@@ -54,6 +55,7 @@ std::wstring UiControlCaption(int id, unsigned char language);
 int UiLocalizedControlCount();
 int UiLocalizedControlId(int index);
 void DrawTimelineLabel(MMDApp*, HDC, const wchar_t*, int, int, COLORREF);
+HWND CreateUiPanelControl(const ui::ControlSpec&, HWND, HINSTANCE, int);
 }  // namespace mikudancestudio
 
 using namespace mikudancestudio;
@@ -90,6 +92,32 @@ HWND MakeCombo(HWND parent, int id, bool wide) {
                                   parent,
                                   reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                                   GetModuleHandleW(nullptr), nullptr);
+}
+
+void MainPanelComboRegression() {
+    HINSTANCE instance = GetModuleHandleW(nullptr);
+    HWND parent = CreateWindowExW(0, L"STATIC", L"", WS_OVERLAPPED,
+        0, 0, 320, 240, nullptr, nullptr, instance, nullptr);
+    Check(parent != nullptr, "create hidden main-panel owner");
+    const wchar_t* labels[] = {L"模型_洛天依_😀.pmx", L"左足ＩＫ_髪", L"眨眼_中文_完整名称"};
+    for (const auto& spec : ui::kControls) {
+        const bool combo = spec.wcls ? std::wcscmp(spec.wcls, L"COMBOBOX") == 0
+            : spec.acls && std::strcmp(spec.acls, "COMBOBOX") == 0;
+        if (!combo) continue;
+        HWND control = CreateUiPanelControl(spec, parent, instance, 250);
+        Check(control != nullptr, "create actual main-panel combo");
+        for (const auto* label : labels) {
+            const auto row = SendMessageW(control, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+            if (row < 0 || ItemTextW(control, static_cast<int>(row)) != label) {
+                std::fprintf(stderr, "FAIL: main-panel combo %d loses Unicode name (ACP=%u)\n", spec.id, GetACP());
+                std::exit(1);
+            }
+        }
+        Check(IsWindowUnicode(control), "main-panel name combo is Unicode");
+        DestroyWindow(control);
+    }
+    DestroyWindow(parent);
+    std::puts("PASS production main-panel combos preserve Unicode names");
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +342,7 @@ void CaptionRegression() {
 }  // namespace
 
 static void CheckImportedTimelineNames(mdl::ModelRecord& model,
-                                        const wchar_t* rootName) {
+                                        const wchar_t* const* names) {
     // Exercise the actual import -> timeline sweep -> Unicode GDI path. The
     // independent reference bitmap uses the original fixture names, not the
     // lossy FrameGroup mirrors that caused this regression on Chinese Windows.
@@ -370,15 +398,15 @@ static void CheckImportedTimelineNames(mdl::ModelRecord& model,
     for (int language : {1, 2, 0, 1}) {
         app->EnglishUI() = static_cast<unsigned char>(language);
         PostLanguageSweep(app.get());
-        compareRow(0, 12, rootName);
+        compareRow(0, 12, names[0]);
         compareRow(static_cast<int>(model.boneKeyIndices[1]), 15,
-                   language == 1 ? L"left arm" : L"左腕");
-        compareRow(static_cast<int>(model.boneKeyIndices[2]), 15, L"右腕");
-        compareRow(static_cast<int>(model.morphKeyIndices[0]), 15, L"まばたき");
+                   language == 1 ? L"left arm" : names[1]);
+        compareRow(static_cast<int>(model.boneKeyIndices[2]), 15, names[2]);
+        compareRow(static_cast<int>(model.morphKeyIndices[0]), 15, names[3]);
         int groupRow = -1;
         for (int row = 1; row < 8; ++row)
             if (model.boneListRowType[row] == 3) groupRow = row;
-        compareRow(groupRow, 12, L"腕", true);
+        compareRow(groupRow, 12, names[4], true);
     }
     // Built-in tracks follow the UI language, unlike imported model names.
     // Exercise switching both ways, including returning to Chinese.
@@ -400,7 +428,7 @@ static void CheckImportedTimelineNames(mdl::ModelRecord& model,
     app->Renderer() = nullptr; app->ModelSlot(0) = nullptr; app->PanelDC() = nullptr;
 }
 
-static void MissingEnglishPmxRegression() {
+static void MissingEnglishPmxRegression(bool chineseNames = false) {
     using namespace mikudancestudio;
     wchar_t directory[MAX_PATH]{}; GetTempPathW(MAX_PATH, directory);
     const auto path = std::wstring(directory) + L"MDS-bone-names-" +
@@ -417,9 +445,17 @@ static void MissingEnglishPmxRegression() {
     put(' '); put(2.0f); put(std::uint8_t(8));
     put(std::uint8_t(0)); put(std::uint8_t(0));
     for (int i = 0; i < 6; ++i) put(std::uint8_t(1));
-    text(L"名前テスト"); text(L"name test"); text(L"fixture"); text(L"fixture");
+    const wchar_t* modelName = chineseNames ? L"模型_洛天依_长名称_😀" : L"名前テスト";
+    text(modelName); text(L"name test"); text(L"fixture"); text(L"fixture");
     for (int i = 0; i < 4; ++i) put(std::uint32_t(0)); // vertices, indices, textures, materials
-    constexpr const wchar_t* native[] = {L"センター_中文_長い骨の名前_😀", L"左腕", L"右腕"};
+    const wchar_t* native[] = {L"センター_中文_長い骨の名前_😀", L"左腕", L"右腕", L"まばたき", L"腕"};
+    if (chineseNames) {
+        native[0] = L"操作中心_中文_很长的骨骼名称_😀";
+        native[1] = L"左臂_完整名称";
+        native[2] = L"右臂_完整名称";
+        native[3] = L"眨眼_中文表情_完整名称_😀";
+        native[4] = L"骨骼分组_完整名称_超过旧式五十字节字段_😀";
+    }
     put(std::uint32_t(3));
     for (int i = 0; i < 3; ++i) {
         text(native[i]); text(i == 1 ? L"left arm" : L"");
@@ -427,14 +463,14 @@ static void MissingEnglishPmxRegression() {
         put(std::int8_t(-1)); put(std::int32_t(0)); put(std::uint16_t(0x1B));
         put(std::int8_t(-1)); // visible, rotating bone; no tail
     }
-    put(std::uint32_t(1)); text(L"まばたき"); text(L"");
+    put(std::uint32_t(1)); text(native[3]); text(L"");
     put(std::uint8_t(2)); put(std::uint8_t(0)); put(std::uint32_t(0)); // empty group morph
     put(std::uint32_t(3));
     text(L"Root"); text(L"Root"); put(std::uint8_t(1)); put(std::uint32_t(1));
     put(std::uint8_t(0)); put(std::int8_t(0));
     text(L"表情"); text(L""); put(std::uint8_t(1)); put(std::uint32_t(1));
     put(std::uint8_t(1)); put(std::int8_t(0));
-    text(L"腕"); text(L""); put(std::uint8_t(0)); put(std::uint32_t(2));
+    text(native[4]); text(L""); put(std::uint8_t(0)); put(std::uint32_t(2));
     put(std::uint8_t(0)); put(std::int8_t(1)); put(std::uint8_t(0)); put(std::int8_t(2));
     put(std::uint32_t(0)); put(std::uint32_t(0)); // rigid bodies, joints
     Check(_lseek(fd, 0, SEEK_SET) == 0, "rewind PMX fixture");
@@ -450,12 +486,73 @@ static void MissingEnglishPmxRegression() {
         Check(text_encoding::BoneName(bone, false) == native[i], "native bone names remain intact");
         Check(bone.jpText != bone.enText, "fallback buffers have independent ownership");
     }
-    Check(text_encoding::MorphName(model->morphs[0], true) == L"まばたき", "optional English morph also falls back");
+    Check(text_encoding::ModelName(*model, false) == modelName, "PMX Unicode model name survives import");
+    Check(text_encoding::MorphName(model->morphs[0], true) == native[3], "optional English morph also falls back");
     Check(std::strcmp(mdl::DisplayGroups(raw)[3].nameEn, mdl::DisplayGroups(raw)[3].name) == 0,
           "display groups do not introduce English Null placeholders");
-    CheckImportedTimelineNames(*model, native[0]);
+    if (chineseNames) {
+        HWND parent = CreateWindowExW(0, L"STATIC", L"", WS_OVERLAPPED,
+            0, 0, 320, 240, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        Check(parent != nullptr, "create hidden name-list owner");
+        HWND registration = MakeCombo(parent, 434, true);
+        HWND morphCombo = MakeCombo(parent, 509, true);
+        HWND boneCombo = MakeCombo(parent, 450, true);
+        Check(registration && morphCombo && boneCombo, "create hidden name lists");
+        auto app = std::make_unique<MMDApp>();
+        auto* previousApp = g_Block;
+        g_Block = app.get();
+        model->hwnd = parent;
+        app->Hwnd() = parent;
+        app->ModelSlot(0) = raw;
+        for (unsigned char language : {kUiChinese, kUiEnglish, kUiJapanese, kUiChinese}) {
+            app->EnglishUI() = language;
+            const bool english = UiUsesEnglishNames(language);
+            PostLoadInit(raw);
+            FillBoneCombo(boneCombo, model.get(), english);
+            Check(ItemTextW(registration, 1) == native[0], "registration root keeps full Unicode name");
+            Check(ItemTextW(registration, 6) == native[3], "registration morph keeps full Unicode name");
+            Check(ItemTextW(registration, 8) == (english ? L"left arm" : native[1]),
+                  "registration bone keeps full Unicode name");
+            Check(ItemTextW(registration, 9) == native[2], "registration bone English fallback keeps Unicode");
+            Check(SendMessageW(registration, CB_GETCOUNT, 0, 0) == 10,
+                  "registration has no uninitialized trailing bone rows");
+            Check(ItemTextW(morphCombo, 0) == native[3], "morph selector keeps Unicode");
+            Check(ItemTextW(boneCombo, 2) == native[2], "bone selector keeps Unicode");
+            Check(text_encoding::DisplayGroupName(mdl::DisplayGroups(raw)[3], english) == native[4],
+                  "display group keeps full Unicode name and English fallback");
+        }
+        g_Block = previousApp;
+        model->hwnd = nullptr;
+        DestroyWindow(parent);
+    }
+    CheckImportedTimelineNames(*model, native);
+    if (chineseNames) {
+        auto& group = mdl::DisplayGroups(raw)[3];
+        std::strcpy(group.nameEn, "edited group");
+        Check(text_encoding::DisplayGroupName(group, true) == L"edited group",
+              "English group edits override the imported Unicode name");
+        Check(text_encoding::DisplayGroupName(group, false) == native[4],
+              "English edits leave the native group name intact");
+    }
     ModelDispose(raw);
     std::puts("PASS actual PMX import: missing English names use original Unicode names");
+}
+
+void DisplayGroupLifetimeRegression() {
+    auto model = std::make_unique<mdl::ModelRecord>();
+    auto* raw = reinterpret_cast<unsigned char*>(model.get());
+    mdl::DisplayGroup group{};
+    std::strcpy(group.name, "legacy");
+    text_encoding::SetDisplayGroupName(*model, group, L"骨骼分组_😀", L"");
+    Check(text_encoding::DisplayGroupName(group, true) == L"骨骼分组_😀",
+          "missing group translation falls back to native Unicode");
+    ModelInitDefaults(raw);
+    Check(text_encoding::DisplayGroupName(group, false) == L"legacy",
+          "model initialization forgets previous Unicode group names");
+    text_encoding::SetDisplayGroupName(*model, group, L"新的分组", L"new group");
+    ModelDispose(raw);
+    Check(text_encoding::DisplayGroupName(group, false) == L"legacy",
+          "model disposal forgets Unicode group names before address reuse");
 }
 
 void TimelineLabelRasterRegression() {
@@ -536,7 +633,17 @@ void TimelineLabelRasterRegression() {
     std::puts("PASS timeline Unicode labels: readable glyph size, row alignment and clipping in all UI languages");
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::strcmp(argv[1], "--panel-combos") == 0) {
+        MainPanelComboRegression();
+        return 0;
+    }
+    if (argc == 2 && std::strcmp(argv[1], "--japanese-names") == 0) {
+        Check(_wsetlocale(LC_ALL, L"Japanese_Japan.932") != nullptr, "set Japanese CRT locale");
+        std::printf("Japanese name regression: ACP=%u, CRT=%s\n", GetACP(), std::setlocale(LC_ALL, nullptr));
+        MissingEnglishPmxRegression(true);
+        return 0;
+    }
     for (unsigned short language : {0x0804, 0x0404, 0x0c04, 0x1004, 0x1404})
         Check(ResolveStartupUiLanguage(-1, language) == kUiChinese,
               "Chinese regions default to Chinese UI");
@@ -551,7 +658,11 @@ int main() {
     Check(ResolveStartupUiLanguage(3, 0x0804) == kUiChinese,
           "Invalid saved language falls back to Windows");
     NameLanguageRegression();
+    MainPanelComboRegression();
     MissingEnglishPmxRegression();
+    Check(_wsetlocale(LC_ALL, L"Japanese_Japan.932") != nullptr, "set Japanese CRT locale");
+    MissingEnglishPmxRegression(true);
+    DisplayGroupLifetimeRegression();
     CaptionRegression();
     TimelineLabelRasterRegression();
     std::puts("UI language regressions passed");

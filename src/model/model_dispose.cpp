@@ -125,6 +125,7 @@ void ReleasePhysRigid(void* scene, void* bodyPointer) {
 // VA 0x0048F830
 void ModelDispose(unsigned char* m) {
     text_encoding::ForgetMaterialNames(*mdl::Mdl(m));
+    text_encoding::ForgetDisplayGroupNames(*mdl::Mdl(m));
     mmv4mms::Forget(m);
     native_mesh::Forget(m);
     physics_scale::Forget(m);

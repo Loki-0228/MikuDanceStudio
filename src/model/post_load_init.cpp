@@ -200,12 +200,18 @@ void PostLoadInit(unsigned char* m) {
         addScope(FrameScope::SelectedMorphs, L"Sel facial", kJpSelFacial, L"选中表情");
         addScope(FrameScope::AllMorphs, L"All facial", kJpAllFacial, L"全部表情");
         const auto* groups = model->displayFrames;
-        for (std::uint8_t g = 0; g < model->facialFrameCount; ++g)
-            AddLegacyName(frameCombo, useEnglishNames ? groups[g].nameEn : groups[g].name);
+        for (std::uint8_t g = 0; g < model->facialFrameCount; ++g) {
+            if (!model->morphs || groups[g].targetIndex >= model->morphCount) continue;
+            const auto name = text_encoding::MorphName(model->morphs[groups[g].targetIndex], useEnglishNames);
+            SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+        }
         addScope(FrameScope::AllBones, L"All bone", kJpAllBone, L"全部骨骼");
         const auto* frames = static_cast<const mdl::FrameGroup*>(model->rbGroups);
-        for (std::uint32_t f = 0; f < model->rigidBodyCount; ++f)
-            AddLegacyName(frameCombo, useEnglishNames ? frames[f].nameEn : frames[f].name);
+        for (std::uint32_t f = 0; f < model->rigidBodyCount; ++f) {
+            if (!bones || frames[f].targetIndex >= model->boneCount) continue;
+            const auto name = text_encoding::BoneName(bones[frames[f].targetIndex], useEnglishNames);
+            SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+        }
     }
     SendMessageA(frameCombo, CB_SETCURSEL,
                  model->frameRegistrationSelection, 0);
