@@ -816,7 +816,7 @@ void FrameDriver(MMDApp* app) {
     // Gate: A0D6C != 0 && A0D61 == 0 (the skip path reuses a stale local
     // hr in the original; the port keeps last frame's value).
     //   A0274 != 0                 -> Present(NULL, NULL, NULL, NULL)
-    //   else A0D24 != 0            -> Present(&r{0,0,A08D4,A08D8}, same,
+    //   else A0D24 != 0            -> Present(&r{0,0,A08D4,A08D8}, NULL,
     //                                   hwnd A0D24, NULL)
     //   else A0D38 != 0            -> Present(&RECT@A0D40, same, A0D38, NULL)
     //   else                       -> Present(&RECT@A0D40, same, A06B8, NULL)
@@ -842,7 +842,9 @@ void FrameDriver(MMDApp* app) {
                 // slips landing inside the dirModel path buffer)
                 r.right = static_cast<LONG>(s.RenderWidth());
                 r.bottom = static_cast<LONG>(s.RenderHeight());
-                hr = device->Present(&r, &r,
+                // The recording preview may be smaller than the capture.
+                // A null destination fits the entire source to its client area.
+                hr = device->Present(&r, nullptr,
                                      s.RecordingWindow(), nullptr);
             } else if (s.FloatingWindow() != nullptr) {
                 RECT r = FramePresentationRect(app);

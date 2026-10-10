@@ -238,8 +238,8 @@ bool InitMainWindowAndD3D(MMDApp* app, void* hInstanceIn, int nShowCmd) {
         nHeight = screenH - 30;
         s.Renderer()->screenWidth = screenW;
         s.Renderer()->screenHeight = screenH;
-        s.RenderWidth() = 640;
-        s.RenderHeight() = 360;
+        s.RenderWidth() = 1920;
+        s.RenderHeight() = 1080;
         s.SidebarWidth() = 250;
         s.FrameVolumeControlEnabled() = 0;
         s.FrameNormalization() = 100;
@@ -310,8 +310,10 @@ bool InitMainWindowAndD3D(MMDApp* app, void* hInstanceIn, int nShowCmd) {
 
     if (!nWidth)  nWidth = screenW;                             // 0x47BB27
     if (!nHeight) nHeight = screenH - 30;
-    if (s.RenderWidth() == 0) s.RenderWidth() = 640;
-    if (s.RenderHeight() == 0) s.RenderHeight() = 360;
+    // A saved 640x360 size may be intentional: the legacy config contains no
+    // flag distinguishing it from a first-run default. Preserve valid values.
+    if (s.RenderWidth() <= 0) s.RenderWidth() = 1920;
+    if (s.RenderHeight() <= 0) s.RenderHeight() = 1080;
     if (s.SidebarWidth() < 250) s.SidebarWidth() = 250;
     if (s.SidebarRatio() < 0.0f)
         s.SidebarRatio() =

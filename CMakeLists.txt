@@ -1002,6 +1002,17 @@ set_target_properties(mmv4mms_menu_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${
 add_test(NAME mmv4mms_menu COMMAND mmv4mms_menu_tests)
 
 if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(display_compatibility_tests EXCLUDE_FROM_ALL tests/display_compatibility_tests.cpp)
+    target_sources(display_compatibility_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(display_compatibility_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(display_compatibility_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(display_compatibility_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/display/$<CONFIG>")
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME display_compatibility_regressions
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/display_compatibility_runner.py"
+                "$<TARGET_FILE:display_compatibility_tests>" "${CMAKE_BINARY_DIR}/tests/display-results")
+        set_tests_properties(display_compatibility_regressions PROPERTIES TIMEOUT 90)
+    endif()
     add_executable(fullscreen_window_tests EXCLUDE_FROM_ALL tests/fullscreen_window_tests.cpp)
     target_sources(fullscreen_window_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_options(fullscreen_window_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
