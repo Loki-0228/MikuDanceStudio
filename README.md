@@ -25,19 +25,25 @@ the alignment target, rebuilt with a modern toolchain
 - **Animation**: VMD load/save, VPD export, frame editor (bone / morph /
   camera / lighting / self-made expression / accessory tracks), frame playback
   with physics preview
-- **Physics and baking**: Bullet 2.75 rigid bodies + constraints (6DOF spring),
-  deterministic solve order, physics/keyframe baking, and Alembic mesh export
-  with MMV/MME vertex deformations. See [physics baking](docs/PHYSICS_BAKING_REQUIREMENTS.md)
-  and [mesh export and baking](docs/ALEMBIC_EXPORT.md).
+- **Physics**: Bullet 2.75 rigid bodies + constraints (6DOF spring),
+  deterministic solve order, physics baking and per-frame bone-motion
+  resampling. Supports frame ranges, ERP/CFM, substeps, simulation rate,
+  undo/cancel, and unencrypted UTF-8 JSON presets. The baking UI has English,
+  Chinese, and Japanese labels and tooltips, with Bullet defaults. See
+  [physics baking](docs/PHYSICS_BAKING_REQUIREMENTS.md).
+- **Mesh baking and export**: Alembic export includes MMV/MME vertex
+  deformations. Exporting ABC and baking into the project can be selected
+  independently; project baking warns about its effects. Clear mesh bake
+  restores live deformation for the current model or all objects while keeping
+  disabled FX disabled. See [mesh export and baking](docs/ALEMBIC_EXPORT.md).
 - **Rendering**: Native DX12 preview and GPU skinning with DX9/CPU fallback when
-  DX12 is unavailable; DirectX 9 fixed pipeline + optional SM2/SM3 effect chain
-  (HDR RT), toon textures, ground shadows, stereoscopic 3D (NVIDIA 3D Vision)
+  DX12 is unavailable; MME Effect support, toon textures, ground shadows, and
+  stereoscopic 3D (NVIDIA 3D Vision)
 - **Multimedia**: Wave playback, DirectShow AVI with installed legacy codecs,
   and self-contained MP4/H.264 recording with Media Foundation. The export
   dialog reports installed Media Foundation H.264 encoders and allows an
   aspect-ratio-preserving output size; VSQ and Kinect input are also supported.
-- **UI**: EN/JP bilingual, 168-control main window, timeline, accessory
-  editing, undo/redo
+- **UI**: English/Japanese interface, timeline, accessory editing, undo/redo
 
 ### Building from Source
 
@@ -129,19 +135,13 @@ original usage habits nor compatibility requirements, and builders may delete
 them by editing the code.
 
 - **Native bone scaling**: Uniform and XYZ controls support local, global and view axes for every bone. PMM preserves full scale data; VMD stores scale in a versioned tail extension while preserving its standard prefix. See [bone scaling](docs/BONE_SCALING.md).
-- **Unrestricted self-shadow resolution**: Adjust the self-shadow map resolution without a preset range limit.
+- **Extended self-shadow range**: Removes the original MMD restriction on the range where self-shadows can be generated.
 - **Error reporting**: The program writes no log files; a fatal error raises a
   modal window whose text can be copied with Ctrl+C, and the PDB under
   `build/symbols/` resolves source lines.
 - **IME and hotkeys**: Letter hotkeys keep working with a Chinese/Japanese IME
   active - P play/stop plus A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R - except inside
   text fields.
-
-### Implemented additions
-
-Use **Baking → Bake keyframes…** to bake physics or resample bone motion. [Physics baking](docs/PHYSICS_BAKING_REQUIREMENTS.md) supports frame ranges, ERP, CFM, substeps, simulation rate controls, undo, cancellation, and unencrypted UTF-8 JSON presets. The UI includes English, Chinese and Japanese labels and tooltips; initial settings use Bullet defaults.
-
-**Baking → Export ABC…** exports deformed meshes, including MMV output and MME vertex shaders. Exporting an ABC and baking the mesh into the project are independent options. Project baking shows a warning when selected. **Baking → Clear mesh bake…** restores live deformation for the current model or all objects; disabled FX stay disabled. See [mesh export and baking](docs/ALEMBIC_EXPORT.md).
 
 ### Contributions
 
@@ -193,14 +193,13 @@ VMD/VPD 动作数据，在 DirectX 9 视口中编辑骨骼/形态/相机/照明/
 - **模型**：PMD / PMX（含 BDEF4/SDEF 权重）加载，骨骼树、IK、形态（morph）、toon 渲染
 - **动画**：VMD 加载/保存、VPD 导出、帧编辑器（骨骼/形态/相机/照明/自作表情/附件轨道）、
   帧回放与物理预览
-- **物理**：Bullet 2.75 刚体 + 约束（6DOF spring），确定性求解顺序
-- **渲染**：原生 DX12 预览与 GPU 蒙皮；DX12 不可用时回退到 DX9/CPU。另有 DirectX 9 固定管线 + 可选 SM2/SM3 特效链（HDR RT）、toon 纹理、地面阴影、
-  立体视觉（NVIDIA 3D Vision）
-- **烧录与网格导出**：烧录物理结果或逐帧重采样骨骼动作；导出包含 MMV/MME 顶点变形的 Alembic 网格。见[物理烧录](docs/PHYSICS_BAKING_REQUIREMENTS.md)和[网格导出与烧录](docs/ALEMBIC_EXPORT.md)
+- **物理**：Bullet 2.75 刚体与约束（6DOF spring），确定性求解顺序；支持烧录物理结果和逐帧重采样骨骼动作。可设置帧范围、ERP、CFM、子步数和计算频率，支持撤销、取消及 UTF-8 非加密 JSON 预设。界面提供中英日三语和悬浮说明，初始值采用 Bullet 默认参数。见[物理烧录](docs/PHYSICS_BAKING_REQUIREMENTS.md)
+- **网格烧录与导出**：Alembic 可导出包含 MMV/MME 顶点变形的网格；导出 ABC 与烧录回工程可分别选择，只有选择烧录时才提示影响。清除网格烧录可恢复当前模型或全部对象的实时变形，已停用的 FX 保持关闭。见[网格导出与烧录](docs/ALEMBIC_EXPORT.md)
+- **渲染**：原生 DX12 预览与 GPU 蒙皮；DX12 不可用时回退到 DX9/CPU。支持 MME Effect、toon 纹理、地面阴影和立体视觉（NVIDIA 3D Vision）
 - **多媒体**：Wave 播放、DirectShow AVI（使用已安装的传统编码器）、Media
   Foundation 内置 MP4/H.264 录制；导出页会列出系统已注册的 H.264 编码器并支持
   等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
-- **UI**：EN/JP 双语、168 控件主窗口、时间轴、附件编辑、撤销/重做
+- **UI**：英日双语界面、时间轴、附件编辑、撤销/重做
 
 ### 从源码构建
 
@@ -310,17 +309,11 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 特性添加仅为方便本人使用，非MMD原本使用习惯或适配需求，编译者可编辑代码删去。
 
 - **原生骨骼缩放**：所有骨骼支持整体及 XYZ 缩放，统一使用局部、全局和视图坐标系。PMM 保存完整数据，VMD 在保留标准前缀的同时，将缩放写入同一文件尾部。见[骨骼缩放说明](docs/BONE_SCALING.md)。
-- **无范围限制的自阴影分辨率调整**：可调整自阴影贴图分辨率，不受预设范围限制。
+- **扩展自阴影产生范围**：取消原版 MMD 对自阴影产生范围的限制。
 - **错误提示**：程序不写日志文件；遇到致命错误时会弹出对话框，可按 `Ctrl+C` 复制内容。
   开发者可结合 `build/symbols/` 下对应构建的 PDB 定位源码。
 - **输入法与快捷键**：开启中文或日文输入法时，字母快捷键仍有效，包括 `P`（播放/停止）
   和 `A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R`；在编辑框内输入文字时除外。
-
-### 已实现功能
-
-通过 **烘焙 → 烧录关键帧…** 可烧录物理结果或逐帧重采样骨骼动作。[物理烧录说明](docs/PHYSICS_BAKING_REQUIREMENTS.md)包含帧范围、ERP、CFM、子步数、计算频率、撤销、取消，以及 UTF-8 JSON 非加密预设。界面支持中英日三语及悬浮说明，初始配置采用 Bullet 默认参数。
-
-**烘焙 → 导出 ABC…** 可导出包含 MMV 和 MME 顶点变形的网格。「导出 ABC 文件」和「烧录回工程」可单选或同时选择，只有勾选后者时才提示烧录影响。**烘焙 → 清除网格烧录…** 可恢复当前模型或全部对象的实时变形，已停用的 FX 保持关闭。详见[网格导出与烧录](docs/ALEMBIC_EXPORT.md)。
 
 ### 项目来源与维护
 
@@ -372,17 +365,14 @@ Bullet 2.75 剛体物理、AVI 動画録画、VSQ 音源との同期、アニメ
 - **アニメーション**：VMD 読み込み／保存、VPD エクスポート、フレームエディタ
   （ボーン／モーフ／カメラ／照明／自作表情／アクセサリトラック）、物理プレビュー付き
   フレーム再生
-- **物理**：Bullet 2.75 剛体＋コンストレイント（6DOF スプリング）、決定論的な
-  求解順序
-- **レンダリング**：ネイティブ DX12 プレビューと GPU スキニングに対応し、DX12 が使えない場合は DX9/CPU にフォールバックします。DirectX 9 固定機能パイプライン＋オプションの SM2/SM3
-  エフェクトチェーン（HDR RT）、トゥーンテクスチャ、地面影、立体視
-  （NVIDIA 3D Vision）
-- **ベイクとメッシュ出力**：物理結果のベイクやボーン動作のフレーム単位再サンプリング、MMV/MME の頂点変形を含む Alembic メッシュ出力に対応します。[物理ベイク](docs/PHYSICS_BAKING_REQUIREMENTS.md)と[メッシュ出力・ベイク](docs/ALEMBIC_EXPORT.md)を参照してください。
+- **物理**：Bullet 2.75 剛体とコンストレイント（6DOF スプリング）、決定論的な求解順序。物理結果のベイクとボーン動作のフレーム単位再サンプリングにも対応します。フレーム範囲、ERP、CFM、サブステップ、計算周波数を設定でき、取り消し・キャンセルと暗号化しない UTF-8 JSON プリセットを利用できます。UI とツールチップは日英中に対応し、初期値は Bullet の既定値です。[物理ベイク](docs/PHYSICS_BAKING_REQUIREMENTS.md)
+- **メッシュベイクと出力**：Alembic は MMV/MME の頂点変形を含むメッシュを出力します。ABC 出力とプロジェクトへのベイクは個別に選択でき、ベイクを選んだ場合だけ影響を警告します。メッシュベイク解除で選択モデルまたは全オブジェクトの変形を元に戻し、無効化済み FX は無効のままです。[メッシュ出力・ベイク](docs/ALEMBIC_EXPORT.md)
+- **レンダリング**：ネイティブ DX12 プレビューと GPU スキニングに対応し、DX12 が使えない場合は DX9/CPU にフォールバックします。MME Effect、トゥーンテクスチャ、地面影、立体視（NVIDIA 3D Vision）もサポートします。
 - **マルチメディア**：Wave 再生、インストール済みの従来型コーデックを使う
   DirectShow AVI、Media Foundation による内蔵 MP4/H.264 録画。エクスポート画面で
   登録済み H.264 エンコーダーを確認でき、縦横比を保った解像度変更にも対応します。
   VSQ と Kinect 入力も利用できます
-- **UI**：英／日バイリンガル、168 コントロールのメインウィンドウ、タイムライン、
+- **UI**：英語・日本語 UI、タイムライン、
   アクセサリ編集、元に戻す／やり直し
 
 ### ソースからのビルド
@@ -444,18 +434,12 @@ cmake --install build --config Release --prefix build/Release
 ビルドする方はコードを編集して削除できます。
 
 - **ボーンスケール**：すべてのボーンを一括または XYZ 軸ごとに拡大縮小できます。ローカル・グローバル・ビュー座標に対応し、PMM に保存します。VMD は標準部分を維持し、同じファイルの末尾にスケール拡張を保存します。[詳細](docs/BONE_SCALING.md)。
-- **範囲制限のないセルフシャドウ解像度調整**：セルフシャドウマップの解像度をプリセット範囲に制限されず調整できます。
+- **セルフシャドウ範囲の拡張**：オリジナル MMD にあるセルフシャドウ生成範囲の制限をなくしました。
 - **エラー表示**：ログファイルは出力せず、致命的エラー時はモーダルなエラーウィンドウを
   表示します（Ctrl+C で内容をコピーでき、`build/symbols/` の PDB でソース行を特定できます）。
 - **入力メソッドとショートカット**：中国語／日本語の入力メソッドを ON にしたままでも
   英字ショートカット（P 再生／停止、ほか A/S/D/F/G/H/I/J/K/L/U/V/X/Z/B/C/R）が有効です
   （テキスト入力欄を除く）。
-
-### 実装済み機能
-
-**ベイク → キー焼き込み…** から物理結果の焼き込みとボーン動作の再サンプリングができます。[物理焼き込み](docs/PHYSICS_BAKING_REQUIREMENTS.md)は範囲、ERP、CFM、サブステップ、計算周波数、取り消し、キャンセル、暗号化しない UTF-8 JSON プリセットに対応します。表示と説明は日本語・英語・中国語に対応し、初期値には Bullet の既定値を使います。
-
-**ベイク → ABC 書き出し…** は MMV と MME の頂点変形を含むメッシュを出力します。ABC 出力とプロジェクトへのベイクは別々に選択でき、ベイクを選ぶときだけ警告を表示します。**ベイク → ベイク解除…** は選択モデルまたは全オブジェクトの変形を元に戻します。FX は無効のままです。[詳細](docs/ALEMBIC_EXPORT.md)。
 
 ### 貢献
 
