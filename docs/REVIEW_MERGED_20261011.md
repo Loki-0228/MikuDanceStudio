@@ -1,5 +1,7 @@
 # MMS 与 MMV4MMS 合并审查记录
 
+实施更新：F01、F02、F04、F07 已完成第一批专项验收，见[验收记录](REPAIR_BATCH1_20261011.md)。原问题描述和优先级保留用于溯源。实施中另确认 GPU Mesh 输出丢失内联纹理像素，需要在通用 mesh 接入前优先修复；扩展运行时跨层用例的既有失败也已单列，均不计入本批通过范围。
+
 本记录合并 2026 年 10 月 11 日两轮审查，保留 10 项缺陷、4 项构建与交付问题，以及 9 项优化候选。严重度与实施批次分别记录。同一文件中的问题交给同一负责人，因此个别 P2 可以随 P1 一起处理。
 
 执行分工见[协同修复方案](D:/MMD-Next/MMS/docs/REPAIR_COORDINATION_20261011.md)。完整任务依赖和文件清单见[合并数据](D:/MMD-Next/MMS/.local/artifacts/size-code-review-20261011/03/consolidated-review.json)。原始记录保留在[第一轮](D:/MMD-Next/MMS/.local/artifacts/size-code-review-20261011/01/review-evidence.json)和[第二轮](D:/MMD-Next/MMS/.local/artifacts/size-code-review-20261011/02/review-evidence.json)，不覆盖原证据。

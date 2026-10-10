@@ -1,5 +1,7 @@
 # 本地工作区布局
 
+第一批审查修复的前后工作树为两仓各自 `.local/worktrees/repair-b1-before/` 和 `.local/worktrees/repair-b1-integration/`，构建为 `.local/builds/repair-b1-before/` 和 `.local/builds/repair-b1-after/`，作为验收参考保留。实现工作树 `repair-b1-vmd`、`repair-b1-physics-input`、`repair-b1-render-contract` 合入后记为冗余保留，不删除。证据集中在 MMS 的 `.local/artifacts/repair-b1-20261011/01/`，详见[第一批验收](REPAIR_BATCH1_20261011.md)。本批没有替换正式 `build/Release/`。
+
 当前 `build/Release/MikuMikuDance.exe` 为本地 CPU 忙等待修复版（源码 `6ca7c98`），尚未发布到 GitHub。前后工作树为 `.local/worktrees/cpu-wait-before/` 和 `.local/worktrees/cpu-wait-after/`，构建为 `.local/builds/cpu-wait-before/` 和 `.local/builds/cpu-wait-after/`，证据在 `.local/artifacts/cpu-wait-fix-20261011/01/`。新版快照位于 `.local/releases/cpu-wait-fix-20261011/`，被替换的完整运行目录位于 `.local/archives/cpu-wait-fix-20261011/Release/`。这些目录作为验收参考保留，见[修复记录](CPU_WAIT_FIX_20261011.md)。
 
 `v2026.10.11.3` 是此前正式发布版本。固定源码、构建和发布验证位于 `.local/artifacts/github-release/v2026.10.11.3/`，独立构建为 `.local/builds/names-release-20261011/`，发布包位于 `.local/releases/v2026.10.11.3/`。旧程序备份在 `.local/archives/japanese-name-gaps-20261011/`。这些目录保留为验收参考，见[发布记录](RELEASE_20261011_3.md)。

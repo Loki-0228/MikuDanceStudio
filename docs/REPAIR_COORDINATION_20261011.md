@@ -1,20 +1,22 @@
 # MMS 与 MMV4MMS 协同修复方案
 
-按本方案依次处理[合并审查记录](D:/MMD-Next/MMS/docs/REVIEW_MERGED_20261011.md)中的问题。先修复内存安全和输入输出错误，再接入通用 mesh 变换，最后比较性能及体积。当前只形成方案，未创建修复工作树、未启动修复任务。
+按本方案依次处理[合并审查记录](D:/MMD-Next/MMS/docs/REVIEW_MERGED_20261011.md)中的问题。先修复内存安全和输入输出错误，再接入通用 mesh 变换，最后比较性能及体积。第一批 A、B、C 已完成实现和专项验收，详见[第一批修复验收记录](REPAIR_BATCH1_20261011.md)。后续批次尚未启动。
 
 采用主进程加最多 3 个修复子进程。主进程固定契约、管理公共文件、串行合并与验收。子进程只修改任务允许的文件。并行开发并不代表可以并行修改同一文件、同时更新公共接口或同时测量性能。
 
-实际实现遵守[MMS 分工约定](D:/MMD-Next/MMS/AGENTS.md)：独立单模块修改交给 DSH，主进程负责跨模块整合。派发前读取已安装的 dsh-delegate 技能并核验宿主状态；每次显式传绝对 workspace，核对返回 cwd。宿主不可用时报告原因，不启动第二个宿主或用其他进程冒充。本轮三个现有子代理仅做只读分工复核。
+本批用户后续明确要求直接使用 ChatGPT 子进程，因此 A、B、C 由三个内部子进程并行实现，主进程统一整合和验收。以下 DSH 条款保留为默认约定，不适用于这次明确覆盖。
+
+默认实现遵守[MMS 分工约定](D:/MMD-Next/MMS/AGENTS.md)：独立单模块修改交给 DSH，主进程负责跨模块整合。派发前读取已安装的 dsh-delegate 技能并核验宿主状态；每次显式传绝对 workspace，核对返回 cwd。宿主不可用时报告原因，不启动第二个宿主或用其他进程冒充。子进程的最终改动和交叉复核结果见第一批验收记录。
 
 先由主进程完成以下准备。
 
 1. 记录两个仓库的提交与工作树状态。原审查基线为 MMS `145cbda`、MMV4MMS `74edd1d`。整理期间 MMS 新增 OpenMP 修复 `6ca7c98`，可在核对交接后作为开发基线。实施前若有新提交，重新检查对应问题，避免重复修复。
-2. 从固定提交创建每包独立 Git 工作树，不复制当前未提交修改。预定路径分别为 `D:/MMD-Next/MMS/.local/worktrees/<包名>/` 和 `D:/MMD-Next/MMV4MMS/.local/worktrees/<包名>/`。本方案没有创建这些目录。
-3. 每包使用自身工作树内的 build 与日志目录。实验依赖使用独立缓存或唯一包身份，不改写正式依赖缓存。不要复用另一个工作树的 CMake 缓存。
+2. 从固定提交创建每包独立 Git 工作树，不复制当前未提交修改。预定路径分别为 `D:/MMD-Next/MMS/.local/worktrees/<包名>/` 和 `D:/MMD-Next/MMV4MMS/.local/worktrees/<包名>/`。第一批实际工作树位置见验收记录。
+3. 每包使用所属仓库内独立的 `.local/builds/` 与 `.local/artifacts/` 目录。实验依赖使用独立缓存或唯一包身份，不改写正式依赖缓存。不要复用另一个工作树的 CMake 缓存。
 4. 登记下列文件占用与公共文件所有权。任务需要越界修改时，将所需改动和理由交给主进程；主进程先调整分工，再继续相关修改。
 5. 记录基础编译环境和实际加载的运行库。OpenMP 修复已提交为 `6ca7c98`，无需再创建同目标修复包；核对原会话的完整验收及文件交接。每项前后对照必须采用相同等待策略和构建条件，不能将 OpenMP 的收益算到其他任务上。
 
-以下文件保留外部所有权，待核对交接后才能纳入后续任务。OpenMP 的五个文件已在 `6ca7c98` 提交；原技术路线文档仍是既有删除状态，不能恢复或清理。
+下列外部改动已核对：OpenMP 工作提交后，第一批基于 `7a531c0` 开发；主进程仅在 CMake 增加本批测试注册。OpenMP 的五个文件已在 `6ca7c98` 提交；原技术路线文档仍是既有删除状态，不能恢复或清理。
 
 - [CMakeLists.txt](D:/MMD-Next/MMS/CMakeLists.txt)。
 - [geometry_workers.hpp](D:/MMD-Next/MMS/include/mikudancestudio/geometry_workers.hpp)。
@@ -45,7 +47,9 @@ K、L、M 是优化任务，可以后移。通用 mesh 接入不以这些优化�
 A：VMD 读入安全。负责人：子进程。没有其他修复包的硬性前置。
 
 - [vmd_load.cpp](D:/MMD-Next/MMS/src/model/vmd_load.cpp)。
-- `D:/MMD-Next/MMS/tests/vmd_load_safety_tests.cpp`（预定新增）。
+- [vmd_read_guard.hpp](D:/MMD-Next/MMS/src/model/vmd_read_guard.hpp)（第一批新增私有读取器）。
+- [key_registrars.cpp](D:/MMD-Next/MMS/src/model/key_registrars.cpp)（第一批交叉复核追加，仅限定 IK 名称比较宽度）。
+- [vmd_load_safety_tests.cpp](D:/MMD-Next/MMS/tests/vmd_load_safety_tests.cpp)。
 
 验收及边界：真实读入回归；容量、长度、短读、错误回滚与正常VMD均通过。新增测试文件由主进程注册。
 
