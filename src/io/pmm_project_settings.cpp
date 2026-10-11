@@ -1,4 +1,5 @@
 #include "mikudancestudio/ui_translation.hpp"
+#include "mikudancestudio/build_profile.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -80,17 +81,28 @@ skinning::Preference ResolveProcessor(Processor processor, const std::vector<gpu
 }
 
 void Reset(MMDApp& app) {
+#if !MMD_ORIGINAL_PROFILE
     curve_host::Reset(&app);
     morph_curve::Reset(&app);
+#endif
     app.PmmProjectSettings() = {};
     app.TransparentMaterialSortPrecision() = kDefaultTransparentSortPrecision;
     // Processor settings are per machine user, not per project: creating a new
     // scene never resets them (docs/PROCESSOR_SETTINGS_PROPOSAL.md).
+#if !MMD_ORIGINAL_PROFILE
     bone_scale_io::ResetPmm();
+#endif
     Refresh(app);
 }
 
 void Load(MMDApp& app, int fd) {
+#if MMD_ORIGINAL_PROFILE
+    // Original MMD stops at the standard body. Do not parse, retain or apply
+    // even unknown extension records from a full-profile project.
+    (void)fd;
+    app.PmmProjectSettings() = {};
+    app.TransparentMaterialSortPrecision() = kDefaultTransparentSortPrecision;
+#else
     curve_host::Reset(&app);
     morph_curve::Reset(&app);
     // Every model slot is loaded anew with the standard PMM data, so the
@@ -137,9 +149,14 @@ void Load(MMDApp& app, int fd) {
         LegacyUiMessageBoxA(app.MainWindow(),meshError.c_str(),"Mesh cache / PMM",MB_OK|MB_ICONWARNING);
     }
     Refresh(app);
+#endif
 }
 
 pmm_extension::Document Capture(const MMDApp& app) {
+#if MMD_ORIGINAL_PROFILE
+    (void)app;
+    return {};
+#else
     const auto& state = app.PmmProjectSettings();
     auto document = state.document;
     // The processor choice is per machine user (processor.ini), never project
@@ -172,6 +189,7 @@ pmm_extension::Document Capture(const MMDApp& app) {
     morph_curve::CapturePmm(app, document);
     curve_host::Capture(const_cast<MMDApp&>(app), document);
     return document;
+#endif
 }
 
 void ProcessorChanged(MMDApp& app) {

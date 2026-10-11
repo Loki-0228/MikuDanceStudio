@@ -2885,6 +2885,10 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
     // only moves between the two values it always meant: Off while sorting is
     // on, Standard while it is off.  Any other stored value turns into Off.
     case kAutoTransparentMaterialSortingMenuId: {
+#if MMD_ORIGINAL_PROFILE
+        app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Off;
+        return;
+#else
         auto& precision = app->TransparentMaterialSortPrecision();
         precision = precision == TransparentSortPrecision::Off
                         ? TransparentSortPrecision::Standard
@@ -2894,6 +2898,7 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         RefreshMainWindowViewport(app);  // 0x42C810 viewport refresh
         InvalidateRect(hwnd, &app->ViewportRect(), FALSE);
         return;
+#endif
     }
 
     // ------------------------------------------------------------------
@@ -2911,6 +2916,10 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
     case kTransparentSortPrecisionMenuFirst + 2:
     case kTransparentSortPrecisionMenuFirst + 3:
     case kTransparentSortPrecisionMenuOff: {
+#if MMD_ORIGINAL_PROFILE
+        app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Off;
+        return;
+#else
         const auto precision = static_cast<TransparentSortPrecision>(
             id - kTransparentSortPrecisionMenuFirst);
         // The raw records are consulted only while this field has never been
@@ -2930,6 +2939,7 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         RefreshMainWindowViewport(app);  // 0x42C810 viewport refresh
         InvalidateRect(hwnd, &app->ViewportRect(), FALSE);
         return;
+#endif
     }
 
     case 310: {

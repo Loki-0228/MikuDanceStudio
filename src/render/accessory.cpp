@@ -177,7 +177,7 @@ void TraceMeshHeader(void* mesh) noexcept {
                        words[5], words[6], words[7]);
 }
 
-void DrawSubset(void* accessory, DWORD index) {
+HRESULT DrawSubset(void* accessory, DWORD index) {
     // Bisect switch for the crash investigation: with
     // MIKUDANCESTUDIO_SKIP_ACCESSORY_DRAW set, the accessory mesh draw is not
     // issued at all.  If the field crash disappears, the corruption lives in
@@ -188,7 +188,7 @@ void DrawSubset(void* accessory, DWORD index) {
         return value != nullptr && value[0] != '\0' && value[0] != '0';
     }();
     if (skip)
-        return;
+        return S_OK;
     void* mesh = native_mesh::AccessoryMesh(accessory);
     // The mesh is an ID3DXMesh; DrawSubset forwards to the device with the
     // mesh's own vertex/index buffers, so a sentinel left in the field faults
@@ -209,13 +209,14 @@ void DrawSubset(void* accessory, DWORD index) {
                                     utf8, sizeof(utf8), nullptr, nullptr))
                 runtime_log::Trace("RESOURCE accessory path=%s", utf8);
         }
-        return;
+        return E_FAIL;
     }
     if (mesh != nullptr) {
         TraceMeshHeader(mesh);
-        reinterpret_cast<MeshDrawSubset>(
+        return reinterpret_cast<MeshDrawSubset>(
             (*reinterpret_cast<void***>(mesh))[3])(mesh, index);
     }
+    return D3DERR_INVALIDCALL;
 }
 
 void AccessoryPlacement(MMDApp* app, void* accessory, Matrix* world) {
@@ -1104,12 +1105,13 @@ void RenderAccessoriesProjectedGroundShadowGeometry(MMDApp* app) {
     }
 }
 
-void RenderAccessoriesShadow(MMDApp* app) {                     // 0x4C52D0
+static bool RenderAccessoriesShadowImpl(MMDApp* app,bool checked) {                     // 0x4C52D0
     D3DRenderer* sub = app->Renderer();
     auto* device = sub->device;
     void* effect = sub->effect;
     if (device == nullptr || effect == nullptr || !d3dx::Get().Load())
-        return;
+        return false;
+    bool succeeded=true;
     for (int slot = 0; slot < 255; ++slot) {
         void* accessory = native_mesh::RenderAccessory(app->AccessorySlot(slot));
         if (accessory == nullptr || mdl::Accessory(accessory)->visible == 0 ||
@@ -1122,25 +1124,36 @@ void RenderAccessoriesShadow(MMDApp* app) {                     // 0x4C52D0
         d3dx::Get().multiply(
             &light, &world,
             reinterpret_cast<const Matrix*>(&app->LightViewProjection()));
-        FxMatrix(effect, "matLightViewProj", &light);
-        FxMatrix(effect, "matWorldViewProj", &light);
+        const HRESULT lightSet=d3dx::FxSetMatrix(effect, "matLightViewProj", &light);
+        const HRESULT projectionSet=d3dx::FxSetMatrix(effect, "matWorldViewProj", &light);
+        if(checked&&(FAILED(lightSet)||FAILED(projectionSet)))return false;
         D3DMATERIAL9 material{};
         material.Diffuse.a = 1.0f;
         material.Specular.a = 1.0f;
-        device->SetMaterial(&material);
-        device->SetTexture(0, nullptr);
-        FxBeginPass(effect);
+        const HRESULT materialSet=device->SetMaterial(&material);
+        const HRESULT textureSet=device->SetTexture(0, nullptr);
+        if(checked&&(FAILED(materialSet)||FAILED(textureSet)))return false;
+        const HRESULT began=d3dx::FxBeginPass(effect,0);
+        if(checked&&FAILED(began))return false;
         auto* materials = static_cast<const D3DMATERIAL9*>(mdl::Accessory(accessory)->materials);
         const DWORD count = mdl::Accessory(accessory)->materialCount;
         mdl::Accessory(accessory)->currentMaterial = -1;
         for (DWORD i = 0; i < count; ++i) {
             ++mdl::Accessory(accessory)->currentMaterial;
             if (materials[i].Diffuse.a != 0.9800000190734863f)
-                DrawSubset(accessory, i);
+                if(FAILED(DrawSubset(accessory, i)))succeeded=false;
         }
-        FxEndPass(effect);
+        if(FAILED(FxEndPass(effect)))succeeded=false;
         mdl::Accessory(accessory)->currentMaterial = -1;
     }
+    return succeeded;
+}
+
+void RenderAccessoriesShadow(MMDApp* app) {
+    (void)RenderAccessoriesShadowImpl(app,false);
+}
+bool RenderAccessoriesShadowChecked(MMDApp* app) {
+    return RenderAccessoriesShadowImpl(app,true);
 }
 
 void RenderAccessoriesEffect(MMDApp* app) {                     // 0x4C55C0

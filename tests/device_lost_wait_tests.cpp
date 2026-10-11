@@ -5,6 +5,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/default_effect.hpp"
 #include <MinHook.h>
 #include <vfw.h>
 #include <dbghelp.h>
@@ -465,6 +466,16 @@ int main(int argc, char** argv) {
     DrainMessages();
     renderer = app->Renderer();
     Require(renderer && renderer->device, "production device exists");
+    // The compiler finishes asynchronously after the first presentation. Its
+    // normal attachment checks TestCooperativeLevel, so finish that startup
+    // work before counting calls made by the scripted recovery scenario.
+    const auto effectDeadline = GetTickCount64() + 15000;
+    while (!renderer->effect && GetTickCount64() < effectDeadline) {
+        UpdateDefaultEffect(app);
+        DrainMessages();
+        if (!renderer->effect) Sleep(5);
+    }
+    Require(renderer->effect != nullptr, "default effect is ready before recovery counters are armed");
     device = renderer->device;
     // Only the device is retained; DEFAULT-pool surfaces must remain releasable
     // by the real PostDeviceReset. No stub replaces FrameDriver or Reset flow.

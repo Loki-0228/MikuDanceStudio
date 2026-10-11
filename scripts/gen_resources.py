@@ -101,7 +101,7 @@ def dialog_ids():
     return sorted(n for t, n in templates() if t == RT_DIALOG)
 
 
-def record_specs(manifest):
+def record_specs(manifest, profile="full"):
     """Yield (type, name, lang, res-relative path) in .rsrc tree order.
 
     A None path marks a template record: its blob comes from compiling the
@@ -118,8 +118,9 @@ def record_specs(manifest):
         yield (RT_MENU, nm, LANG_JP, None)
     for did in dialog_ids():
         yield (RT_DIALOG, did, LANG_JP, None)
-    yield (RT_RCDATA, 117, LANG_JP, "assets/skin_effect_sm2.fx")
-    yield (RT_RCDATA, 118, LANG_JP, "assets/skin_effect_sm3.fx")
+    shaders = "assets/original" if profile == "mmd932" else "assets"
+    yield (RT_RCDATA, 117, LANG_JP, f"{shaders}/skin_effect_sm2.fx")
+    yield (RT_RCDATA, 118, LANG_JP, f"{shaders}/skin_effect_sm3.fx")
     yield (RT_GROUP_ICON, 100, LANG_JP, APP_ICON)
     yield (RT_MANIFEST, 1, LANG_EN, manifest)
 
@@ -190,12 +191,12 @@ def render_res(records):
     return bytes(out)
 
 
-def build_records(manifest):
+def build_records(manifest, profile="full"):
     ico_images, ico_group = load_ico_images(os.path.join(RES, APP_ICON))
     images = {rid: blob for rid, blob in ico_images}
     tmpl = templates()
     records = []
-    for t, n, lang, rel in record_specs(manifest):
+    for t, n, lang, rel in record_specs(manifest, profile):
         if rel is None:                       # template from the .rc sources
             blob = tmpl[(t, n)]
         else:
@@ -279,12 +280,15 @@ def cmd_init():
     print(f"init: wrote res/assets/, res/mmd_manifest_x64.xml")
 
 
-def run_gen(verify_only=False):
+def run_gen(verify_only=False, output_dir=None, profile="full"):
+    output_dir = output_dir or RES
+    if not verify_only:
+        os.makedirs(output_dir, exist_ok=True)
     ok = True
     for manifest, out in (("mmd_manifest.xml", "gen_resources.res"),
                           ("mmd_manifest_x64.xml", "gen_resources_x64.res")):
-        want = render_res(build_records(manifest))
-        out_path = os.path.join(RES, out)
+        want = render_res(build_records(manifest, profile))
+        out_path = os.path.join(output_dir, out)
         try:
             with open(out_path, "rb") as existing:
                 have = existing.read()
@@ -310,11 +314,14 @@ def run_gen(verify_only=False):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("cmd", choices=["init", "gen", "verify"])
+    ap.add_argument("--output-dir", help="Generated resource directory; defaults to res/")
+    ap.add_argument("--profile", choices=["full", "mmd932"], default="full")
     args = ap.parse_args()
     if args.cmd == "init":
         cmd_init()
         return 0
-    return 0 if run_gen(verify_only=(args.cmd == "verify")) else 1
+    return 0 if run_gen(verify_only=(args.cmd == "verify"),
+                       output_dir=args.output_dir, profile=args.profile) else 1
 
 
 if __name__ == "__main__":

@@ -6,7 +6,10 @@
 #include "mikudancestudio/native_media.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "device_lost_wait.hpp"
+#include "mikudancestudio/build_profile.hpp"
+#if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_peeling.hpp"
+#endif
 // ===========================================================================
 // VA 0x00462C40 - ShutdownCleanup  (original: sub_462C40, 0x6A8 bytes)
 // ===========================================================================
@@ -301,7 +304,9 @@ int NvapiStereoDestroyHandle(void* stereoHandle) {
 void DisposeRenderSubsystem(D3DRenderer* sub) {
     CancelDefaultEffectCompilation(sub);
     InvalidateTextureLookup();
+#if !MMD_ORIGINAL_PROFILE
     ClearTransparentPeelingCache();
+#endif
     ReleaseSlot(sub->effect);             // +120160  0x406BF8
     ReleaseSlot(sub->shadowSurface);      // +120144
     ReleaseSlot(sub->hdrTexture);         // +120136

@@ -1,3 +1,4 @@
+#include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
 // VA 0x0040D070 - PostLanguageSweep2  (original: sub_40D070)
 // ===========================================================================
@@ -204,14 +205,17 @@ void PostViewRefresh(MMDApp* app) {
     if (boneIdx < 0) {                                     // 0x40D401 jl
         for (int id = 0x220; id <= 0x226; ++id)
             SetReadoutText(GetDlgItem(hwnd, id), "-----");
+#if !MMD_ORIGINAL_PROFILE
         SetReadoutText(GetDlgItem(hwnd, panel::kReadoutScaleXEdit), "-----");
         SetReadoutText(GetDlgItem(hwnd, panel::kReadoutScaleYEdit), "-----");
         SetReadoutText(GetDlgItem(hwnd, panel::kReadoutScaleZEdit), "-----");
         EnableWindow(GetDlgItem(hwnd, panel::kReadoutScaleXEdit), FALSE);
         EnableWindow(GetDlgItem(hwnd, panel::kReadoutScaleYEdit), FALSE);
         EnableWindow(GetDlgItem(hwnd, panel::kReadoutScaleZEdit), FALSE);
+#endif
         return;
     }
+#if !MMD_ORIGINAL_PROFILE
     float scaleValues[3] = {1.0f, 1.0f, 1.0f};
     SelectedBoneScaleReadout(app, scaleValues);
     const int scaleIds[] = {panel::kReadoutScaleXEdit,
@@ -223,6 +227,7 @@ void PostViewRefresh(MMDApp* app) {
         EnableWindow(GetDlgItem(hwnd, scaleIds[i]),
                      app->PlaybackActive() == 0 ? TRUE : FALSE);
     }
+#endif
     mikudancestudio::mdl::BoneRecord* bone =
         &mikudancestudio::mdl::Bones(model)[boneIdx];
     const float* display;

@@ -349,7 +349,11 @@ void CmdOpenWave(MMDApp* app) {
     ofn.hwndOwner = app->FloatingWindow() != nullptr
                         ? app->FloatingWindow()
                         : MainHwnd(app);
+#if MMD_ORIGINAL_PROFILE
+    ofn.lpstrFilter = L"WAV files (*.wav)\0*.wav\0";
+#else
     ofn.lpstrFilter = L"Audio (*.wav;*.mp3;*.aac;*.adts;*.m4a;*.wma)\0*.wav;*.mp3;*.aac;*.adts;*.m4a;*.wma\0";
+#endif
     ofn.lpstrFile = path;
     ofn.nMaxFile = kDialogPathLen;
     ofn.Flags = OFN_FILEMUSTEXIST;              // 0x1000
@@ -583,7 +587,11 @@ void CmdLoadAvi(MMDApp* app) {
     ofn.hwndOwner = app->FloatingWindow() != nullptr
                         ? app->FloatingWindow()
                         : MainHwnd(app);
+#if MMD_ORIGINAL_PROFILE
+    ofn.lpstrFilter = L"AVI files (*.avi)\0*.avi\0";
+#else
     ofn.lpstrFilter = L"Video (*.avi;*.mp4;*.mov)\0*.avi;*.mp4;*.mov\0";
+#endif
     ofn.lpstrFile = path;
     ofn.nMaxFile = kDialogPathLen;
     ofn.Flags = OFN_FILEMUSTEXIST;              // 0x1000

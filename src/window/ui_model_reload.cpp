@@ -1,3 +1,4 @@
+#include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
 // VA 0x0040D940 / 0x0044D610 - model/camera panel refresh helpers
 // ===========================================================================
@@ -167,8 +168,10 @@ void PostModelReload2(MMDApp* app) {  // 0x40D940
     curve_host::ShowControls(app, app->state.optflag[0] != 0 && app->state.optflag[3] != 0);
     const bool cameraMode =
         app->state.optflag[0] != 0;
+#if !MMD_ORIGINAL_PROFILE
     ShowWindow(MainControl(app, panel::kAdaptiveShadowCheckbox),
         cameraMode && app->state.optflag[6] != 0 ? SW_SHOWNORMAL : SW_HIDE);
+#endif
 
     const struct {
         int first;

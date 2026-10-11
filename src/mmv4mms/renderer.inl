@@ -11,7 +11,8 @@ int Render(MMDApp* app,const float world[16]) {
     if(FAILED(device->CreateStateBlock(D3DSBT_ALL,&state))||FAILED(device->GetRenderTarget(0,&target))||FAILED(device->GetViewport(&viewport)))return -1;
     device->GetDepthStencilSurface(&depth);for(unsigned i=0;i<3;++i)device->GetRenderTarget(i+1,&extra[i]);
     struct Restore {IDirect3DDevice9* device;IDirect3DStateBlock9* state;IDirect3DSurface9* target;IDirect3DSurface9* depth;D3DVIEWPORT9 viewport;ComPtr<IDirect3DSurface9>* extra;
-        ~Restore(){device->SetDepthStencilSurface(nullptr);for(unsigned i=0;i<3;++i)device->SetRenderTarget(i+1,nullptr);device->SetRenderTarget(0,target);for(unsigned i=0;i<3;++i)device->SetRenderTarget(i+1,extra[i].Get());device->SetDepthStencilSurface(depth);state->Apply();device->SetViewport(&viewport);}
+        void Apply(){device->SetDepthStencilSurface(nullptr);for(unsigned i=0;i<3;++i)device->SetRenderTarget(i+1,nullptr);device->SetRenderTarget(0,target);for(unsigned i=0;i<3;++i)device->SetRenderTarget(i+1,extra[i].Get());device->SetDepthStencilSurface(depth);state->Apply();device->SetViewport(&viewport);}
+        ~Restore(){Apply();}
     } restore{device,state.Get(),target.Get(),depth.Get(),viewport,extra};
     try {
         std::vector<std::unique_ptr<Snapshot>> owned;std::vector<MmvObject> objects;std::vector<MmvObjectRenderData> renderData;
@@ -65,6 +66,8 @@ int Render(MMDApp* app,const float world[16]) {
             }}objects.push_back(item->View());renderData.push_back(item->renderData);opacity.push_back(item->object.kind==MMV_ACCESSORY?reinterpret_cast<const mdl::AccessoryRecord*>(uintptr_t(item->object.id))->opacity:1.f);}
         MmvMmsFrame input{};input.structureSize=sizeof(input);input.abiVersion=MMV_MMS_ABI_VERSION;input.device=reinterpret_cast<uint64_t>(device);
         input.materialChannels=channels.data();input.materialChannelCount=uint32_t(channels.size());
+        MaterialPassContext materialPassContext{app,&objects};
+        input.materialPassContext=&materialPassContext;input.readMaterialPass=&ReadMaterialPass;
         auto& frame=input.scene;frame.structureSize=sizeof(frame);frame.frameId=++frameNumber;frame.objects=objects.data();frame.objectCount=uint32_t(objects.size());frame.objectRenderData=renderData.data();frame.objectOpacity=opacity.data();
         frame.elapsedSeconds=app->PlaybackActive()?std::max(0.f,app->DeltaTime()):0;
         snapshotNativePhysics=1;
@@ -73,9 +76,35 @@ int Render(MMDApp* app,const float world[16]) {
         dx.multiply(reinterpret_cast<d3dx::D3DXMATRIXF*>(frame.view),reinterpret_cast<const d3dx::D3DXMATRIXF*>(world),reinterpret_cast<const d3dx::D3DXMATRIXF*>(&view));
         device->GetTransform(D3DTS_PROJECTION,reinterpret_cast<D3DMATRIX*>(frame.projection));std::copy_n(app->LightDirection(),3,frame.lightDirection);std::copy_n(app->LightColor(),3,frame.lightColor);
         frame.width=viewport.Width;frame.height=viewport.Height;input.background[0]=input.background[1]=input.background[2]=app->state.blackBackgroundEnabled?0.f:1.f;input.background[3]=TransparentExportActive(app)?0.f:1.f;
-        input.shadowMode=app->state.selfShadowEnabled?app->ShadowMode():0;input.shadowWidth=input.shadowHeight=1024;
-        D3DSURFACE_DESC shadowDescription{};
-        if(app->Renderer()->hdrTexture&&SUCCEEDED(app->Renderer()->hdrTexture->GetLevelDesc(0,&shadowDescription))){input.shadowWidth=shadowDescription.Width;input.shadowHeight=shadowDescription.Height;}
+        // MMV replaces the normal scene before its BeginScene, so generate the
+        // native map here, once, using this frame's posed buffers and projection.
+        // No CPU depth readback or reconstruction with a second shadow camera.
+        MmvMmsSelfShadow nativeShadow{};nativeShadow.structureSize=sizeof(nativeShadow);
+        nativeShadow.version=MMV_MMS_SELF_SHADOW_VERSION;nativeShadow.encoding=MMV_MMS_SHADOW_NATIVE_PROJECTED_DEPTH;
+        nativeShadow.frameId=frame.frameId;
+        ComPtr<IDirect3DTexture9> shadowTexture;
+        if(app->Renderer()->effect&&UseEffectModelRenderer(app)) {
+            Check(device->BeginScene(),"Begin native MMV shadow");
+            struct EndNativeScene {
+                IDirect3DDevice9* device;bool active=true;
+                HRESULT Finish(){active=false;return device->EndScene();}
+                ~EndNativeScene(){if(active)device->EndScene();}
+            } scene{device};
+            const bool rendered=RenderShadowMapChecked(app,world);
+            const HRESULT ended=scene.Finish();
+            restore.Apply();
+            Check(ended,"End native MMV shadow");
+            if(!rendered)throw std::runtime_error("MMS native shadow pass failed; MMV frame discarded");
+            shadowTexture=app->Renderer()->hdrTexture;
+            D3DSURFACE_DESC description{};
+            if(!shadowTexture||FAILED(shadowTexture->GetLevelDesc(0,&description))||description.Format!=D3DFMT_R32F)
+                throw std::runtime_error("Invalid MMS native shadow texture");
+            nativeShadow.mode=app->ShadowMode();nativeShadow.width=description.Width;nativeShadow.height=description.Height;
+            nativeShadow.texture=reinterpret_cast<uint64_t>(shadowTexture.Get());
+            std::memcpy(nativeShadow.lightViewProjection,&app->LightViewProjection(),sizeof(nativeShadow.lightViewProjection));
+        }
+        input.nativeSelfShadow=&nativeShadow;
+        input.shadowMode=nativeShadow.mode;input.shadowWidth=nativeShadow.width;input.shadowHeight=nativeShadow.height;
         MmvRenderDecorations decoration{};decoration.structureSize=sizeof(decoration);
         decoration.gridEnabled=app->GroundGridEnabled();decoration.nativeStencil=app->Renderer()->d3dInitialized;
         decoration.pmxEdgeGate=app->Renderer()->postProcessEnabled;decoration.accessorySplit=app->AccessoryRenderSplitOrder();

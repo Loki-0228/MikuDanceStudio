@@ -402,6 +402,9 @@ void CarryEyeForFocusChange(MMDApp* app, const float focusOld[3],
                             const float focusNew[3]);
 bool UseEffectModelRenderer(MMDApp*);            // gate at VA 0x0046DD9A
 void RenderShadowMap(MMDApp*, const float[16]);  // VA 0x00426CD0
+// Same native pass, with failure reporting for a borrowed MMV shadow snapshot.
+bool RenderShadowMapChecked(MMDApp*, const float[16]);
+bool RenderAccessoriesShadowChecked(MMDApp*);
 void RenderModelsFixed(MMDApp*);                 // VA 0x00425D20
 void RenderModelsEffect(MMDApp*, const float[16]); // VA 0x004277E0
 void RenderAccessoriesFixed(MMDApp*);             // VA 0x004C4A10

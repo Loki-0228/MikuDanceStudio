@@ -12,6 +12,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(MIKUDANCESTUDIO_PROFILE "full" CACHE STRING "Build profile: full or mmd932")
+set_property(CACHE MIKUDANCESTUDIO_PROFILE PROPERTY STRINGS full mmd932)
+if(NOT MIKUDANCESTUDIO_PROFILE STREQUAL "full" AND NOT MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
+    message(FATAL_ERROR "MIKUDANCESTUDIO_PROFILE must be full or mmd932")
+endif()
+if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
+    add_compile_definitions(MMD_ORIGINAL_PROFILE=1)
+    set(MIKUDANCESTUDIO_ENABLE_DX12 OFF CACHE BOOL "Disabled in the original-compatible profile" FORCE)
+else()
+    add_compile_definitions(MMD_ORIGINAL_PROFILE=0)
+endif()
+
 option(MIKUDANCESTUDIO_ENABLE_DX12
     "Build optional DX12 skinning/native preview; OFF keeps the DX9/MME renderer with CPU skinning"
     ON)
@@ -374,6 +386,45 @@ add_library(mikudancestudio_core STATIC
     src/exports/effect_apng.cpp
     src/unported/stubs.cpp
 )
+if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
+    get_target_property(MMD_ORIGINAL_CORE_SOURCES mikudancestudio_core SOURCES)
+    list(REMOVE_ITEM MMD_ORIGINAL_CORE_SOURCES
+        src/model/bone_scale.cpp src/physics/physics_scale.cpp
+        src/animation/animation_curve_host.cpp src/animation/morph_curve.cpp
+        src/window/animation_curve_host_ui.cpp src/window/frame_rate_dialog.cpp
+        src/animation/frame_rate_correction.cpp src/animation/native_frame_retime.cpp
+        src/window/physics_bake_dialog.cpp src/physics/physics_bake.cpp
+        src/physics/physics_bake_settings.cpp src/animation/channel_bake.cpp
+        src/mmv4mms/host.cpp src/render/native_mesh.cpp
+        src/render/deformed_mesh_capture.cpp src/render/vertex_capture.cpp
+        src/io/alembic_export.cpp src/io/mesh_bake_cache.cpp
+        src/window/alembic_export_dialog.cpp
+        src/render/transparent_geometry.cpp src/render/transparent_peeling.cpp
+        src/media/native_media.cpp src/media/wic_mov_recorder.cpp src/app/mf_h264_recorder.cpp)
+    set_property(TARGET mikudancestudio_core PROPERTY SOURCES "${MMD_ORIGINAL_CORE_SOURCES}")
+    target_sources(mikudancestudio_core PRIVATE
+        src/model/bone_scale_original.cpp src/physics/physics_scale_original.cpp
+        src/animation/animation_extensions_original.cpp src/window/animation_ui_original.cpp
+        src/mmv4mms/host_original.cpp src/render/mesh_extensions_original.cpp
+        src/media/native_media_original.cpp)
+    add_executable(original_profile_io_tests EXCLUDE_FROM_ALL tests/original_profile_io_tests.cpp)
+    target_link_libraries(original_profile_io_tests PRIVATE mikudancestudio_core winmm dsound)
+    set_target_properties(original_profile_io_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME original_profile_io COMMAND original_profile_io_tests)
+    add_executable(original_profile_state_tests EXCLUDE_FROM_ALL tests/original_profile_state_tests.cpp)
+    target_link_libraries(original_profile_state_tests PRIVATE mikudancestudio_core winmm dsound)
+    set_target_properties(original_profile_state_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME original_profile_state COMMAND original_profile_state_tests)
+    add_executable(original_pmd_save_tests EXCLUDE_FROM_ALL tests/original_pmd_save_tests.cpp)
+    target_link_libraries(original_pmd_save_tests PRIVATE mikudancestudio_core winmm dsound)
+    set_target_properties(original_pmd_save_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME original_pmd_save COMMAND original_pmd_save_tests)
+endif()
+
+add_executable(pmd_index_save_tests EXCLUDE_FROM_ALL tests/pmd_index_save_tests.cpp)
+target_link_libraries(pmd_index_save_tests PRIVATE mikudancestudio_core winmm dsound)
+set_target_properties(pmd_index_save_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME pmd_index_save COMMAND pmd_index_save_tests)
 
 option(MIKUDANCESTUDIO_PERF "Enable render-thread phase timing for benchmarks" OFF)
 if (MIKUDANCESTUDIO_PERF)
@@ -394,12 +445,18 @@ if (MIKUDANCESTUDIO_ENABLE_DX12)
 else()
     target_compile_definitions(mikudancestudio_core PRIVATE MMD_ENABLE_DX12=0)
 endif()
-target_link_libraries(mikudancestudio_core PUBLIC mikudancestudio_d3d12 mikudancestudio_curve_editor mikudancestudio_curve_motion)
+target_link_libraries(mikudancestudio_core PUBLIC mikudancestudio_d3d12)
+if(MIKUDANCESTUDIO_PROFILE STREQUAL "full")
+    target_link_libraries(mikudancestudio_core PUBLIC mikudancestudio_curve_editor mikudancestudio_curve_motion Alembic::Alembic
+        mfplat mfreadwrite mfuuid windowscodecs)
+else()
+    set_target_properties(mikudancestudio_animation_curve mikudancestudio_curve_editor mikudancestudio_curve_motion
+        PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()
 target_link_libraries(mikudancestudio_core PUBLIC
     mikudancestudio_geometry_workers
     mikudancestudio_runtime_log
     BULLET275::BULLET275
-    Alembic::Alembic
     minhook::minhook
     bcrypt      # SHA256 allowlist for native MME APNG reset compatibility
     user32      # RegisterClass / CreateWindow / MessageBox
@@ -414,10 +471,6 @@ target_link_libraries(mikudancestudio_core PUBLIC
     oleaut32    # VariantCopy/VariantClear/SysAllocString (encoder settings window)
     strmiids    # DirectShow IIDs/CLSIDs (recording graph 0x408F20..0x409A80)
     uuid        # IID_IPropertyBag / IID_IAMVfwCompressDialogs etc.
-    mfplat      # Media Foundation H.264/AAC recording
-    mfreadwrite # Media Foundation Sink Writer
-    mfuuid      # Media Foundation encoder/media GUIDs
-    windowscodecs # WIC PNG encoding for native MOV output
 )
 if (MSVC)
     # Align the PMX skinning stride workers with the original's VCOMP90
@@ -564,6 +617,13 @@ if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     set_target_properties(model_alpha_occlusion_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME model_alpha_occlusion_regressions COMMAND model_alpha_occlusion_tests)
+    add_library(mme_presence_marker SHARED EXCLUDE_FROM_ALL tests/mme_presence_marker.cpp)
+    set_target_properties(mme_presence_marker PROPERTIES OUTPUT_NAME MMEffect
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-marker/$<CONFIG>")
+    add_dependencies(model_alpha_occlusion_tests mme_presence_marker)
+    add_test(NAME model_alpha_sort_off COMMAND model_alpha_occlusion_tests --sort-off)
+    add_test(NAME model_alpha_sort_off_mme_presence COMMAND model_alpha_occlusion_tests
+        --sort-off --mme-marker $<TARGET_FILE:mme_presence_marker>)
     add_test(NAME model_alpha_intersection_regressions COMMAND model_alpha_occlusion_tests --intersections)
     add_test(NAME model_alpha_low_alpha_regressions COMMAND model_alpha_occlusion_tests --low-alpha)
     add_test(NAME model_alpha_peel_budget_regressions COMMAND model_alpha_occlusion_tests --peel-budget)
@@ -663,32 +723,38 @@ endif()
 # Keep compiled dialog resources in sync with their editable templates.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+    set(MIKUDANCESTUDIO_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/resources")
     file(GLOB_RECURSE MIKUDANCESTUDIO_RESOURCE_INPUTS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/res/templates/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/res/assets/*")
     add_custom_command(
-        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/res/gen_resources.res"
-               "${CMAKE_CURRENT_SOURCE_DIR}/res/gen_resources_x64.res"
+        OUTPUT "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources.res"
+               "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources_x64.res"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_resources.py" gen
+                --output-dir "${MIKUDANCESTUDIO_RESOURCE_DIR}" --profile "${MIKUDANCESTUDIO_PROFILE}"
         DEPENDS ${MIKUDANCESTUDIO_RESOURCE_INPUTS}
                 scripts/gen_resources.py scripts/dialog_rc.py
                 res/mmd_manifest.xml res/mmd_manifest_x64.xml
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Regenerate embedded dialog and menu resources"
         VERBATIM)
+elseif(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
+    message(FATAL_ERROR "The mmd932 profile requires Python to generate its isolated resources")
+else()
+    set(MIKUDANCESTUDIO_RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/res")
 endif()
 if (CMAKE_SIZEOF_VOID_P EQUAL 8)
     # x64 build embeds the original x64 manifest (amd64 dependencies) -
     # the x86 manifest's x86 assemblies
     # make the 64-bit loader fail with STATUS_INVALID_IMAGE_FORMAT.
-    set(MIKUDANCESTUDIO_GEN_RES res/gen_resources_x64.res)
+    set(MIKUDANCESTUDIO_GEN_RES "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources_x64.res")
 else()
-    set(MIKUDANCESTUDIO_GEN_RES res/gen_resources.res)
+    set(MIKUDANCESTUDIO_GEN_RES "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources.res")
 endif()
 if (MIKUDANCESTUDIO_BUILD_UI_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/device_lost_wait_tests.cpp")
     add_executable(device_lost_wait_tests EXCLUDE_FROM_ALL tests/device_lost_wait_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
-    target_link_options(device_lost_wait_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(device_lost_wait_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(device_lost_wait_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     set_target_properties(device_lost_wait_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/device-lost/$<CONFIG>")
@@ -724,14 +790,14 @@ endif()
 if(TARGET physics_bake_tests)
     target_sources(physics_bake_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_options(physics_bake_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
 endif()
 if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_executable(physics_editor_encoding_tests EXCLUDE_FROM_ALL
         tests/physics_editor_encoding_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(physics_editor_encoding_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     target_link_options(physics_editor_encoding_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(physics_editor_encoding_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     # Explicit private-desktop runner; a normal ctest process cannot meet the
@@ -740,7 +806,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         tests/menu_language_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(menu_language_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(menu_language_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(menu_language_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME menu_language_regressions COMMAND menu_language_tests)
@@ -748,7 +814,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(hidden_morph_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(hidden_morph_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(hidden_morph_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     # Requires the separately supplied Rou PMX sample; run explicitly with --model.
@@ -756,7 +822,7 @@ endif()
 # Exercise the actual embedded model effects in the occlusion regression.
 if(TARGET model_alpha_occlusion_tests)
     target_link_options(model_alpha_occlusion_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
 endif()
 if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     if (MIKUDANCESTUDIO_ENABLE_DX12)
@@ -776,7 +842,7 @@ if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     set_target_properties(processor_settings_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(d3d12_skinning_tests EXCLUDE_FROM_ALL tests/d3d12_skinning_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(d3d12_skinning_tests PRIVATE mikudancestudio_core mikudancestudio_d3d12 winmm dsound)
-    target_link_options(d3d12_skinning_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(d3d12_skinning_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(d3d12_skinning_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
 endif()
 
@@ -837,21 +903,21 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_test(NAME bone_scale_gizmo_tests COMMAND bone_scale_gizmo_tests)
     add_executable(native_editors_integration EXCLUDE_FROM_ALL tests/native_editors_integration.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_libraries(native_editors_integration PRIVATE mikudancestudio_core winmm dsound)
-    target_link_options(native_editors_integration PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(native_editors_integration PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(native_editors_integration PROPERTIES OUTPUT_NAME MikuMikuDance ENABLE_EXPORTS ON RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/native-editors/$<CONFIG>")
     # Exercise the same PMM model-dialog resources that the application embeds.
     target_sources(ui_message_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     add_test(NAME accessory_message_regressions COMMAND ui_message_tests accessory-load)
     set_tests_properties(accessory_message_regressions PROPERTIES TIMEOUT 10)
     target_link_options(ui_message_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     # The viewport operation axis and the coordinate-system caption both read
     # embedded resources (XFILE 115 axis.x, the HUD font atlas).
     add_executable(bone_scale_hud_tests EXCLUDE_FROM_ALL
         tests/bone_scale_hud_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(bone_scale_hud_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(bone_scale_hud_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(bone_scale_hud_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME bone_scale_hud_tests COMMAND bone_scale_hud_tests "${CMAKE_BINARY_DIR}/tests/bone-scale-hud")
 
@@ -859,7 +925,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         tests/coordinate_axis_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(coordinate_axis_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(coordinate_axis_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(coordinate_axis_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME coordinate_axis_regressions COMMAND coordinate_axis_tests)
@@ -868,7 +934,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(physics_scene_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(physics_scene_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(physics_scene_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(vertex_capture_tests EXCLUDE_FROM_ALL tests/vertex_capture_tests.cpp src/render/vertex_capture.cpp)
@@ -886,7 +952,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_executable(alembic_export_tests EXCLUDE_FROM_ALL tests/alembic_export_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_libraries(alembic_export_tests PRIVATE mikudancestudio_core winmm dsound)
-    target_link_options(alembic_export_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(alembic_export_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(alembic_export_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/alembic/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/alembic/symbols/$<CONFIG>"
@@ -894,7 +960,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_executable(media_render_tests EXCLUDE_FROM_ALL tests/media_render_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_libraries(media_render_tests PRIVATE mikudancestudio_core winmm dsound)
-    target_link_options(media_render_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(media_render_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(media_render_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/media/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/media/symbols/$<CONFIG>"
@@ -909,7 +975,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(frame_benchmark PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(frame_benchmark PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(frame_benchmark PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     if(Python3_Interpreter_FOUND)
@@ -923,7 +989,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     target_link_libraries(frame_benchmark_mme PRIVATE mikudancestudio_core winmm dsound)
     target_compile_definitions(frame_benchmark_mme PRIVATE REQUIRE_MME=1)
     target_link_options(frame_benchmark_mme PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(frame_benchmark_mme PROPERTIES
         OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-benchmark/lib/$<CONFIG>"
@@ -938,7 +1004,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(pmm_project_settings_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(pmm_project_settings_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(pmm_project_settings_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(camera_follow_tests EXCLUDE_FROM_ALL tests/camera_follow_tests.cpp)
@@ -950,7 +1016,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(deferred_effect_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(deferred_effect_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(deferred_effect_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(deferred_effect_mme_tests EXCLUDE_FROM_ALL tests/deferred_effect_tests.cpp
@@ -958,7 +1024,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     target_link_libraries(deferred_effect_mme_tests PRIVATE mikudancestudio_core winmm dsound)
     target_compile_definitions(deferred_effect_mme_tests PRIVATE REQUIRE_MME=1)
     target_link_options(deferred_effect_mme_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(deferred_effect_mme_tests PROPERTIES
         OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme/lib/$<CONFIG>"
@@ -967,14 +1033,14 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(wave_audio_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     target_link_options(wave_audio_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(wave_audio_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(scene_lifecycle_tests EXCLUDE_FROM_ALL tests/scene_lifecycle_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(scene_lifecycle_tests PRIVATE mikudancestudio_core winmm dsound)
     target_link_options(scene_lifecycle_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(scene_lifecycle_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     # Explicit opt-in host for locally installed MME. MMHack imports the host
@@ -984,7 +1050,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     target_link_libraries(scene_lifecycle_mme_tests PRIVATE mikudancestudio_core winmm dsound)
     target_compile_definitions(scene_lifecycle_mme_tests PRIVATE REQUIRE_MME=1)
     target_link_options(scene_lifecycle_mme_tests PRIVATE "/MANIFEST:NO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+        "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(scene_lifecycle_mme_tests PROPERTIES
         OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme/lib/$<CONFIG>"
@@ -1009,7 +1075,7 @@ target_link_libraries(MikuDanceStudio PRIVATE
 target_link_options(MikuDanceStudio PRIVATE
     "/MAP:${CMAKE_CURRENT_BINARY_DIR}/MikuMikuDance.map"
     "/MANIFEST:NO"
-    "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}"
+    "${MIKUDANCESTUDIO_GEN_RES}"
 )
 set_target_properties(MikuDanceStudio PROPERTIES
     # The original x64 binary is MikuMikuDance.exe, and MikuMikuEffect needs
@@ -1126,12 +1192,30 @@ add_executable(mmv4mms_menu_tests EXCLUDE_FROM_ALL tests/mmv4mms_menu_tests.cpp)
 target_link_libraries(mmv4mms_menu_tests PRIVATE mikudancestudio_core winmm dsound)
 set_target_properties(mmv4mms_menu_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
 add_test(NAME mmv4mms_menu COMMAND mmv4mms_menu_tests)
+if(NOT MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
+    add_executable(mmv_material_pass_tests EXCLUDE_FROM_ALL tests/mmv_material_pass_tests.cpp)
+    target_include_directories(mmv_material_pass_tests PRIVATE sdk/mmv4mms/include)
+    target_link_libraries(mmv_material_pass_tests PRIVATE mikudancestudio_core winmm dsound)
+    set_target_properties(mmv_material_pass_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME mmv_material_pass COMMAND mmv_material_pass_tests)
+endif()
 
 if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_executable(display_compatibility_tests EXCLUDE_FROM_ALL tests/display_compatibility_tests.cpp)
+    if(NOT MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
+        add_executable(mmv_native_shadow_bridge_tests EXCLUDE_FROM_ALL tests/mmv_native_shadow_bridge_tests.cpp
+            res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+        target_include_directories(mmv_native_shadow_bridge_tests PRIVATE sdk/mmv4mms/include)
+        target_link_options(mmv_native_shadow_bridge_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+        target_link_libraries(mmv_native_shadow_bridge_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+        set_target_properties(mmv_native_shadow_bridge_tests PROPERTIES ENABLE_EXPORTS ON
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mmv-native-shadow/lib/$<CONFIG>"
+            PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mmv-native-shadow/symbols/$<CONFIG>"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mmv-native-shadow/$<CONFIG>")
+    endif()
     add_executable(mme_display_tests EXCLUDE_FROM_ALL tests/mme_display_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
-    target_link_options(mme_display_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(mme_display_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(mme_display_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     set_target_properties(mme_display_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/lib/$<CONFIG>"
@@ -1139,14 +1223,14 @@ if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/$<CONFIG>")
     add_executable(mme_reassign_tests EXCLUDE_FROM_ALL tests/mme_reassign_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
-    target_link_options(mme_reassign_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(mme_reassign_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(mme_reassign_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     set_target_properties(mme_reassign_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-reassign/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-reassign/symbols/$<CONFIG>"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-reassign/$<CONFIG>")
     target_sources(display_compatibility_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
-    target_link_options(display_compatibility_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(display_compatibility_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(display_compatibility_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     set_target_properties(display_compatibility_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/display/$<CONFIG>")
     if(Python3_Interpreter_FOUND)
@@ -1157,7 +1241,23 @@ if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
     endif()
     add_executable(fullscreen_window_tests EXCLUDE_FROM_ALL tests/fullscreen_window_tests.cpp)
     target_sources(fullscreen_window_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
-    target_link_options(fullscreen_window_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_options(fullscreen_window_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(fullscreen_window_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
     set_target_properties(fullscreen_window_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/fullscreen/$<CONFIG>")
+endif()
+
+if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932" AND MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(original_profile_ui_tests EXCLUDE_FROM_ALL tests/original_profile_ui_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(original_profile_ui_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(original_profile_ui_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(original_profile_ui_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/original-ui/$<CONFIG>")
+    set(MMD_ORIGINAL_UI_RUNTIME "${CMAKE_BINARY_DIR}/tests/original-ui/runtime")
+    file(MAKE_DIRECTORY "${MMD_ORIGINAL_UI_RUNTIME}/Data"
+        "${MMD_ORIGINAL_UI_RUNTIME}/Local" "${MMD_ORIGINAL_UI_RUNTIME}/Roaming")
+    add_test(NAME original_profile_ui COMMAND original_profile_ui_tests)
+    set_tests_properties(original_profile_ui PROPERTIES TIMEOUT 45
+        WORKING_DIRECTORY "${MMD_ORIGINAL_UI_RUNTIME}"
+        ENVIRONMENT "LOCALAPPDATA=${MMD_ORIGINAL_UI_RUNTIME}/Local;APPDATA=${MMD_ORIGINAL_UI_RUNTIME}/Roaming")
 endif()

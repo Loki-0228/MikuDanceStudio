@@ -218,7 +218,12 @@ typedef struct MmvObjectRenderData {
     float outlineDistance;
     uint32_t flags;
 } MmvObjectRenderData;
-enum MmvObjectRenderFlag { MMV_OBJECT_RENDER_PMX = 1u };
+enum MmvObjectRenderFlag {
+    MMV_OBJECT_RENDER_PMX = 1u,
+    /* Host object-level caster gate; material flags still apply. Used when
+       evaluated geometry rebuilds a borrowed native self-shadow map. */
+    MMV_OBJECT_RENDER_NO_SELF_SHADOW = 16u
+};
 /* Scene post-processing (MMV_CAP_SCENE_POSTPROCESS).  MME post effects
  * (ScriptClass=scene, ScriptOrder=postprocess) filter the finished scene, which
  * does not exist yet when evaluate runs.  After evaluate the host draws its

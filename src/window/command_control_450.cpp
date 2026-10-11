@@ -656,11 +656,16 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
     }
 
     case 491: {
+#if MMD_ORIGINAL_PROFILE
+        app->EditMode() = IsDlgButtonChecked(hwnd, panel::kBoxSelectRadio) != 0
+            ? ViewportEditMode::BoneBox : ViewportEditMode::None;
+#else
         // MMS addition: bone scale mode.  The viewport draws the scale handles
         // and bone_scale::Enabled gates them out of the camera/accessory panel,
         // during playback and without a valid bone selection.
         app->EditMode() = IsDlgButtonChecked(hwnd, panel::kBoxSelectRadio) != 0
             ? ViewportEditMode::Scale : ViewportEditMode::None;
+#endif
         RefreshBoneModePanel(app);
         break;
     }

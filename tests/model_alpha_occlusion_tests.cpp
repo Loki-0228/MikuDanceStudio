@@ -12,6 +12,8 @@
 //
 // Scenes that need peeling select Maximum explicitly. Other scenes keep the
 // process default.
+// --sort-off checks native material/model pass order and On -> Off index restore,
+// using real draw/readback on PMD and PMX with fixed, SM2 and SM3 rendering.
 //
 // --low-alpha runs only the low-alpha accumulation scenes, on the
 // shader-model-3 resource (118): one PMX material holding a 256-layer stack of
@@ -47,6 +49,7 @@
 #include <d3d9.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -60,7 +63,9 @@
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/model_alpha_pass.hpp"
+#if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_geometry.hpp"
+#endif
 #include "mikudancestudio/ported_funcs.hpp"
 
 using namespace mikudancestudio;
@@ -303,6 +308,7 @@ void ReadRenderedPixels(IDirect3DDevice9* device,
           message);
 }
 
+#if !MMD_ORIGINAL_PROFILE
 void CheckBatchedPixels(IDirect3DDevice9* device, IDirect3DSurface9* backbuffer,
                         IDirect3DSurface9* readback, int width, int height) {
     using transparent_geometry::Triangle;
@@ -384,6 +390,7 @@ void CheckBatchedPixels(IDirect3DDevice9* device, IDirect3DSurface9* backbuffer,
     std::printf("PASS batch GPU readback: %d identical pixels, msaa=%d\n",
                 width * height, g_resolveTarget ? 1 : 0);
 }
+#endif
 
 // Reports every mismatching sample instead of stopping at the first one: on a
 // regression the whole band table is what identifies which surface lost the one
@@ -763,6 +770,101 @@ void RenderOneModelScene(MMDApp* app, IDirect3DDevice9* device,
           "lock the one-model pixels");
 }
 
+void RunSortOffScene(MMDApp* app, IDirect3DDevice9* device,
+                     IDirect3DSurface9* backbuffer, IDirect3DSurface9* readback,
+                     int resource, const D3DMATRIX& identity) {
+    const auto savedPrecision = app->TransparentMaterialSortPrecision();
+    const auto sample = [&](const D3DLOCKED_RECT& lock) {
+        std::array<DWORD, 9> pixels{};
+        unsigned index = 0;
+        for (int y : {16, 48, 80}) for (int x : {24, 48, 72})
+            pixels[index++] = Row(lock, y)[x] & 0xffffff;
+        readback->UnlockRect();
+        return pixels;
+    };
+    const auto one = [&](Model* model) {
+        D3DLOCKED_RECT lock{};
+        RenderOneModelScene(app, device, backbuffer, readback, resource, identity, model, &lock);
+        return sample(lock);
+    };
+    const auto pair = [&](Model* first, Model* second) {
+        D3DLOCKED_RECT lock{};
+        RenderArrangement(app, device, backbuffer, readback, resource, identity, first, second, &lock);
+        return sample(lock);
+    };
+    for (bool pmx : {false, true}) {
+        app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Off;
+        std::vector<ModelVertex> frontVertices, rearVertices, bothVertices;
+        std::vector<WORD> frontIndices, rearIndices, nearFirst;
+        AppendQuad(frontVertices, frontIndices, -1, 1, 1, -1, kNearDepth, kTwoLayerSamplerU, .5f);
+        AppendQuad(rearVertices, rearIndices, -1, 1, 1, -1, kFarDepth, .25f, .5f);
+        AppendQuad(bothVertices, nearFirst, -1, 1, 1, -1, kNearDepth, kTwoLayerSamplerU, .5f);
+        AppendQuad(bothVertices, nearFirst, -1, 1, 1, -1, kFarDepth, .25f, .5f);
+        std::vector<WORD> farFirst(nearFirst.begin() + 6, nearFirst.end());
+        farFirst.insert(farFirst.end(), nearFirst.begin(), nearFirst.begin() + 6);
+        auto front = BuildModel(device, frontVertices, frontIndices,
+            {{kTwoLayerFrontPath, 1, 0, 6}}, pmx);
+        auto rear = BuildModel(device, rearVertices, rearIndices,
+            {{kPmxAlphaPath, 1, 0, 6}}, pmx);
+        auto frontFirst = BuildModel(device, bothVertices, nearFirst,
+            {{kTwoLayerFrontPath, 1, 0, 6}, {kPmxAlphaPath, 1, 6, 6}}, pmx);
+        auto rearFirst = BuildModel(device, bothVertices, farFirst,
+            {{kPmxAlphaPath, 1, 0, 6}, {kTwoLayerFrontPath, 1, 6, 6}}, pmx);
+        const auto frontOnly = one(front.get());
+        for (DWORD pixel : frontOnly) {
+            Check(std::abs(int(pixel >> 16 & 255) - 191) <= 2 &&
+                  std::abs(int(pixel >> 8 & 255) - 207) <= 2 &&
+                  std::abs(int(pixel & 255) - 159) <= 2,
+                  "Off draws the translucent foreground exactly once over white");
+        }
+        const auto forward = one(frontFirst.get());
+        const auto reversed = one(rearFirst.get());
+#if MMD_ORIGINAL_PROFILE
+        Check(forward == frontOnly, "original profile retains one authored material walk");
+        Check(reversed != frontOnly, "Off preserves authored material order instead of normalizing both orders");
+        Check(pair(front.get(), rear.get()) == frontOnly,
+              "Off does not move the later opaque model ahead of translucent foreground");
+#else
+        Check(forward == reversed && forward != frontOnly,
+              "full Off keeps native opaque/translucent passes independently of authored material order");
+        for (DWORD pixel : forward) {
+            Check(std::abs(int(pixel >> 16 & 255) - 80) <= 2 &&
+                  std::abs(int(pixel >> 8 & 255) - 176) <= 2 &&
+                  std::abs(int(pixel & 255) - 144) <= 2,
+                  "full Off draws the opaque rear then the translucent foreground exactly once");
+        }
+        Check(pair(front.get(), rear.get()) == forward,
+              "full Off retains native opaque/translucent pass order across models");
+#endif
+        Check(pair(rear.get(), front.get()) == reversed,
+              "Off follows native model order as well as material order");
+
+        // The near-first CPU order must be restored after a sort has rewritten
+        // this single material's GPU buffer into far-first triangle order.
+        auto stack = BuildModel(device, bothVertices, nearFirst,
+            {{kTwoLayerFrontPath, 1, 0, 12}}, pmx);
+        Check(one(stack.get()) == frontOnly, "Off retains authored triangle order inside a material");
+        app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Low;
+        const auto sorted = one(stack.get());
+        if (app->AutoTransparentMaterialSortingEnabled())
+            Check(sorted != frontOnly, "enabled sorting changes the near-first overlap fixture");
+        app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Off;
+        Check(one(stack.get()) == frontOnly,
+              "On to Off restores native GPU index order before drawing");
+        void* restored = nullptr;
+        Check(SUCCEEDED(stack->indexBuffer->Lock(0, 0, &restored, D3DLOCK_READONLY)),
+              "read restored native index buffer");
+        for (std::size_t i = 0; i < nearFirst.size(); ++i)
+            Check((pmx ? static_cast<const std::int32_t*>(restored)[i]
+                       : static_cast<const WORD*>(restored)[i]) == nearFirst[i],
+                  "Off restores every original GPU triangle index");
+        stack->indexBuffer->Unlock();
+        app->ClearModelSlots();
+        std::printf("sort-off %s native pass/triangle order and single draw verified\n", pmx ? "PMX" : "PMD");
+    }
+    app->TransparentMaterialSortPrecision() = savedPrecision;
+}
+
 // Translucent display (displayState != 0) keeps the original-order single
 // pass: the half-transparency makes every material blend (the fixed path via
 // the 0.5 displayState override on the material copy, the effect path via the
@@ -1121,8 +1223,17 @@ int main(int argc, char** argv) {
     bool maximumLimitOnly = false;
     bool maximumFullSize = false;
     bool msaaRequested = false;
+    bool sortOffOnly = false;
+    HMODULE mmeMarker = nullptr;
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--intersections") == 0)
+        if (std::strcmp(argv[i], "--mme-marker") == 0) {
+            Check(i + 1 < argc, "MME presence marker requires a DLL path");
+            mmeMarker = LoadLibraryA(argv[++i]);
+            Check(mmeMarker && GetModuleHandleW(L"MMEffect.dll") == mmeMarker,
+                  "load inert MMEffect.dll presence marker");
+        } else if (std::strcmp(argv[i], "--sort-off") == 0)
+            sortOffOnly = true;
+        else if (std::strcmp(argv[i], "--intersections") == 0)
             intersectionsOnly = true;
         else if (std::strcmp(argv[i], "--low-alpha") == 0)
             lowAlphaOnly = true;
@@ -1138,7 +1249,7 @@ int main(int argc, char** argv) {
             msaaRequested = true;
     }
     if (int(intersectionsOnly) + int(lowAlphaOnly) + int(peelBudgetOnly) +
-            int(maximumLimitOnly) > 1) {
+            int(maximumLimitOnly) + int(sortOffOnly) > 1) {
         std::fputs("Choose a single scene mode\n", stderr);
         return 2;
     }
@@ -1596,6 +1707,15 @@ int main(int argc, char** argv) {
             renderer->hdrTexture = toonTexture;
         }
         std::printf("renderer resource=%d\n", resource);
+        if (sortOffOnly) {
+            RunSortOffScene(app.get(), device, backbuffer, readback, resource, identity);
+            if (renderer->effect) {
+                reinterpret_cast<IUnknown*>(renderer->effect)->Release();
+                renderer->effect = nullptr;
+                renderer->hdrTexture = nullptr;
+            }
+            continue;
+        }
         if (lowAlphaOnly) {
             RunLowAlphaScenes(app.get(), device, backbuffer, readback, resource,
                               identity);
@@ -2025,7 +2145,9 @@ int main(int argc, char** argv) {
         }
     }
     if (targetWidth >= 64 && targetHeight >= 64)
+#if !MMD_ORIGINAL_PROFILE
         CheckBatchedPixels(device, backbuffer, readback, targetWidth, targetHeight);
+#endif
     app->ModelSlot(0) = nullptr;
     app->ModelSlot(1) = nullptr;
     readback->Release();

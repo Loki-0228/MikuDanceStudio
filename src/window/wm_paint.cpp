@@ -18,6 +18,7 @@
 // arguments (this+656852/53/54, flag 0) into a local Lbl() wrapper.
 // Every call site keeps its exact string/size/coordinate arguments.
 // =========================================================================//
+#include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/animation_curve_host.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -271,6 +272,7 @@ void HandleWindowPaint(MMDApp* app) {
     // self-shadow panel
     if (app->state.optflag[0] != 0) {
         if (app->state.optflag[6] != 0) {
+#if !MMD_ORIGINAL_PROFILE
             if (app->AdaptiveShadowResolution()) {
                 Lbl(app, en ? "self_shadow manipulation" : kJpLblSelfShadow,
                     hdc, 12, (en ? 708 : 733) - panelShift, rc.bottom - 155);
@@ -279,9 +281,11 @@ void HandleWindowPaint(MMDApp* app) {
                         hdc, 12, x - panelShift, rc.bottom + y, app->UiTextRed(), app->UiTextGreen(), app->UiTextBlue(), 0);
                 };
                 label(L"阴影精度", L"precision", L"影の精度", 690, -90);
-                label(L"低", L"low", L"低", 690, -54);
-                label(L"高", L"high", L"高", 830, -54);
-            } else if (en) {
+                label(L"高", L"high", L"高", 690, -54);
+                label(L"低", L"low", L"低", 830, -54);
+            } else
+#endif
+            if (en) {
                 Lbl(app, "self_shadow manipulation", hdc, 12, 708 - panelShift, rc.bottom - 155);
                 Lbl(app, "shadow range", hdc, 12, 690 - panelShift, rc.bottom - 87);
                 Lbl(app, "detail", hdc, 12, 690 - panelShift, rc.bottom - 54);

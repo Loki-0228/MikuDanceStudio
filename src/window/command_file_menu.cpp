@@ -566,9 +566,14 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
     if (msg == WM_INITDIALOG) {
         MakeDialogTopmostIfRequested(app, hDlg);
         LocalizeChineseDialog(app, hDlg);
+#if MMD_ORIGINAL_PROFILE
+        SetWindowTextW(hDlg, app->EnglishUI() == 1 ? L"AVI Output Settings"
+            : app->EnglishUI() == 2 ? L"AVI 输出设置" : L"AVI出力設定");
+#else
         SetWindowTextW(hDlg, app->EnglishUI() == 1
             ? L"Video Export Settings"
             : app->EnglishUI() == 2 ? L"视频导出设置" : L"動画出力設定");
+#endif
         const HWND main = MainHwnd(app);
         PrefillEdit(hDlg, panel::kAviStartFrameEdit, "0");
         GetWindowTextA(GetDlgItem(main, panel::kPlayStopFrameEdit), text, 8);
@@ -615,6 +620,9 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
         app->AviCodecSelection() = FillCodecCombo(
             app->Recorder(), GetDlgItem(hDlg, panel::kAviCodecCombo),
             app->EnglishUI());
+#if MMD_ORIGINAL_PROFILE
+        EnableWindow(GetDlgItem(hDlg, panel::kAviSettingsButton), FALSE);
+#else
         EnableWindow(GetDlgItem(hDlg, panel::kAviSettingsButton), TRUE);
         if (const wchar_t* extension = wcsrchr(app->AviOutputPath(), L'.');
             extension && _wcsicmp(extension, L".mov") == 0) {
@@ -630,6 +638,7 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                 break;
             }
         }
+#endif
     } else if (msg == WM_COMMAND) {
         if (LOWORD(wParam) == 1) {  // IDOK
             app->AviRecordStartFrame() =
@@ -660,9 +669,18 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
             wchar_t* ext = wcsrchr(outputPath, L'.');
             if (ext == nullptr || (slash != nullptr && ext < slash))
                 ext = outputPath + wcslen(outputPath);
+#if MMD_ORIGINAL_PROFILE
+            if (codecKind < -1) {
+                MessageBoxW(hDlg, L"This MMD 9.32 profile supports AVI output only.",
+                            L"AVI export", MB_OK | MB_ICONERROR);
+                return TRUE;
+            }
+            const wchar_t* wantedExtension = L".avi";
+#else
             const wchar_t* wantedExtension =
                 (codecKind == kBuiltInH264Codec || codecKind == kSystemH264Codec)
                     ? L".mp4" : codecKind == kNativePngMovCodec ? L".mov" : L".avi";
+#endif
             wcscpy_s(ext, 256 - static_cast<std::size_t>(ext - outputPath),
                      wantedExtension);
             const bool dimensionsValid =
@@ -671,17 +689,24 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                 ((codecKind != kBuiltInH264Codec && codecKind != kSystemH264Codec) ||
                  ((app->AviOutputWidth() & 1) == 0 &&
                   (app->AviOutputHeight() & 1) == 0));
+#if !MMD_ORIGINAL_PROFILE
             if (codecKind == kNativePngMovCodec && app->AviStereoOutput()) {
                 MessageBoxW(hDlg, L"透明 MOV 输出暂不支持 3D Vision。请关闭该选项。", L"MOV export", MB_OK | MB_ICONWARNING);
                 return TRUE;
             }
+#endif
             if (app->AviRecordEndFrame() >= app->AviRecordStartFrame() && dimensionsValid) {
                 EndDialog(hDlg, 1);
             } else if (!dimensionsValid) {
+#if MMD_ORIGINAL_PROFILE
+                MessageBoxW(hDlg, L"Resolution must be between 2 and 16384.",
+                            L"AVI export", MB_OK | MB_ICONWARNING);
+#else
                 MessageBoxW(hDlg,
                     L"分辨率必须在 2 到 16384 之间；MP4/H.264 的宽高必须为偶数。\n"
                     L"Resolution must be between 2 and 16384; MP4/H.264 requires even dimensions.",
                     L"导出设置 / Export settings", MB_OK | MB_ICONWARNING);
+#endif
             } else if (app->EnglishUI() != 0) {
                 LegacyUiMessageBoxA(hDlg, "End frame is less than start frame!",
                             "WARNING", 0);
@@ -737,6 +762,9 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
             const LRESULT codecKind = SendMessageW(
                 GetDlgItem(hDlg, panel::kAviCodecCombo), CB_GETITEMDATA,
                 selection, 0);
+#if MMD_ORIGINAL_PROFILE
+            if (codecKind >= 0) ShowCodecConfigDialog(app->Recorder(), hDlg);
+#else
             if (codecKind == kBuiltInH264Codec || codecKind == kSystemH264Codec) {
                 // Full encoder-settings window (all editable options of the
                 // encoder used for export, incl. rate control CBR/VBR) - the
@@ -754,6 +782,7 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                         WM_GETFONT, 0, 0)));
             } else if (codecKind != kNativePngMovCodec)
                 ShowCodecConfigDialog(app->Recorder(), hDlg);
+#endif
         }
     }
     return 0;
@@ -1648,7 +1677,11 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         memset(&ofn, 0, sizeof(ofn));
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = MainHwnd(app);
+#if MMD_ORIGINAL_PROFILE
+        ofn.lpstrFilter = L"AVI files (*.avi)\0*.avi\0";
+#else
         ofn.lpstrFilter = L"Video files (*.mp4;*.avi;*.mov)\0*.mp4;*.avi;*.mov\0MP4 video (*.mp4)\0*.mp4\0AVI video (*.avi)\0*.avi\0PNG transparent MOV (*.mov)\0*.mov\0";
+#endif
         ofn.lpstrFile = path;
         if ((GetMenuState(GetMenu(MainHwnd(app)), 0x12D, 0) & 8) != 0) {
             ofn.lpstrInitialDir = app->DirUser();          // 0xA1540
@@ -1658,7 +1691,11 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         ofn.nFilterIndex = 1;
         ofn.nMaxFile = 0x100;
         ofn.Flags = (OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY);
+#if MMD_ORIGINAL_PROFILE
+        ofn.lpstrDefExt = L"avi";
+#else
         ofn.lpstrDefExt = L"mp4";
+#endif
         wchar_t fileTitle[0x100];
         ofn.nMaxFileTitle = 0x100;
         ofn.lpstrFileTitle = fileTitle;

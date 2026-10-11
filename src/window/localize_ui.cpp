@@ -21,6 +21,7 @@
 //      loaded model's name (slot+8826 EN / slot+8776 JP), restore selection.
 // =========================================================================//
 #include "mikudancestudio/animation_curve_host.hpp"
+#include "mikudancestudio/build_profile.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -70,7 +71,8 @@ constexpr TextEntry kEnTexts[] = {
     {408, "play", L"\u64ad\u653e"}, {535, "track", L"\u8ffd\u8e2a"},
     {412, "model", L"\u6a21\u578b"}, {531, "bone", L"\u9aa8\u9abc"},
     {490, "select", L"\u9009\u62e9"}, {493, "rotate", L"\u65cb\u8f6c"},
-    {492, "move", L"\u79fb\u52a8"}, {491, "scale", L"\u7f29\u653e"},
+    {492, "move", L"\u79fb\u52a8"},
+    {491, MMD_ORIGINAL_PROFILE ? "box-sel" : "scale", MMD_ORIGINAL_PROFILE ? L"框选" : L"\u7f29\u653e"},
     {494, "select all", L"\u5168\u9009"}, {501, "unregisted", L"\u672a\u767b\u8bb0"},
     {496, "copy", L"\u590d\u5236"}, {497, "paste", L"\u7c98\u8d34"},
     {498, "revers", L"\u53cd\u8f6c"}, {500, "register", L"\u767b\u8bb0"},
@@ -145,7 +147,7 @@ constexpr JpCaptionFix kJpCaptionFixes[] = {
     {501, L"\u672a\u767b\u9332\u9078"},  // 未登録選  select unregistered bones
     {562, L"\u306a\u3057"},              // なし      self-shadow mode off
     {498, L"\u53cd\u8ee2"},              // 反転      bone reverse paste (MMS)
-    {491, L"\u62e1\u5927\u7e2e\u5c0f"},  // 拡大縮小  bone scale mode (MMS)
+    {491, MMD_ORIGINAL_PROFILE ? L"BOX選択" : L"\u62e1\u5927\u7e2e\u5c0f"},
     {570, L"\u30b9\u30b1\u30fc\u30eb"},  // スケール  bottom readout
     {412, L"\u30e2\u30c7\u30eb"},        // モデル    view reference: model (MMS)
     {531, L"\u30dc\u30fc\u30f3"},        // ボーン    view reference: bone (MMS)
@@ -245,7 +247,7 @@ std::wstring BoneModePanelCaption(ViewportEditMode mode, unsigned char language)
 // what the original's select radio did when it was unchecked.
 ViewportEditMode NextBoneSelectMode(ViewportEditMode current) {
     if (current == ViewportEditMode::Bone ||
-        current == ViewportEditMode::BoneBox)
+        (!MMD_ORIGINAL_PROFILE && current == ViewportEditMode::BoneBox))
         return ViewportEditMode::None;
     return ViewportEditMode::Bone;
 }
@@ -265,7 +267,7 @@ void RefreshBoneModePanel(MMDApp* app) {
         return;
     const ViewportEditMode mode = app->EditMode();
     const bool selectMode = mode == ViewportEditMode::Bone ||
-                            mode == ViewportEditMode::BoneBox;
+                            (!MMD_ORIGINAL_PROFILE && mode == ViewportEditMode::BoneBox);
     SendMessageA(GetDlgItem(main, panel::kBoneSelectRadio), BM_SETCHECK,
                  selectMode ? 1 : 0, 0);
     SendMessageA(GetDlgItem(main, panel::kBoneMoveRadio), BM_SETCHECK,
@@ -273,7 +275,7 @@ void RefreshBoneModePanel(MMDApp* app) {
     SendMessageA(GetDlgItem(main, panel::kBoneRotateRadio), BM_SETCHECK,
                  mode == ViewportEditMode::Camera ? 1 : 0, 0);
     SendMessageA(GetDlgItem(main, panel::kBoxSelectRadio), BM_SETCHECK,
-                 mode == ViewportEditMode::Scale ? 1 : 0, 0);
+                 mode == (MMD_ORIGINAL_PROFILE ? ViewportEditMode::BoneBox : ViewportEditMode::Scale) ? 1 : 0, 0);
     const std::wstring caption =
         BoneModePanelCaption(mode, app->EnglishUI());
     SetWindowTextW(GetDlgItem(main, panel::kBoneSelectRadio), caption.c_str());
@@ -287,7 +289,7 @@ void RefreshBoneModePanel(MMDApp* app) {
 // use consistent, and EnsureInterpChannelCombo repairs the list when another
 // code path truncated it.
 namespace {
-constexpr int kBoneChannelCount = 5;    // X, Y, Z, rotation, bone scale
+constexpr int kBoneChannelCount = MMD_ORIGINAL_PROFILE ? 4 : 5;
 constexpr int kCameraChannelCount = 6;  // X, Y, Z, rotation, distance, angle
 
 const wchar_t* JpChannelCaption(bool cameraPanel, int channel) {
@@ -474,8 +476,10 @@ void LocalizeUI(MMDApp* app) {
     // Name language follows the shared rule; the CHS pass is not "English".
     const bool english = s.EnglishUI() == kUiEnglish;              // UI captions follow UI language
     const bool chinese = s.EnglishUI() == kUiChinese;
+#if !MMD_ORIGINAL_PROFILE
     SetWindowTextW(Dlg(app, panel::kAdaptiveShadowCheckbox), chinese ? L"动态缩放" :
         english ? L"Dynamic scaling" : L"動的スケーリング");
+#endif
     HFONT previousFont = s.state.hFontUI;
     CreateUiFont(app, app->MainWindow());
     struct FontRefresh { MMDApp* owner; HFONT previous; } fonts{app,previousFont};

@@ -10,6 +10,7 @@
 // MAINTENANCE: production-keep; historical path, see CLEANUP(C06).
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/build_profile.hpp"
 #include <Windows.h>
 
 #include <cstdio>
@@ -272,7 +273,9 @@ void DispatchSeparateWindowCommand(MMDApp* app, unsigned short id) {  // was Sub
         const bool on = SendMessageA(GetDlgItem(separate, panel::kSelfShadowCheckbox),
                                      BM_GETCHECK, 0, 0) == 1;
         const std::int32_t value = on ? 4096 : 2048;
+#if !MMD_ORIGINAL_PROFILE
         app->ShadowResolutionLimit() = value;
+#endif
         D3DRenderer* sub = s.Renderer();
         sub->renderTargetWidth = value;   // 0x1D558
         sub->renderTargetHeight = value;  // 0x1D55C

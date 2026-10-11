@@ -1,7 +1,10 @@
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
+#include "mikudancestudio/build_profile.hpp"
+#if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_peeling.hpp"
+#endif
 // ===========================================================================
 // VA 0x00440DB0 - PostDeviceReset (app method, thiscall this = Block)
 //
@@ -75,7 +78,9 @@ bool PostDeviceReset(MMDApp* app) {
 
     // A vtable entry is the function address, not a pointer to that address.
     // Use the shared, architecture-independent COM dispatch helpers.
+#if !MMD_ORIGINAL_PROFILE
     ClearTransparentPeelingCache();
+#endif
     if (r->effect != nullptr)
         d3dx::FxOnLostDevice(r->effect);
 

@@ -1,5 +1,28 @@
 #include "mikudancestudio/adaptive_shadow.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/build_profile.hpp"
+
+#if MMD_ORIGINAL_PROFILE
+namespace mikudancestudio {
+void LoadShadowResolutionPreference(MMDApp* app) {
+    // The original build never consumes the full build's adaptive preference.
+    app->AdaptiveShadowResolution() = false;
+}
+void SaveShadowResolutionPreference(MMDApp*) {}
+void UpdateAdaptiveShadowMap(MMDApp*, const float[16]) {}
+int ShadowSliderPosition(MMDApp* app) {
+    // Preserve the original truncation followed by a positive half-step test.
+    const double raw = 10000.0 - double(app->ShadowDistance()) * 100000.0;
+    int position = static_cast<int>(raw);
+    if (raw - double(position) >= 0.5) ++position;
+    return position;
+}
+void SetShadowSliderPosition(MMDApp* app, int position) {
+    app->ShadowDistance() = float((10000.0 - position) / 100000.0);
+    app->SceneModified() = 1;
+}
+}
+#else
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
@@ -147,3 +170,5 @@ void UpdateAdaptiveShadowMap(MMDApp* app, const float frame[16]) {
     r->renderTargetWidth = r->renderTargetHeight = size;
 }
 }
+
+#endif

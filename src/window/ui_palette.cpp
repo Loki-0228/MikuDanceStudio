@@ -111,6 +111,7 @@ char g_scaleReadoutText[64] = {};
 // same axis reads exactly f: the same rule the edit applies, read back.
 // ===========================================================================
 bool SelectedBoneScaleReadout(MMDApp* app, float out[3]) {
+    if (MMD_ORIGINAL_PROFILE) return false;
     out[0] = out[1] = out[2] = 1.0f;
     if (app == nullptr || app->state.optflag[0] != 0)
         return false;                       // camera/light panel: not a bone
@@ -217,6 +218,7 @@ bool BoneScaleReadoutText(MMDApp* app, char* out, std::size_t cap) {
     if (out == nullptr || cap == 0)
         return false;
     out[0] = '\0';
+    if (MMD_ORIGINAL_PROFILE) return false;
     if (app == nullptr || app->state.optflag[0] != 0)
         return false;                       // hidden on the camera panel
     // The status bar replaces its content with "Playing" while playing
@@ -265,6 +267,7 @@ void BoneScaleReadoutTick(MMDApp* app) {
 // never while it has the keyboard focus, so a value being typed is not
 // overwritten under the caret.
 void SyncBoneScaleEdits(MMDApp* app) {
+    if (MMD_ORIGINAL_PROFILE) return;
     BoneScaleReadoutTick(app);
     if (app == nullptr || app->state.optflag[0] != 0)
         return;                             // camera panel: edits hidden

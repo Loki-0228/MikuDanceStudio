@@ -9,6 +9,7 @@
 #define NOMINMAX
 #include <Windows.h>
 #include <d3d9.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
@@ -25,19 +26,24 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/model_alpha_pass.hpp"
+#if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_triangles.hpp"
 #include "mikudancestudio/transparent_geometry.hpp"
 #include "mikudancestudio/transparent_peeling.hpp"
+#include "mikudancestudio/transparent_material_order.hpp"
+#endif
 #include <limits>
 #include <new>
-#include "mikudancestudio/transparent_material_order.hpp"
 #include <numeric>
 #include "mikudancestudio/ported_funcs.hpp"
 
 #include "mikudancestudio/texture_lookup.hpp"
 #include "mikudancestudio/draw_order.hpp"
 #include "mikudancestudio/adaptive_shadow.hpp"
+#include "mikudancestudio/build_profile.hpp"
+#if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/native_shadow_projection.hpp"
+#endif
 
 namespace mikudancestudio {
 namespace {
@@ -297,6 +303,7 @@ void CachedTextureColor(D3DRenderer* sub, const wchar_t* path, float out[4]) {
     }
 }
 
+#if !MMD_ORIGINAL_PROFILE
 bool CachedTextureUsesAlpha(D3DRenderer* sub, const wchar_t* path) {
     bool usesAlpha = false;
     if (native_mesh::TextureProperties(path, nullptr, &usesAlpha)) return usesAlpha;
@@ -455,6 +462,7 @@ bool RestoreModelIndexOrder(MMDApp* app) {
     }
     return restored;
 }
+#endif
 
 // A D3D9 object handed to a vtable method must be a committed user-mode
 // address whose first qword - the vtable - points into an image's executable
@@ -1086,14 +1094,16 @@ struct MaterialSelection {
     IDirect3DVertexBuffer9* vertices = nullptr;
     UINT vertexCount = 0;
     UINT vertexStride = 0;
+#if !MMD_ORIGINAL_PROFILE
     TransparentPeeling* peel = nullptr;
     bool probe = false;
     bool* valid = nullptr;
+#endif
 };
 
 void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                         bool shadowOnly, ModelAlphaPass alphaPass = ModelAlphaPass::Original,
-                        const MaterialSelection* selection = nullptr) {
+                        const MaterialSelection* selection = nullptr, bool* shadowSucceeded = nullptr) {
     MMD_PERF_SCOPE(Materials);
     if (model == nullptr || mdl::Mdl(model)->loadComplete == 0)
         return;
@@ -1127,13 +1137,16 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
     UINT stride;
     ModelVertexFormat(model, &fvf, &stride);
     if (selection && selection->vertexStride) stride = selection->vertexStride;
+#if !MMD_ORIGINAL_PROFILE
     if (selection && selection->peel && !selection->probe)
         fvf = D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX6 |
             D3DFVF_TEXCOORDSIZE4(1) | D3DFVF_TEXCOORDSIZE4(2) |
             D3DFVF_TEXCOORDSIZE4(3) | D3DFVF_TEXCOORDSIZE4(4) | D3DFVF_TEXCOORDSIZE1(5);
+#endif
     const UINT vertexCount = selection && selection->vertices
         ? selection->indexCount : state.vertexCount;
     const UINT minVertex = selection && selection->vertices ? selection->firstIndex : 0;
+#if !MMD_ORIGINAL_PROFILE
     // Prepare native indices before opaque materials submit this model's
     // buffers. Keep the original timing when an MME proxy is present: its
     // callbacks may mutate material state between the two material passes.
@@ -1148,6 +1161,9 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
         indexOrderDirty = true;
         SortTransparentModelMaterials(sub, model, vertices, indices, stride);
     }
+#else
+    alphaPass = ModelAlphaPass::Original;
+#endif
     UINT firstIndex = selection ? selection->firstIndex : 0;
     const UINT firstMaterial = selection ? selection->material : 0;
     const UINT lastMaterial = selection ? firstMaterial + 1 : state.materialCount;
@@ -1167,6 +1183,7 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
         // semi-transparent pixel in front of it left in the buffer. The
         // translucent pass still blends the soft edge and still writes the
         // depth that keeps inverted-hull outlines behind this material.
+#if !MMD_ORIGINAL_PROFILE
         const bool usesAlpha = !shadowOnly &&
             alphaPass != ModelAlphaPass::Original &&
             ModelMaterialUsesAlpha(sub, state, record);
@@ -1174,6 +1191,10 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
             alphaPass == ModelAlphaPass::Opaque && usesAlpha &&
             record.diffuse[3] >= 1.0f && state.postLoadFlag2 == 0 &&
             state.displayState == 0;
+#else
+        constexpr bool usesAlpha = false;
+        constexpr bool solidFirst = false;
+#endif
         bool draw = true;
         if (!shadowOnly && alphaPass != ModelAlphaPass::Original) {
             draw = solidFirst || ModelMaterialMatchesPass(alphaPass, usesAlpha);
@@ -1188,7 +1209,9 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                 draw = false;
         }
         if (draw) {
+#if !MMD_ORIGINAL_PROFILE
             deformed_mesh_capture::MaterialScope exportMaterial(model, i, !shadowOnly && !(selection && selection->probe));
+#endif
             D3DMATERIAL9 d3dMaterial{};
             std::memcpy(&d3dMaterial, material, sizeof(d3dMaterial));
             if (state.displayState != 0)
@@ -1285,8 +1308,10 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                     // 0x492954: BeginPass(effect, 0) per material; the
                     // enclosing FxBegin was issued by RenderShadowMap
                     // before the model loop (its FxEnd closes it).
-                    if (effectPass && effect != nullptr)
-                        FxBeginPass(effect, 0);
+                    if (effectPass && effect != nullptr) {
+                        const HRESULT result=FxBeginPass(effect, 0);
+                        if(shadowSucceeded&&FAILED(result)){*shadowSucceeded=false;return;}
+                    }
                 } else {
                     device->SetMaterial(&d3dMaterial);
                 }
@@ -1317,10 +1342,13 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                         device->SetRenderState(D3DRS_ALPHAREF, 255);
                     }
                 }
-                device->SetFVF(fvf);
-                device->SetStreamSource(0, vertices, 0, stride);
-                device->SetIndices(indices);
+                const HRESULT fvfResult=device->SetFVF(fvf);
+                const HRESULT streamResult=device->SetStreamSource(0, vertices, 0, stride);
+                const HRESULT indicesResult=device->SetIndices(indices);
+                if(shadowSucceeded&&(FAILED(fvfResult)||FAILED(streamResult)||FAILED(indicesResult)))
+                    *shadowSucceeded=false;
                 bool issue = true;
+#if !MMD_ORIGINAL_PROFILE
                 if (selection && selection->peel) {
                     if (selection->probe) device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, minVertex, vertexCount, firstIndex, 0);
                     const bool accepted = selection->probe ? selection->peel->NativePass()
@@ -1328,13 +1356,20 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                     if (selection->valid) *selection->valid &= accepted;
                     issue = accepted && !selection->probe;
                 }
-                if (issue) device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, minVertex,
+#endif
+                if (issue) {
+                    const HRESULT drawn=device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, minVertex,
                                              vertexCount, firstIndex, indexCount / 3);
+                    if(shadowSucceeded&&FAILED(drawn))*shadowSucceeded=false;
+                }
+#if !MMD_ORIGINAL_PROFILE
                 if (selection && selection->peel && !selection->probe) selection->peel->EndMaterial();
+#endif
                 if (effectPass && effect != nullptr) {
                     if (solidFirst)
                         device->SetRenderState(D3DRS_ALPHAREF, savedAlphaRef);
-                    FxEndPass(effect);
+                    const HRESULT ended=FxEndPass(effect);
+                    if(shadowSucceeded&&FAILED(ended))*shadowSucceeded=false;
                     if (!shadowOnly) {
                         FxEnd(effect);
                         if (mdl::Mdl(model)->physicsMode == 2 && (record.flags & 1) != 0)
@@ -1353,6 +1388,7 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
 }
 
 
+#if !MMD_ORIGINAL_PROFILE
 // Keep large or special materials as ordering barriers. Reordering is confined
 // to contiguous, bounded runs of alpha materials; interleaving can split draws.
 struct NativeAlphaDraw {
@@ -2059,6 +2095,7 @@ bool RenderSplitOrderedAlpha(MMDApp* app, bool effectFrame) {
         return false;
     }
 }
+#endif
 
 void DrawModelEdgeGeometry(MMDApp* app, unsigned char* model,
                            bool projectedShadow, bool effectEdge) {
@@ -2404,26 +2441,24 @@ void RenderModelsFixed(MMDApp* app) {                         // 0x425D20
     // x64 twin sub_7FF7CB4BFB20+0x4C0710..0x4C077A: order and slot both run
     // to 0xFF (cmp edi,0FFh @0x4C0774 / cmp edx,0FFh @0x4C073C).
     for (auto alphaPass : {ModelAlphaPass::Opaque, ModelAlphaPass::Translucent}) {
-        // Auto transparent material sorting off: skip the ordered-alpha path,
-        // so the walk below draws the translucent pass in the original order.
+#if !MMD_ORIGINAL_PROFILE
         if (alphaPass == ModelAlphaPass::Translucent &&
             app->AutoTransparentMaterialSortingEnabled() &&
             (RenderSplitOrderedAlpha(app, false) || RenderNativeOrderedAlpha(app, false))) continue;
+#endif
         for (int order = 0; order < kModelSlotCount; ++order) {
             const auto& entry = orderedModels[order];
             auto* model = entry.model;
             if (model != nullptr) {
                 app->ActiveRenderObject() = model;
                 app->ActiveRenderPass() = AccessoryRenderPass::FixedFunction;
-                // Translucent display and MME with sorting disabled keep the
-                // original x64 material pass: one walk over the materials in
-                // record order, no sorting and no pass split. The
-                // model is therefore drawn once in the opaque iteration with
-                // ModelAlphaPass::Original and skipped in the translucent one.
+                // Full keeps its native opaque/translucent material passes
+                // even with distance sorting Off. MME must not replace that
+                // plan with one unsplit pass just because its DLL is loaded.
+                // The original-function profile retains the original walk.
                 const bool originalMaterialOrder =
                     mdl::Mdl(model)->displayState != 0 ||
-                    (GetModuleHandleW(L"MMEffect.dll") != nullptr &&
-                     !app->AutoTransparentMaterialSortingEnabled());
+                    MMD_ORIGINAL_PROFILE;
                 if (!originalMaterialOrder || alphaPass == ModelAlphaPass::Opaque)
                     DrawModelMaterials(app, model, false, false,
                                        originalMaterialOrder
@@ -2525,6 +2560,7 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
     d3dx::Get().vec3Transform(place, target, &inverse);
     FxSetFloatArray(effect, "LightDir", light, 4);
     FxSetFloatArray(effect, "Place", place, 4);
+#if !MMD_ORIGINAL_PROFILE
     // Native PCF needs the allocated map size, including quality changes and
     // device caps. Keep the legacy projection and MME effect parameters intact.
     if (sub->hdrTexture != nullptr) {
@@ -2536,6 +2572,7 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
             FxSetFloatArray(effect, "MdsShadowMapSize", shadowSize, 4);
         }
     }
+#endif
     FxSetMatrix(effect, "matWorldViewProj",
                 reinterpret_cast<const Matrix*>(&app->WorldViewProjection()));
     FxSetMatrix(effect, "matLightViewProj",
@@ -2587,11 +2624,11 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
     const auto orderedModels = BuildModelDrawOrder(
         app, [](unsigned char* object) { return native_mesh::RenderModel(object); });
     for (auto alphaPass : {ModelAlphaPass::Opaque, ModelAlphaPass::Translucent}) {
-        // Auto transparent material sorting off: skip the ordered-alpha path,
-        // so the walk below draws the translucent pass in the original order.
+#if !MMD_ORIGINAL_PROFILE
         if (alphaPass == ModelAlphaPass::Translucent &&
             app->AutoTransparentMaterialSortingEnabled() &&
             (RenderSplitOrderedAlpha(app, true) || RenderNativeOrderedAlpha(app, true))) continue;
+#endif
         for (int order = 0; order < kModelSlotCount; ++order) {
             const auto& entry = orderedModels[order];
             auto* model = entry.model;
@@ -2605,14 +2642,11 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
                 runtime_log::Write("FX model slot=%d order=%d toon=%u", slot,
                                    order,
                                    static_cast<unsigned>(mdl::Mdl(model)->toonFlag));
-                // Translucent display and MME with sorting disabled keep the
-                // original x64 material pass: one record-order
-                // walk per model, no sorting and no pass split. Draw it once in
-                // the opaque iteration and skip the translucent one.
+                // Keep the same full-profile pass plan with and without MME;
+                // only the original profile and translucent display are unsplit.
                 const bool originalMaterialOrder =
                     mdl::Mdl(model)->displayState != 0 ||
-                    (GetModuleHandleW(L"MMEffect.dll") != nullptr &&
-                     !app->AutoTransparentMaterialSortingEnabled());
+                    MMD_ORIGINAL_PROFILE;
                 const auto drawPass = originalMaterialOrder
                     ? ModelAlphaPass::Original
                     : alphaPass;
@@ -2678,16 +2712,18 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
     app->ActiveRenderPass() = AccessoryRenderPass::None;
 }
 
-void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
+static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool checked) {   // 0x426CD0
     MMD_PERF_SCOPE(ShadowMap);
     D3DRenderer* sub = app->Renderer();
     auto* device = sub->device;
     void* effect = sub->effect;
     auto& api = d3dx::Get();
     if (device == nullptr || effect == nullptr || !api.Load())
-        return;
+        return false;
 
+#if !MMD_ORIGINAL_PROFILE
     UpdateAdaptiveShadowMap(app, frameMatrix);
+#endif
     auto*& texture = sub->hdrTexture;
     auto*& surface = sub->shadowSurface;
     auto*& depth = sub->shadowDepthSurface;
@@ -2708,7 +2744,7 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
         device->GetDepthStencilSurface(&sub->depthStencilSurface);
     }
     if (surface == nullptr || depth == nullptr)
-        return;
+        return false;
 
     D3DVIEWPORT9 oldViewport;
     Matrix view;
@@ -2719,17 +2755,112 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
     device->GetViewport(&oldViewport);
     device->GetTransform(D3DTS_PROJECTION,
                          reinterpret_cast<D3DMATRIX*>(&projection));
-    FxSetTechnique(effect, "ZValuePlotTec");
+    const HRESULT technique=FxSetTechnique(effect, "ZValuePlotTec");
+    if(checked&&FAILED(technique))return false;
     device->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
     device->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, 2);
-    device->SetRenderTarget(0, surface);
-    device->SetDepthStencilSurface(depth);
-    device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
+    const HRESULT targetSet=device->SetRenderTarget(0, surface);
+    const HRESULT depthSet=device->SetDepthStencilSurface(depth);
+    if(checked&&(FAILED(targetSet)||FAILED(depthSet)))return false;
+    const HRESULT cleared=device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
                   0xFFFFFFFFu, 1.0f, 0);
+    if(checked&&FAILED(cleared))return false;
     device->SetTexture(0, nullptr);
     D3DVIEWPORT9 shadowViewport{0, 0, width, height, 0.0f, 1.0f};
-    device->SetViewport(&shadowViewport);
+    const HRESULT viewportSet=device->SetViewport(&shadowViewport);
+    if(checked&&FAILED(viewportSet))return false;
 
+#if MMD_ORIGINAL_PROFILE
+    // MMD v9.32 projection, retained from the pre-refactor renderer.
+    // Its mode-dependent warp is paired with the original effect resources.
+    float target[3] = {app->ViewOffsetX(), app->ViewOffsetY(),
+                       app->CameraDistance()};
+    const D3DVECTOR& lightDirection = app->SceneLight().Direction;
+    float eye[3] = {
+        target[0] - lightDirection.x * 50.0f,
+        target[1] - lightDirection.y * 50.0f,
+        target[2] - lightDirection.z * 50.0f};
+    const float up[3] = {0.0f, 0.0f, 1.0f};
+    Matrix lightView;
+    api.lookAtLH(&lightView, eye, target, up);
+
+    float direction[3] = {lightDirection.x, lightDirection.y,
+                          lightDirection.z};
+    api.vec3Normalize(direction, direction);
+    const float slope = -direction[2];
+    const float edge = 1.0f - std::fabs(slope);
+    const float base = app->ShadowDistance();
+    const bool modeOne = app->ShadowMode() == 1;
+    float scale;
+    int part;
+    if (modeOne) {
+        part = 0;
+        if (slope < -0.9f || slope > 0.9f)
+            scale = base;
+        else if (slope < -0.8f)
+            scale = ((slope - 0.1f) * 10.0f + 10.0f) * base + base;
+        else if (slope > 0.8f)
+            scale = (10.0f - (slope + 0.1f) * 10.0f) * base + base;
+        else
+            scale = base + base;
+    } else {
+        part = 1;
+        if (slope < -0.9f || slope > 0.9f)
+            scale = base;
+        else if (slope < -0.8f)
+            scale = (slope * 20.0f + 19.0f) * base;
+        else if (slope > 0.8f)
+            scale = (19.0f - slope * 20.0f) * base;
+        else
+            scale = base * 3.0f;
+    }
+    FxSetInt(effect, "parthf", part);
+
+    Matrix shadowProjection{};
+    shadowProjection.m[0][0] = scale;
+    shadowProjection.m[1][1] = scale;
+    shadowProjection.m[2][2] = base * 0.1500000059604645f;
+    shadowProjection.m[3][3] = 1.0f;
+    Matrix shadowMatrix;
+    Matrix temp;
+    Multiply(&temp, reinterpret_cast<const Matrix*>(frameMatrix), &lightView);
+    Multiply(&shadowMatrix, &temp, &shadowProjection);
+    Matrix transform;
+    api.scaling(&transform, 1.0f, 1.0f, 2.0f);
+    Multiply(&shadowMatrix, &shadowMatrix, &transform);
+    api.translation(&transform, 0.0f, 0.0f, -1.0f);
+    Multiply(&shadowMatrix, &shadowMatrix, &transform);
+
+    Matrix orientation;
+    Identity(&orientation);
+    float positive;
+    float negative;
+    if (slope < -0.9f || slope > 0.9f) {
+        positive = edge;
+        negative = -edge;
+    } else if (slope < -0.8f) {
+        positive = modeOne ? 4.0f * slope + 3.7f
+                           : 9.0f * slope + 8.2f;
+        negative = -9.0f * slope - 8.2f;
+    } else if (slope > 0.8f) {
+        positive = modeOne ? 3.7f - 4.0f * slope
+                           : 8.2f - 9.0f * slope;
+        negative = 9.0f * slope - 8.2f;
+    } else {
+        positive = modeOne ? 0.5f : 1.0f;
+        negative = -1.0f;
+    }
+    orientation.m[1][3] = positive;
+    orientation.m[3][1] = negative;
+    Multiply(&shadowMatrix, &shadowMatrix, &orientation);
+    api.translation(&transform, 0.0f, 0.0f, 1.0f);
+    Multiply(&shadowMatrix, &shadowMatrix, &transform);
+    api.scaling(&transform, 1.0f, 1.0f, 0.5f);
+    Multiply(&shadowMatrix, &shadowMatrix, &transform);
+    std::memcpy(&app->LightViewProjection(), &shadowMatrix,
+                sizeof(shadowMatrix));
+
+#else
     float focus[3]{};
     const auto focusSource = ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focus);
     if (focusSource == FrameFocusSource::FreeView) {
@@ -2744,9 +2875,12 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
     std::memcpy(&app->LightViewProjection(), &shadowMatrix,
                 sizeof(shadowMatrix));
 
+#endif
+
     UINT passes = 0;
     app->ActiveRenderPass() = AccessoryRenderPass::ModelEffect;
-    if (SUCCEEDED(FxBegin(effect, &passes))) {
+    bool succeeded=SUCCEEDED(FxBegin(effect, &passes));
+    if (succeeded) {
         // x64 sub_7FF7CB4C1030 order inside the Begin/End block: the
         // accessory shadow casters come first (0x7FF7CB4C1992..0x7FF7CB4C1BD4,
         // sub_7FF7CB4FDCB0 per slot), then matLightViewProj is set
@@ -2756,8 +2890,11 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
         // (0x7FF7CB4C1CB5..0x7FF7CB4C1CF4, sub_7FF7CB4D8520; 255-count
         // do/while over app+0xBE8, mov r13d,0FFh @0x4C198C / dec r13/jnz,
         // toonFlag read at model+0x3B68).
-        RenderAccessoriesShadow(app);
-        FxSetMatrix(effect, "matLightViewProj", &shadowMatrix);
+        if(checked) {
+            if(!RenderAccessoriesShadowChecked(app))succeeded=false;
+        } else RenderAccessoriesShadow(app);
+        const HRESULT projectionSet=FxSetMatrix(effect, "matLightViewProj", &shadowMatrix);
+        if(FAILED(projectionSet))succeeded=false;
         Matrix wvp;
         Multiply(&worldView, reinterpret_cast<const Matrix*>(frameMatrix), &view);
         Multiply(&wvp, &worldView, &projection);
@@ -2768,10 +2905,10 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
             if (model == nullptr || mdl::Mdl(model)->toonFlag == 0)
                 continue;
             app->ActiveRenderObject() = model;
-            DrawModelMaterials(app, model, true, true);
+            DrawModelMaterials(app, model, true, true,ModelAlphaPass::Original,nullptr,checked?&succeeded:nullptr);
             app->ActiveRenderObject() = nullptr;
         }
-        FxEnd(effect);
+        if(FAILED(FxEnd(effect)))succeeded=false;
     }
     app->ActiveRenderPass() = AccessoryRenderPass::None;
     device->SetVertexShader(nullptr);
@@ -2796,6 +2933,56 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
     // ALPHABLENDENABLE(27)=TRUE, then CULLMODE(22)=CCW(3).
     device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     device->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
+    return succeeded;
+}
+
+void RenderShadowMap(MMDApp* app,const float frameMatrix[16]) {
+    (void)RenderShadowMapImpl(app,frameMatrix,false);
+}
+bool RenderShadowMapChecked(MMDApp* app,const float frameMatrix[16]) {
+    // The checked entry is also safe on early resource/FX failure. The normal
+    // native entry retains its historical state transitions; MMV additionally
+    // needs the pre-shadow camera/device state for its own scene snapshot.
+    if(!app||!app->Renderer()||!app->Renderer()->device||!app->Renderer()->effect)return false;
+    using Microsoft::WRL::ComPtr;
+    auto* device=app->Renderer()->device;void* effect=app->Renderer()->effect;
+    ComPtr<IDirect3DStateBlock9> state;ComPtr<IDirect3DSurface9> targets[4],depth;
+    D3DVIEWPORT9 viewport{};
+    if(FAILED(device->CreateStateBlock(D3DSBT_ALL,&state))||FAILED(device->GetRenderTarget(0,&targets[0]))||
+       FAILED(device->GetViewport(&viewport)))return false;
+    for(unsigned i=1;i<4;++i)device->GetRenderTarget(i,&targets[i]);
+    device->GetDepthStencilSurface(&depth);
+    using GetValue=HRESULT(WINAPI*)(void*,const char*,void*,UINT);
+    using SetValue=HRESULT(WINAPI*)(void*,const char*,const void*,UINT);
+    using GetTechnique=const char*(WINAPI*)(void*);
+    const auto get=d3dx::EffectMethod<GetValue,21>(effect);
+    const auto set=d3dx::EffectMethod<SetValue,20>(effect);
+    const char* technique=d3dx::EffectMethod<GetTechnique,59>(effect)(effect);
+    Matrix light{},wvp{};int part=0;
+    if(!technique||FAILED(get(effect,"matLightViewProj",&light,sizeof(light)))||
+       FAILED(get(effect,"matWorldViewProj",&wvp,sizeof(wvp)))||FAILED(get(effect,"parthf",&part,sizeof(part))))return false;
+    const auto object=app->ActiveRenderObject();const auto pass=app->ActiveRenderPass();
+    struct RestoreShadow {
+        MMDApp* app;IDirect3DDevice9* device;IDirect3DStateBlock9* state;ComPtr<IDirect3DSurface9>* targets;
+        IDirect3DSurface9* depth;D3DVIEWPORT9 viewport;void* effect;SetValue set;const char* technique;
+        Matrix light,wvp;int part;void* object;AccessoryRenderPass pass;
+        bool restored=false;
+        bool Apply(){
+            if(restored)return true;
+            restored=true;bool ok=true;const auto check=[&](HRESULT result){if(FAILED(result))ok=false;};
+            check(set(effect,"matLightViewProj",&light,sizeof(light)));check(set(effect,"matWorldViewProj",&wvp,sizeof(wvp)));
+            check(set(effect,"parthf",&part,sizeof(part)));check(FxSetTechnique(effect,technique));
+            device->SetDepthStencilSurface(nullptr);for(unsigned i=1;i<4;++i)device->SetRenderTarget(i,nullptr);
+            check(device->SetRenderTarget(0,targets[0].Get()));
+            for(unsigned i=1;i<4;++i)if(targets[i])check(device->SetRenderTarget(i,targets[i].Get()));
+            check(device->SetDepthStencilSurface(depth));check(state->Apply());check(device->SetViewport(&viewport));
+            app->ActiveRenderObject()=object;app->ActiveRenderPass()=pass;return ok;
+        }
+        ~RestoreShadow(){Apply();}
+    } restore{app,device,state.Get(),targets,depth.Get(),viewport,effect,set,technique,light,wvp,part,object,pass};
+    for(unsigned i=1;i<4;++i)device->SetRenderTarget(i,nullptr);
+    const bool rendered=RenderShadowMapImpl(app,frameMatrix,true);
+    return restore.Apply()&&rendered;
 }
 
 }  // namespace mikudancestudio

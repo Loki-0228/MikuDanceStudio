@@ -188,6 +188,14 @@ void LoadAviFile(MMDApp* app) {
     wcscpy_s(path, 0x100,
              paths.resolvedPath);                                  // 0x506292
 
+#if MMD_ORIGINAL_PROFILE
+    if (!media::IsVideoPath(path)) {
+        MessageBoxW(hwnd, L"This MMD 9.32 profile supports AVI backgrounds only.",
+                    L"AVI import", MB_OK | MB_ICONERROR);
+        AviFailTail(app);
+        return;
+    }
+#else
     if (media::IsModernVideoPath(path)) {
         int width = 0, height = 0;
         double duration = 0;
@@ -219,6 +227,7 @@ void LoadAviFile(MMDApp* app) {
         return;
     }
 
+#endif
     PAVIFILE file = nullptr;
     if (AVIFileOpenW(&file, path, 0x40 /* OF_SHARE_DENY_NONE */,
                      nullptr) != 0) {                               // 0x522E80

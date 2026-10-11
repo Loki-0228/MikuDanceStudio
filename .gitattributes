@@ -1,0 +1,2 @@
+# Original shader resources contain CP932 comments and must keep their bytes.
+res/assets/original/*.fx -text -diff

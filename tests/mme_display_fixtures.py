@@ -21,7 +21,8 @@ def fixture(alpha_order=False):
     data += struct.pack('<ii', 0, len(materials))  # textures, materials
     for native, english, alpha in materials:
         data += text(native) + text(english)
-        data += struct.pack('<11fB5fbbBBB', 1, 1, 1, alpha, 0, 0, 0, 1, .5, .5, .5,
+        color = (1, 0, 0) if alpha_order and alpha < 1 else (0, 0, 1) if alpha_order else (1, 1, 1)
+        data += struct.pack('<11fB5fbbBBB', *color, alpha, 0, 0, 0, 1, *color,
                             15, 0, 0, 0, 1, 0, -1, -1, 0, 1, 0)
         data += text('') + struct.pack('<i', 3)
     data += struct.pack('<i', 1) + text('センター') + text('center')

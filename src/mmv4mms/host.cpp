@@ -25,10 +25,12 @@
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/text_encoding.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
+#include "mikudancestudio/ported_funcs.hpp"
 #include "mmv/mesh.hpp"
 #include "mmv/mms.h"
 #include "mmv/menu.h"
 #include "pmx_optional_fields.hpp"
+#include "material_pass.hpp"
 extern "C" float* ExpGetAcsWorldMat(float*,int);
 namespace mikudancestudio {float ModelOutlineDistance(MMDApp*,unsigned char*,const float[16]);}
 namespace mikudancestudio::mmv4mms {
@@ -127,6 +129,7 @@ std::unique_ptr<Snapshot> ModelSnapshot(unsigned char* source,uint32_t instance,
     const bool pmx=m.physicsMode==2;const uint32_t uv=pmx?m.pmxAdditionalUvCount:0;
     s->renderData.outlineDistance=ModelOutlineDistance(host,source,world);
     s->renderData.flags=pmx?MMV_OBJECT_RENDER_PMX:0u;
+    if(!m.toonFlag)s->renderData.flags|=MMV_OBJECT_RENDER_NO_SELF_SHADOW;
     if(plugin){if(host->state.characterTransparentMode)s->renderData.flags|=::mmv::kObjectTransparentMode;if(host->state.selfShadowEnabled)s->renderData.flags|=::mmv::kObjectOpaqueEdgeColor;}
     if(uv>4)throw std::runtime_error("Invalid additional UV count");
     const bool needVertices=(demand&MMV_INPUT_DEMAND_VERTICES)!=0;
@@ -232,6 +235,7 @@ std::unique_ptr<Snapshot> ModelSnapshot(unsigned char* source,uint32_t instance,
 }
 std::unique_ptr<Snapshot> AccessorySnapshot(mdl::AccessoryRecord* a,uint32_t instance,uint32_t demand) {
     auto s=std::make_unique<Snapshot>();auto& o=s->object;o.structureSize=sizeof(o);o.kind=MMV_ACCESSORY;o.instance=instance;o.visible=a->visible;
+    if(!a->shadowEnabled||a->additiveBlend)s->renderData.flags|=MMV_OBJECT_RENDER_NO_SELF_SHADOW;
     o.id=reinterpret_cast<uintptr_t>(a);o.generation=Generation(a);s->path=a->sourcePath;o.name=s->Keep(Utf8(std::filesystem::path(s->path).filename().c_str()));
     // Use the same public accessory transform query as MME, including parents.
     mmv::Identity(o.world);

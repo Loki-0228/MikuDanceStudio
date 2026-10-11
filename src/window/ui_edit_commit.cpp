@@ -461,8 +461,12 @@ void CommitEditControl(MMDApp* app, HWND edit) {  // was Sub463640
         char text[256];
         GetWindowTextA(edit, text, 8);
         const double v = atof(text);
+#if MMD_ORIGINAL_PROFILE
+        s.state.physicsInterval = static_cast<float>((10000.0 - v) / 100000.0);
+#else
         SetShadowSliderPosition(app, static_cast<int>(v));
         if (app->AdaptiveShadowResolution()) SaveShadowResolutionPreference(app);
+#endif
         SendMessageA(GetDlgItem(main, panel::kSelfShadowRangeSlider), TBM_SETPOS, 1,
                      static_cast<LPARAM>(static_cast<int>(v)));
         RefreshRequest(-3);

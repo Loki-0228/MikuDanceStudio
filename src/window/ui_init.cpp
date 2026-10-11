@@ -45,6 +45,7 @@
 #include "mikudancestudio/bone_combo.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/adaptive_shadow.hpp"
+#include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "ui_controls.inc"
 
@@ -510,6 +511,8 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     };
 
     for (const ui::ControlSpec& c : ui::kControls) {
+        // Added bone-scale readouts have no counterpart in MMD 9.32.
+        if (MMD_ORIGINAL_PROFILE && c.id >= 570 && c.id <= 577) continue;
         HWND control = CreateUiPanelControl(c, hwnd, hInst, sidebar);
         if (control == nullptr)
             return false;   // original exits the process from WM_CREATE
@@ -525,6 +528,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     // CreateWindow caption empty made the top overlay differ by one glyph.
     SetWindowTextA(GetDlgItem(hwnd, panel::kGotoFrameEdit), "0");
 
+#if !MMD_ORIGINAL_PROFILE
     HWND adaptiveShadow = CreateWindowExW(0, L"BUTTON", L"動的スケーリング",
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 176, 20, hwnd,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(panel::kAdaptiveShadowCheckbox)), hInst, nullptr);
@@ -534,6 +538,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     ApplyUiFontToControl(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
     InstallControlSubclass(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
     InstallPanelCheckboxPaint(adaptiveShadow);
+#endif
 
     // UI-init tail (original 0x004675FB / 0x00467602, adjacent calls):
     // toon gradient textures, then the in-scene HUD font atlas.  Both are

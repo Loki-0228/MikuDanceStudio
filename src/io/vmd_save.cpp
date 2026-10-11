@@ -1,4 +1,5 @@
 #include "mikudancestudio/ui_translation.hpp"
+#include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
 // VA 0x00419370 - SaveVmdFile  (0xE23 bytes)
 // ===========================================================================
@@ -42,6 +43,7 @@
 #include <Windows.h>
 
 #include <cstdint>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -59,6 +61,7 @@
 #include "mikudancestudio/morph_curve.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/original_file_encoding.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -73,6 +76,53 @@ const char kJpCannotSave[] =  // 0x52BCE4
     "\x83\x74\x83\x40\x83\x43\x83\x8b\x82\xaa\x95\xdb\x91\xb6\x82\xc5\x82"
     "\xab\x82\xdc\x82\xb9\x82\xf1:%d";
 
+#if MMD_ORIGINAL_PROFILE
+struct OriginalNames {
+    std::array<char, 20> model{};
+    std::vector<std::array<char, 20>> bones, morphs;
+};
+
+bool PrepareOriginalNames(unsigned char* raw, OriginalNames& names) {
+    const auto& model = *mdl::Mdl(raw);
+    std::string bytes;
+    if (!original_file_encoding::Name(model.name, 20, model.pmxTextBuffers[0], 20, bytes)) return false;
+    std::memcpy(names.model.data(), bytes.data(), bytes.size());
+    names.bones.resize(model.boneCount);
+    names.morphs.resize(model.morphCount);
+    const auto prepare = [&](auto& destination, const auto& record, std::size_t maxBytes) {
+        if (!original_file_encoding::Name(record.name, 20, record.jpText, maxBytes, bytes)) return false;
+        std::memcpy(destination.data(), bytes.data(), bytes.size());
+        return true;
+    };
+    const auto capacity = mdl::BoneKeyCapacity(model);
+    for (std::size_t i = 0; i < capacity; ++i) {
+        if (!model.boneKeys[i].allocated) continue;
+        std::size_t index = i, hops = 0;
+        while (index >= model.boneCount && index < capacity && hops++ < capacity)
+            index = model.boneKeys[index].previous;
+        if (index >= model.boneCount) index = 0;
+        if (!model.boneCount || !prepare(names.bones[index], model.boneTable[index], 15)) return false;
+    }
+    const auto morphCapacity = mdl::MorphKeyCapacity(model.morphKeys);
+    for (std::size_t i = 0; i < morphCapacity; ++i) {
+        if (!model.morphKeys[i].allocated) continue;
+        std::size_t index = i, hops = 0;
+        while (index >= model.morphCount && index < morphCapacity && hops++ < morphCapacity)
+            index = model.morphKeys[index].previous;
+        if (index >= model.morphCount) index = 0;
+        if (!model.morphCount || !prepare(names.morphs[index], model.morphs[index], 15)) return false;
+    }
+    bool display = false;
+    for (unsigned i = 0; i < 1000; ++i) display |= model.displayKeys[i].allocated != 0;
+    if (display) for (unsigned i = 0; i < model.ikChainCount; ++i) {
+        const auto index = model.ikChains[i].boneIndex;
+        if (index >= 0 && static_cast<unsigned>(index) < model.boneCount &&
+            !prepare(names.bones[index], model.boneTable[index], 20)) return false;
+    }
+    return true;
+}
+#endif
+
 }  // namespace
 
 // ---- VA 0x00419370 --------------------------------------------------------
@@ -83,11 +133,21 @@ void SaveVmdFile(const wchar_t* path) {
 
     const bool cameraMode = s.state.optflag[0] != 0;
     unsigned char* const model = ActiveModel(app);
+#if MMD_ORIGINAL_PROFILE
+    OriginalNames names;
+    if (!cameraMode && (!model || !PrepareOriginalNames(model, names))) {
+        original_file_encoding::Refuse(app->Hwnd(), s.EnglishUI(), L"VMD");
+        return;
+    }
+#else
     bone_scale_io::PrefixFingerprint prefix;
+#endif
     bool writeFailed = false;
     const auto Wr = [&](int descriptor, const void* bytes, unsigned int count) {
         if (_write(descriptor, bytes, count) != static_cast<int>(count)) writeFailed = true;
+#if !MMD_ORIGINAL_PROFILE
         else prefix.Append(bytes, count);
+#endif
     };
 
     // ---- pass 1: counts + minimum frame ---------------------------------
@@ -153,9 +213,11 @@ void SaveVmdFile(const wchar_t* path) {
     }
     // MMS: the selected `.x` keys ride behind the standard sections and share
     // the motion's minimum frame (accessory_motion_io.hpp).
+#if !MMD_ORIGINAL_PROFILE
     std::vector<accessory_motion_io::Track> accessoryTracks;
     if (cameraMode)
         accessoryTracks = accessory_motion_io::CaptureSelected(app, minFrame);
+#endif
 
     // ---- open ------------------------------------------------------------
     int fd = -1;
@@ -194,7 +256,11 @@ void SaveVmdFile(const wchar_t* path) {
     sprintf_s(buf, 0x100, "%s", "Vocaloid Motion Data 0002");
     Wr(fd, buf, 30);                                             // 0x41981E
     if (!cameraMode) {
+#if MMD_ORIGINAL_PROFILE
+        Wr(fd, names.model.data(), 20);
+#else
         Wr(fd, mdl::Mdl(model)->name, 20);                       // 0x419875
+#endif
     } else {
         strcpy_s(buf, 0x100, kCameraLightName);
         Wr(fd, buf, 20);                                         // 0x41984F
@@ -246,7 +312,11 @@ void SaveVmdFile(const wchar_t* path) {
                 boneIdx = keys[boneIdx].previous;
             if (boneIdx >= static_cast<unsigned int>(boneCount))
                 boneIdx = 0;
+#if MMD_ORIGINAL_PROFILE
+            Wr(fd, names.bones[boneIdx].data(), 15);
+#else
             Wr(fd, bones[boneIdx].name, 15);                    // 0x419904
+#endif
             outDword = rec.frame - minFrame;
             Wr(fd, &outDword, 4);
             Wr(fd, rec.position, sizeof rec.position);
@@ -297,7 +367,11 @@ void SaveVmdFile(const wchar_t* path) {
                 morphIdx = mkeys[morphIdx].previous;
             if (morphIdx >= static_cast<unsigned int>(morphCount))
                 morphIdx = 0;
+#if MMD_ORIGINAL_PROFILE
+            Wr(fd, names.morphs[morphIdx].data(), 15);
+#else
             Wr(fd, morphs[morphIdx].name, 15);                  // 0x419C18
+#endif
             outDword = rec.frame - minFrame;
             Wr(fd, &outDword, 4);
             Wr(fd, &rec.value, sizeof rec.value);
@@ -385,7 +459,11 @@ void SaveVmdFile(const wchar_t* path) {
                 // the record layout remains byte-identical.
                 // Defect B3-21.
                 if (boneIdx >= 0 && boneIdx < boneCount) {
+#if MMD_ORIGINAL_PROFILE
+                    Wr(fd, names.bones[boneIdx].data(), 20);
+#else
                     Wr(fd, bones[boneIdx].name, 20);
+#endif
                 } else {
                     char none[20] = {};
                     Wr(fd, none, 20);
@@ -405,6 +483,7 @@ void SaveVmdFile(const wchar_t* path) {
         }
     }
 
+#if !MMD_ORIGINAL_PROFILE
     // MMS: camera mode appends the selected `.x` keyframes after the standard
     // end, where readers of the standard sections stop.
     if (!writeFailed && cameraMode && !accessoryTracks.empty()) {
@@ -438,6 +517,7 @@ void SaveVmdFile(const wchar_t* path) {
         extension.prefixCrc32 = prefix.crc32();
         writeFailed = bone_scale_io::SaveVmdExtension(fd, extension) == bone_scale_io::ExtensionSave::Failed;
     }
+#endif
     if (_commit(fd) != 0) writeFailed = true;
     if (_close(fd) != 0) writeFailed = true;
     if (!writeFailed && !MoveFileExW(temporary.c_str(), path,

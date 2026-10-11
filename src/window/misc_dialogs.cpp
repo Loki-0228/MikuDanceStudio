@@ -323,7 +323,7 @@ void CurvePanelRepaint(MMDApp* app) {  // x64 0x7FF7CB482BB0
         ScanCurveTrack(app, model != nullptr ? mdl::BoneKeys(model) : nullptr,
                        mdl::BoneKeyCapacity(model != nullptr ? mdl::BoneKeys(model)
                                                              : nullptr),
-                       5, channel, baseline,
+                       bone_scale::kInterpBoneAll, channel, baseline,
                        firstChannels, found, perChannelUniform,
                        [app](const mdl::BoneKey& key, int c, std::size_t slot) {
                            return c == bone_scale::kInterpScaleChannel

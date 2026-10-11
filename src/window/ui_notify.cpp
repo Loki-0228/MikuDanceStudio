@@ -1,3 +1,4 @@
+#include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
 // VA 0x004398B0 - HandleNotify  (original: sub_4398B0, 0x3D5 bytes)
 // ===========================================================================
@@ -265,8 +266,8 @@ LRESULT HandleNotify(HWND h, UINT m, WPARAM w, LPARAM l) {
         // MMS: 490 is the merged select / box-select cycle, so it stays
         // highlighted in both of its states; 491 is the bone scale mode
         // (ViewportEditMode::Scale = 6).
-        | (ctrlId == 491) & (editMode == 6)
-        | (ctrlId == 490) & ((editMode == 0) | (editMode == 1))
+        | (ctrlId == 491) & (editMode == (MMD_ORIGINAL_PROFILE ? 1 : 6))
+        | (ctrlId == 490) & ((editMode == 0) | (!MMD_ORIGINAL_PROFILE && editMode == 1))
         | (ctrlId == 552) & app->FrameVolumeControlEnabled()  // 672800
         | (ctrlId == 557) & app->state.groundGridEnabled  // 797
         | (ctrlId == 564) & (shadowMode == 2)

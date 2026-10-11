@@ -1476,7 +1476,7 @@ void DrawBoneOperationAxis(MMDApp* app, const float frameMatrix[16]) {
     } else if (activeDrag >= 10 && activeDrag <= 12) {
         previewKind = HudPreviewKind::Move;
         previewAxis = activeDrag - 10;
-    } else if (activeDrag >= 20 && activeDrag <= 22) {
+    } else if (!MMD_ORIGINAL_PROFILE && activeDrag >= 20 && activeDrag <= 22) {
         previewKind = HudPreviewKind::Scale;
         previewAxis = activeDrag - 20;
     } else if (activeDrag == 0) {
@@ -1486,7 +1486,7 @@ void DrawBoneOperationAxis(MMDApp* app, const float frameMatrix[16]) {
         } else if (hoveredOperation >= 12 && hoveredOperation <= 14) {
             previewKind = HudPreviewKind::Move;
             previewAxis = hoveredOperation - 12;
-        } else if (hoveredOperation >= 23 && hoveredOperation <= 25 &&
+        } else if (!MMD_ORIGINAL_PROFILE && hoveredOperation >= 23 && hoveredOperation <= 25 &&
                    bone_scale::Enabled(app)) {
             previewKind = HudPreviewKind::Scale;
             previewAxis = hoveredOperation - 23;
@@ -1516,7 +1516,7 @@ void DrawBoneOperationAxis(MMDApp* app, const float frameMatrix[16]) {
     // the whole scale gizmo, fully highlighted (gizmo::HighlightOf), in every
     // edit mode.  Outside scale mode its published geometry stays inert:
     // gizmo::Active also requires the scale edit mode.
-    const bool uniformPreview =
+    const bool uniformPreview = !MMD_ORIGINAL_PROFILE &&
         (activeDrag == static_cast<int>(ViewportDragMode::ScaleUniform) ||
          (activeDrag == 0 &&
           hoveredOperation ==
@@ -1526,7 +1526,7 @@ void DrawBoneOperationAxis(MMDApp* app, const float frameMatrix[16]) {
         DrawBoneScaleHandles(app, bone, frameMatrix);
         return;
     }
-    if (app->EditMode() == ViewportEditMode::Scale && bone_scale::Enabled(app)) {
+    if (!MMD_ORIGINAL_PROFILE && app->EditMode() == ViewportEditMode::Scale && bone_scale::Enabled(app)) {
         DrawBoneScaleHandles(app, bone, frameMatrix);
         return;
     }
@@ -1535,7 +1535,7 @@ void DrawBoneOperationAxis(MMDApp* app, const float frameMatrix[16]) {
     const mdl::BoneType type = bone->type;
     const int operation = static_cast<int>(app->ViewportToolOperation());
     const int mode = static_cast<int>(app->InteractionDragMode());
-    const bool scaling = (operation >= 22 && operation <= 25) || (mode >= 19 && mode <= 22);
+    const bool scaling = !MMD_ORIGINAL_PROFILE && ((operation >= 22 && operation <= 25) || (mode >= 19 && mode <= 22));
     if (!scaling && (type == mdl::BoneType::FixedAxis ||
         (type == mdl::BoneType::UnderIk &&
          (bone->flags & mdl::kBoneFlagFixedAxis) == mdl::kBoneFlagFixedAxis)))

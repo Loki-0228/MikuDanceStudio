@@ -48,6 +48,7 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/bone_scale.hpp"
 #include <Windows.h>
 
@@ -56,7 +57,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
 
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/bone_key_pool.hpp"
@@ -66,6 +72,7 @@
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/vpd_scale_io.hpp"
+#include "mikudancestudio/original_file_encoding.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -104,12 +111,44 @@ void SaveVpdFile(const wchar_t* path) {
     unsigned char* const model = ActiveModel(app);
     if (model == nullptr) return;
 
+    mdl::ModelRecord& modelRecord = *mdl::Mdl(model);
     FILE* fp = nullptr;
+#if MMD_ORIGINAL_PROFILE
+    std::string modelName;
+    std::vector<std::string> boneNames(modelRecord.boneCount);
+    bool valid = original_file_encoding::Name(modelRecord.name, 20,
+        modelRecord.pmxTextBuffers[0], 20, modelName) && modelName.find_first_of("\r\n") == std::string::npos;
+    for (unsigned i = 0; valid && i < modelRecord.boneCount; ++i) {
+        if (!modelRecord.boneSelection[i]) continue;
+        const auto& bone = modelRecord.boneTable[i];
+        valid = original_file_encoding::Name(bone.name, 20, bone.jpText, 20, boneNames[i]) &&
+                boneNames[i].find_first_of("\r\n") == std::string::npos;
+    }
+    if (!valid) {
+        original_file_encoding::Refuse(app->Hwnd(), app->EnglishUI(), L"VPD");
+        return;
+    }
+    std::wstring temporary;
+    int fd = -1;
+    for (unsigned attempt = 0; attempt < 64; ++attempt) {
+        temporary = std::wstring(path) + L".tmp-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(attempt);
+        const auto error = _wsopen_s(&fd, temporary.c_str(),
+            _O_TEXT | _O_WRONLY | _O_CREAT | _O_EXCL, _SH_DENYWR, _S_IREAD | _S_IWRITE);
+        if (error != EEXIST) break;
+    }
+    if (fd < 0) return;
+    fp = _wfdopen(fd, L"wt");
+    if (!fp) { _close(fd); DeleteFileW(temporary.c_str()); return; }
+#else
     if (_wfopen_s(&fp, path, kModeWrite) != 0 || fp == nullptr) return;
+#endif
 
     std::fprintf(fp, "%s", kHdr);
-    mdl::ModelRecord& modelRecord = *mdl::Mdl(model);
+#if MMD_ORIGINAL_PROFILE
+    std::fprintf(fp, kModelFmt, modelName.c_str());
+#else
     std::fprintf(fp, kModelFmt, modelRecord.name);
+#endif
 
     const int boneCnt = modelRecord.boneCount;
     unsigned char* const selBits = modelRecord.boneSelection;
@@ -124,12 +163,18 @@ void SaveVpdFile(const wchar_t* path) {
     // extension (vpd_scale_io.hpp).  One entry per selected bone whose pose
     // scale is a real, non-identity matrix; the identity scale is the default
     // every loaded bone falls back to anyway.
+#if !MMD_ORIGINAL_PROFILE
     std::vector<vpd_scale_io::Entry> scaleEntries;
+#endif
     int running = 0;
     for (int i = 0; i < boneCnt; ++i) {
         if (selBits[i] == 0) continue;
         mikudancestudio::mdl::BoneRecord* const bone = bones + i;
+#if MMD_ORIGINAL_PROFILE
+        std::fprintf(fp, kBoneFmt, running, boneNames[i].c_str());
+#else
         std::fprintf(fp, kBoneFmt, running, bone->name);
+#endif
         ++running;
         // 0x418860: physics-pose source only for flagged bones with the
         // physics mode >= 2; raw kinematic pose otherwise.
@@ -146,6 +191,7 @@ void SaveVpdFile(const wchar_t* path) {
         std::fprintf(fp, kQuatFmt, quat[0], quat[1], quat[2], quat[3]);
         std::fprintf(fp, "%s", kCloseFmt);
 
+#if !MMD_ORIGINAL_PROFILE
         const bone_scale::Matrix scale = bone_scale::Pose(model, i);
         if (bone_scale::Valid(scale) && !bone_scale::Identity(scale)) {
             vpd_scale_io::Entry entry;
@@ -154,7 +200,19 @@ void SaveVpdFile(const wchar_t* path) {
             entry.scale = scale;
             scaleEntries.push_back(entry);
         }
+#endif
     }
+#if MMD_ORIGINAL_PROFILE
+    bool written = !std::ferror(fp) && std::fflush(fp) == 0 && _commit(_fileno(fp)) == 0;
+    if (std::fclose(fp) != 0) written = false;
+    if (!written || !MoveFileExW(temporary.c_str(), path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary.c_str());
+        runtime_log::Write("ORIGINAL_PROFILE VPD save failed: existing file preserved");
+        if (app->Hwnd()) MessageBoxW(static_cast<HWND>(app->Hwnd()),
+            L"VPD could not be saved completely. Existing file preserved.\nVPD 未能完整保存，已有文件已保留。",
+            L"VPD", MB_OK | MB_ICONERROR);
+    }
+#else
     std::fclose(fp);
     // The standard text above is complete and unchanged at this point; the
     // extension is appended after it, behind the reader's end position.  With
@@ -163,6 +221,7 @@ void SaveVpdFile(const wchar_t* path) {
         runtime_log::Write(
             "bone scale: the VPD scale extension could not be appended to the "
             "pose file; the saved pose carries no scale");
+#endif
 }
 
 // ---- VA 0x00418A10 --------------------------------------------------------
@@ -196,6 +255,15 @@ void LoadVpdFile(const wchar_t* path) {
     std::fgets(tail, 0x100, fp);   // count-line comment tail
     std::fgets(tail, 0x100, fp);   // blank
 
+#if MMD_ORIGINAL_PROFILE
+    const auto& namedModel = *mdl::Mdl(model);
+    std::vector<std::pair<bool, std::string>> canonicalNames(namedModel.boneCount);
+    for (unsigned i = 0; i < namedModel.boneCount; ++i) {
+        const auto& bone = namedModel.boneTable[i];
+        canonicalNames[i].first = original_file_encoding::Name(bone.name, 20, bone.jpText, 20,
+                                                              canonicalNames[i].second);
+    }
+#endif
     const HWND hwnd = static_cast<HWND>(app->Hwnd());
     EnableWindow(GetDlgItem(hwnd, panel::kUndoButton), TRUE);
     EnableWindow(GetDlgItem(hwnd, panel::kRedoButton), FALSE);
@@ -208,7 +276,9 @@ void LoadVpdFile(const wchar_t* path) {
     if (ring >= 30) mdl::Mdl(model)->undoState[0] = 0;
     ring = mdl::Mdl(model)->undoState[0];
     mdl::Mdl(model)->undoState[1] = ring;
+#if !MMD_ORIGINAL_PROFILE
     bone_scale::CaptureUndo(model);
+#endif
 
     mdl::UndoRecord& undo = mdl::Mdl(model)->undoRings[0].slots[ring];
     undo.operation = 1;
@@ -231,7 +301,9 @@ void LoadVpdFile(const wchar_t* path) {
     const bool pmx = modelRecord.physicsMode == 2;              // 0x418FC4
     // The bones the standard segment writes; the scale extension may only
     // land on one of them (vpd_scale_io.hpp, resolution rule 3).
+#if !MMD_ORIGINAL_PROFILE
     std::vector<std::uint8_t> touched(static_cast<std::size_t>(boneCnt), 0);
+#endif
 
     for (int k = 0; k < count; ++k) {
         float trans[3] = {0, 0, 0};
@@ -250,9 +322,27 @@ void LoadVpdFile(const wchar_t* path) {
         std::fgets(tail, 0x100, fp);                    // "\n"
         std::fgets(tail, 0x100, fp);
 
+#if MMD_ORIGINAL_PROFILE
+        // PMX keeps the complete Unicode name separately from its legacy
+        // mirror, which can reserve a NUL and therefore contain only 19 of
+        // the 20 bytes that the VPD writer accepts. Resolve the same exact
+        // name used by SaveVpdFile first; retain the mirror as a fallback for
+        // poses written by original MMD. A mirror must not shadow another
+        // bone's complete name.
+        bool hasCanonicalMatch = false;
+        for (const auto& candidate : canonicalNames)
+            if (candidate.first && candidate.second == name) { hasCanonicalMatch = true; break; }
+        const auto inputNameLength = std::strlen(name);
+#endif
         for (int i = 0; i < boneCnt; ++i) {
             mikudancestudio::mdl::BoneRecord* const bone = bones + i;
+#if MMD_ORIGINAL_PROFILE
+            if (hasCanonicalMatch ? !(canonicalNames[i].first && canonicalNames[i].second == name) :
+                !(strnlen_s(bone->name, 20) == inputNameLength &&
+                  std::memcmp(bone->name, name, inputNameLength) == 0))
+#else
             if (std::strcmp(name, bone->name) != 0)
+#endif
                 continue;
 
             // snapshot the pre-load pose into the undo record (0x418E2D..)
@@ -323,8 +413,10 @@ void LoadVpdFile(const wchar_t* path) {
 
             selBits[i] = 1;                              // 0x419226
             regBits[i] = 1;
+#if !MMD_ORIGINAL_PROFILE
             touched[static_cast<std::size_t>(i)] = 1;
             bone_scale::SetPose(model, i, {}); // Standard VPD has no scale channel.
+#endif
             std::memcpy(bone->trans, trans, 12);        // 0x419256
             std::memcpy(bone->rotQuat, quat, 16);
             // No break: 0x419240's bone loop keeps scanning after a match,
@@ -341,6 +433,7 @@ void LoadVpdFile(const wchar_t* path) {
     // position, and applied entry by entry under the documented resolution
     // rules; the undo snapshot, the registration bytes and the selection
     // scope set above are not touched by any of it.
+#if !MMD_ORIGINAL_PROFILE
     vpd_scale_io::Extension extension;
     const vpd_scale_io::TailLoad tailStatus =
         vpd_scale_io::LoadTail(path, count, extension);
@@ -367,6 +460,7 @@ void LoadVpdFile(const wchar_t* path) {
         runtime_log::Write("bone scale: VPD extension %s",
                            vpd_scale_io::Describe(tailStatus));
     }
+#endif
 }
 
 }  // namespace mikudancestudio

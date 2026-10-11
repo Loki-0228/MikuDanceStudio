@@ -2500,7 +2500,7 @@ static void Cmd400_CurveCopyFromFrame(MMDApp* app, HWND hwnd) {
                 ReadBoneCurveChannel(app, keys[idx],
                                      static_cast<std::size_t>(sel), i);
             }
-        } else if (sel == bone_scale::kInterpScaleChannel) {
+        } else if (!MMD_ORIGINAL_PROFILE && sel == bone_scale::kInterpScaleChannel) {
             // The scale channel: its curve into every preset row.
             for (std::int32_t i = 0; i < 6; ++i) {
                 ReadScaleCurveChannel(app, model, idx, static_cast<std::size_t>(i));
@@ -2511,8 +2511,8 @@ static void Cmd400_CurveCopyFromFrame(MMDApp* app, HWND hwnd) {
             for (std::int32_t i = 0; i < 4; ++i) {
                 ReadBoneCurveChannel(app, keys[idx], i, i);
             }
-            ReadScaleCurveChannel(app, model, idx,
-                                  bone_scale::kInterpScaleChannel);
+            if (!MMD_ORIGINAL_PROFILE)
+                ReadScaleCurveChannel(app, model, idx, bone_scale::kInterpScaleChannel);
         }
         SetFocus(hwnd);
     }
@@ -2561,15 +2561,14 @@ static void Cmd400_CurvePasteToFrames(MMDApp* app, HWND hwnd) {
             if (sel < bone_scale::kInterpScaleChannel) {
                 WriteBoneCurveChannel(app, key,
                                       static_cast<std::size_t>(sel), sel);
-            } else if (sel == bone_scale::kInterpScaleChannel) {
-                WriteScaleCurveChannel(app, model, i,
-                                       bone_scale::kInterpScaleChannel);
+            } else if (!MMD_ORIGINAL_PROFILE && sel == bone_scale::kInterpScaleChannel) {
+                WriteScaleCurveChannel(app, model, i, bone_scale::kInterpScaleChannel);
             } else {
                 for (std::int32_t channel = 0; channel < 4; ++channel) {
                     WriteBoneCurveChannel(app, key, channel, channel);
                 }
-                WriteScaleCurveChannel(app, model, i,
-                                       bone_scale::kInterpScaleChannel);
+                if (!MMD_ORIGINAL_PROFILE)
+                    WriteScaleCurveChannel(app, model, i, bone_scale::kInterpScaleChannel);
             }
         }
         SelectionReeval(app);
@@ -2618,13 +2617,13 @@ static void Cmd400_CurveResetRows(MMDApp* app, HWND hwnd) {
             }
             if (sel < bone_scale::kInterpScaleChannel) {
                 ResetBoneCurveChannel(key, static_cast<std::size_t>(sel));
-            } else if (sel == bone_scale::kInterpScaleChannel) {
+            } else if (!MMD_ORIGINAL_PROFILE && sel == bone_scale::kInterpScaleChannel) {
                 ResetScaleCurveChannel(model, i);
             } else {
                 for (std::int32_t channel = 0; channel < 4; ++channel) {
                     ResetBoneCurveChannel(key, channel);
                 }
-                ResetScaleCurveChannel(model, i);
+                if (!MMD_ORIGINAL_PROFILE) ResetScaleCurveChannel(model, i);
             }
         }
         SelectionReeval(app);

@@ -127,6 +127,8 @@
 #include <utility>
 
 #include "mikudancestudio/text_encoding.hpp"
+#include "mikudancestudio/build_profile.hpp"
+#include "mikudancestudio/original_file_encoding.hpp"
 #include "mikudancestudio/accessory_layout.hpp"
 #include "mikudancestudio/global_key_layout.hpp"
 #include "mikudancestudio/mmd_app.hpp"
@@ -152,6 +154,105 @@ thread_local bool pmmWriteFailed = false;
 inline void W(int fd, const void* buf, unsigned int count) {
     if (_write(fd, buf, count) != static_cast<int>(count)) pmmWriteFailed = true;
 }
+
+bool EncodePmmPath(char* out, std::size_t capacity, const wchar_t* value) {
+#if MMD_ORIGINAL_PROFILE
+    const bool encoded = original_file_encoding::Fixed(out, capacity, value);
+    if (!encoded) pmmWriteFailed = true;
+    return encoded;
+#else
+    return text_encoding::EncodePath(out, capacity, value);
+#endif
+}
+
+#if MMD_ORIGINAL_PROFILE
+template<class Key>
+bool OriginalPmmTrack(const Key* keys, std::size_t denseCount,
+                      std::size_t capacity, std::size_t originalSlots) {
+    if (denseCount > originalSlots || denseCount > capacity) return false;
+    for (std::size_t i = 0; i < capacity; ++i) {
+        if (i >= denseCount && keys[i].frame == 0) continue;
+        // PMM stores absolute slot indices and links, not merely a count.
+        // The original loader uses them directly in its fixed-size pools.
+        // An expanded but unused tail is harmless; one live high slot is not.
+        if (i >= originalSlots || keys[i].previous >= originalSlots || keys[i].next >= originalSlots)
+            return false;
+    }
+    return true;
+}
+
+bool OriginalPmmKeys(const MMDApp& app) {
+    for (int slot = 0; slot < kModelSlotCount; ++slot) {
+        const auto* raw = app.ModelSlot(slot);
+        if (!raw) continue;
+        const auto& model = *mdl::Mdl(raw);
+        if (!OriginalPmmTrack(model.boneKeys, model.boneCount, mdl::BoneKeyCapacity(model), mdl::kBoneKeyCapacity) ||
+            !OriginalPmmTrack(model.morphKeys, model.morphCount, mdl::MorphKeyCapacity(model), mdl::kMorphKeyCapacity))
+            return false;
+    }
+    return true;
+}
+
+std::wstring AccessoryName(const mdl::AccessoryRecord& accessory) {
+    const std::string bounded(accessory.name, strnlen_s(accessory.name, sizeof accessory.name));
+    return text_encoding::Display(bounded.c_str());
+}
+
+bool OriginalPmmNames(MMDApp& app, bool& identityMismatch) {
+    identityMismatch = false;
+    std::string encoded;
+    for (int slot = 0; slot < kModelSlotCount; ++slot) {
+        const auto* raw = app.ModelSlot(slot);
+        if (!raw) continue;
+        const auto& model = *mdl::Mdl(raw);
+        for (int language = 0; language != 2; ++language)
+            if (!original_file_encoding::Name(language ? model.nameEn : model.name, 20,
+                    model.pmxTextBuffers[language], 255, encoded)) return false;
+        for (unsigned i = 0; i < model.boneCount; ++i) {
+            if (!original_file_encoding::Name(model.boneTable[i].name, 20,
+                    model.boneTable[i].jpText, 20, encoded)) return false;
+            if (encoded != std::string(model.boneTable[i].name, strnlen_s(model.boneTable[i].name, 20))) {
+                identityMismatch = true; return false;
+            }
+        }
+        for (unsigned i = 0; i < model.morphCount; ++i) {
+            if (!original_file_encoding::Name(model.morphs[i].name, 20,
+                    model.morphs[i].jpText, 20, encoded)) return false;
+            if (encoded != std::string(model.morphs[i].name, strnlen_s(model.morphs[i].name, 20))) {
+                identityMismatch = true; return false;
+            }
+        }
+    }
+    for (int slot = 0; slot < 255; ++slot)
+        if (const auto* accessory = app.AccessorySlot(slot)) {
+            const auto label = AccessoryName(*accessory);
+            if (accessory->name[0] && label.empty()) return false;
+            if (!original_file_encoding::Encode(label.c_str(), sizeof accessory->name - 1, encoded)) return false;
+        }
+    const HWND combo = GetDlgItem(app.MainWindow(), panel::kAccessoryCombo);
+    const auto count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    for (LRESULT i = 0; i < count; ++i) {
+        const auto length = SendMessageW(combo, CB_GETLBTEXTLEN, i, 0);
+        if (length < 0 || length > 255) return false;
+        wchar_t label[256]{};
+        SendMessageW(combo, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(label));
+        if (!original_file_encoding::Encode(label, 99, encoded)) return false;
+    }
+    return true;
+}
+
+void WriteOriginalName(int fd, const char* raw, std::size_t capacity,
+                       const wchar_t* unicode, std::size_t maximum) {
+    std::string bytes;
+    if (!original_file_encoding::Name(raw, capacity, unicode, maximum, bytes)) {
+        pmmWriteFailed = true;
+        return;
+    }
+    const auto length = static_cast<unsigned char>(bytes.size());
+    W(fd, &length, 1);
+    W(fd, bytes.data(), length);
+}
+#endif
 
 void WritePmmBoneKey(int fd, const mdl::BoneKey& key) {
     W(fd, &key.frame, 4); W(fd, &key.previous, 4); W(fd, &key.next, 4);
@@ -407,6 +508,11 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
         unsigned char* const model = slots[slot];
 
         for (int language = 0; language < 2; ++language) {
+#if MMD_ORIGINAL_PROFILE
+            const auto& record = *mdl::Mdl(model);
+            WriteOriginalName(fd, language ? record.nameEn : record.name, 20,
+                              record.pmxTextBuffers[language], 255);
+#else
             const char* name = language ? mdl::Mdl(model)->nameEn : mdl::Mdl(model)->name;
             if (mdl::Mdl(model)->pmxTextBuffers[language]) {
                 const auto wide = text_encoding::ModelName(*mdl::Mdl(model), language != 0);
@@ -416,10 +522,10 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
             const auto len = static_cast<unsigned char>(std::strlen(name));
             W(fd, &len, 1);
             W(fd, name, len);
+#endif
         }
 
-        WideToSjisPath(text,                                  // 0x41B45D
-                       mdl::Mdl(model)->path, 0x100);
+        EncodePmmPath(text, 0x100, mdl::Mdl(model)->path);
         W(fd, text, 0x100);                                    // 0x41B471
 
         const mdl::ModelRecord* const record = mdl::Mdl(model);
@@ -449,19 +555,27 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
         W(fd, &record->boneCount, sizeof(record->boneCount));  // 0x41B4AC
         if (dispCount != 0 && dispCount > 0) {
             for (std::int32_t i = 0; i < dispCount; ++i) {
+#if MMD_ORIGINAL_PROFILE
+                WriteOriginalName(fd, bones[i].name, 20, bones[i].jpText, 20);
+#else
                 const unsigned char len = NameLen(
                     reinterpret_cast<const unsigned char*>(bones[i].name));
                 W(fd, &len, 1);                                // 0x41B4FF
                 W(fd, bones[i].name, len);                     // 0x41B524
+#endif
             }
         }
         W(fd, &record->morphCount, sizeof(record->morphCount)); // 0x41B562
         if (morphCount != 0 && morphCount > 0) {
             for (std::int32_t i = 0; i < morphCount; ++i) {
+#if MMD_ORIGINAL_PROFILE
+                WriteOriginalName(fd, morphs[i].name, 20, morphs[i].jpText, 20);
+#else
                 const unsigned char len = NameLen(
                     reinterpret_cast<const unsigned char*>(morphs[i].name));
                 W(fd, &len, 1);                                // 0x41B5AF
                 W(fd, morphs[i].name, len);                    // 0x41B5D4
+#endif
             }
         }
         W(fd, &record->ikChainCount, sizeof(record->ikChainCount)); // 0x41B612
@@ -715,7 +829,11 @@ void WritePmmAccessoryShadowList(int fd, HWND main, char* text) {
             wchar_t label[256]{};
             SendMessageW(GetDlgItem(main, panel::kAccessoryCombo), CB_GETLBTEXT, i,
                          reinterpret_cast<LPARAM>(label));
+#if MMD_ORIGINAL_PROFILE
+            if (!original_file_encoding::Fixed(text, 100, label)) pmmWriteFailed = true;
+#else
             text_encoding::EncodeDisplay(text, 100, label);
+#endif
             W(fd, text, 100);                                  // 0x41D310
         }
     }
@@ -735,9 +853,14 @@ void WritePmmAccessoryBlocks(
         const auto* const track = reinterpret_cast<const mdl::AccessoryKey*>(
             accTracks[slot]);
 
+#if MMD_ORIGINAL_PROFILE
+        const auto label = AccessoryName(accessory);
+        if (!original_file_encoding::Fixed(text, sizeof accessory.name, label.c_str())) pmmWriteFailed = true;
+        W(fd, text, sizeof accessory.name);
+#else
         W(fd, accessory.name, sizeof accessory.name);          // 0x41D370
-        WideToSjisPath(text,                                   // 0x41D39B
-                       accessory.sourcePath, 0x100);
+#endif
+        EncodePmmPath(text, 0x100, accessory.sourcePath);
         W(fd, text, 0x100);                                    // 0x41D3AF
         W(fd, &accessory.order, 1);                             // 0x41D3CD
 
@@ -813,10 +936,7 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
         const unsigned char b = s->state.waveEnabled != 0;
         W(fd, &b, 1);
     }
-    WideToSjisPath(text,                                       // 0x41DC85
-                   reinterpret_cast<const wchar_t*>(
-                       &s->state.wavPath),
-                   0x100);
+    EncodePmmPath(text, 0x100, s->WavePath());
     W(fd, text, 0x100);                                        // 0x41DCB5
     if (s->AviStream() == nullptr) {                            // 0x41DCC1
         swprintf_s(s->AviBackgroundPath(), 0x100, L"%s",
@@ -825,7 +945,7 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
     W(fd, &s->AviOffsetX(), 4);
     W(fd, &s->AviOffsetY(), 4);
     W(fd, &s->AviScale(), 4);
-    WideToSjisPath(text, s->AviBackgroundPath(), 0x100);        // 0x41DD32
+    EncodePmmPath(text, 0x100, s->AviBackgroundPath());
     W(fd, text, 0x100);                                        // 0x41DD46
     W(fd, &s->AviBackgroundEnabled(), 4);
     if (s->PictureBackgroundTexture() == nullptr) {             // 0x41DD7B
@@ -835,7 +955,7 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
     W(fd, &s->PictureOffsetX(), 4);
     W(fd, &s->PictureOffsetY(), 4);
     W(fd, &s->PictureScale(), 4);
-    WideToSjisPath(text, s->PictureBackgroundPath(), 0x100);    // 0x41DDD6
+    EncodePmmPath(text, 0x100, s->PictureBackgroundPath());
     W(fd, text, 0x100);                                        // 0x41DDEA
     {
         const unsigned char b = s->PictureBackgroundEnabled() != 0;
@@ -1005,14 +1125,14 @@ void SaveSceneFile(MMDApp* app) {
     // Neither a substitution character nor a partial multibyte path is usable.
     const wchar_t* invalidPath = nullptr;
     auto checkPath = [&](const wchar_t* path) {
-        if (!text_encoding::EncodePath(text, sizeof text, path)) invalidPath = path;
+        if (!EncodePmmPath(text, sizeof text, path)) invalidPath = path;
     };
     for (int i = 0; i < kModelSlotCount; ++i)
         if (slots[i]) {
             auto& model = *mdl::Mdl(slots[i]);
             checkPath(model.path);
             for (int language = 0; language < 2; ++language)
-                if (model.pmxTextBuffers[language] && !text_encoding::EncodePath(
+                if (model.pmxTextBuffers[language] && !EncodePmmPath(
                         text, sizeof text, model.pmxTextBuffers[language]))
                     invalidPath = model.path;
         }
@@ -1021,6 +1141,31 @@ void SaveSceneFile(MMDApp* app) {
     checkPath(s->WavePath());
     checkPath(s->AviBackgroundPath());
     checkPath(s->PictureBackgroundPath());
+#if MMD_ORIGINAL_PROFILE
+    bool identityMismatch = false;
+    if (!OriginalPmmKeys(*s)) {
+        runtime_log::Write("ORIGINAL_PROFILE PMM save refused: serialized key slot/link exceeds original bone/morph pool");
+        const wchar_t* messages[] = {
+            L"保存するキーフレームの番号またはリンクが、元の MMD のボーン・モーフ容量を超えています。PMM を保存できません。既存のファイルは変更していません。",
+            L"A saved keyframe slot or link exceeds original MMD's bone/morph capacity. PMM was not saved. The existing file was not changed.",
+            L"将保存的关键帧槽位或链索引超出原版 MMD 的骨骼/表情容量，无法兼容保存 PMM。已有文件未改动。"};
+        if (main) MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1], L"PMM", MB_OK | MB_ICONERROR);
+        SetLastError(ERROR_BUFFER_OVERFLOW);
+        return;
+    }
+    if (invalidPath || !OriginalPmmNames(*s, identityMismatch)) {
+        if (identityMismatch) {
+            runtime_log::Write("ORIGINAL_PROFILE PMM save refused: full bone/morph name differs from original raw identity");
+            const wchar_t* messages[] = {
+                L"ボーンまたはモーフの完全な名前が、元の MMD が照合する短い名前と一致しません。PMM を保存できません。既存のファイルは変更していません。",
+                L"A complete bone or morph name differs from the legacy name used by original MMD to identify it. PMM was not saved. The existing file was not changed.",
+                L"骨骼或表情的完整名称与原版 MMD 用于匹配的旧名称不同，无法兼容保存 PMM。已有文件未改动。"};
+            if (main) MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1], L"PMM", MB_OK | MB_ICONERROR);
+            SetLastError(ERROR_NO_UNICODE_TRANSLATION);
+        } else original_file_encoding::Refuse(main, s->EnglishUI(), L"PMM");
+        return;
+    }
+#else
     if (invalidPath) {
         std::wstring message = L"文件路径超出 PMM 的 255 字节限制，无法无损保存。请缩短路径后重试。\n"
                                L"Path exceeds the PMM field size. Shorten it before saving.\n\n";
@@ -1028,7 +1173,9 @@ void SaveSceneFile(MMDApp* app) {
         MessageBoxW(main, message.c_str(), L"保存 / Save", MB_OK | MB_ICONERROR);
         return;
     }
+#endif
 
+#if !MMD_ORIGINAL_PROFILE
     pmm_extension::Document extensions;
     try { extensions = pmm_settings::Capture(*s); }
     catch(const std::exception& error) {
@@ -1061,6 +1208,7 @@ void SaveSceneFile(MMDApp* app) {
                     L"PMM", MB_OK | MB_ICONERROR);
         return;
     }
+#endif
     pmmWriteFailed = false;
     int fd = -1;
     // Write beside the destination, then publish only a complete, flushed
@@ -1099,7 +1247,11 @@ void SaveSceneFile(MMDApp* app) {
 
 
     // ---- 12. success tail (0x41E747) --------------------------------------
-    const bool written = !pmmWriteFailed && pmm_extension::Append(fd, extensions) && _commit(fd)==0;
+    const bool written = !pmmWriteFailed &&
+#if !MMD_ORIGINAL_PROFILE
+        pmm_extension::Append(fd, extensions) &&
+#endif
+        _commit(fd)==0;
     const bool closed = _close(fd) == 0;
     const bool published=written&&closed&&MoveFileExW(temporary,destination,
         MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=FALSE;
@@ -1114,7 +1266,11 @@ void SaveSceneFile(MMDApp* app) {
                     L"PMM", MB_OK | MB_ICONERROR);
         return;
     }
+#if MMD_ORIGINAL_PROFILE
+    s->PmmProjectSettings().document = {};
+#else
     s->PmmProjectSettings().document = std::move(extensions);
+#endif
     s->PmmProjectSettings().processorEdited = false;
     s->PmmProjectSettings().sortingPrecisionEdited = false;
     NotifyEffectFileSave(s->EnvFileName());

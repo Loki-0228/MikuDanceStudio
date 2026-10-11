@@ -75,6 +75,7 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/build_profile.hpp"
 #include <Windows.h>
 #include <commctrl.h>
 
@@ -272,8 +273,10 @@ void HandleHScroll(LPARAM lParam, WPARAM wParam) {
         const LRESULT pos = SendMessageA(GetDlgItem(hwnd, panel::kSelfShadowRangeSlider),
                                          TBM_GETPOS, 0, 0);
         SetShadowSliderPosition(app, static_cast<int>(pos));
+#if !MMD_ORIGINAL_PROFILE
         if (app->AdaptiveShadowResolution() && code != TB_THUMBTRACK)
             SaveShadowResolutionPreference(app);
+#endif
         char buf[256];
         sprintf_s(buf, 0x100, "%d", static_cast<int>(pos));
         SetWindowTextA(GetDlgItem(hwnd, panel::kSelfShadowRangeEdit), buf);

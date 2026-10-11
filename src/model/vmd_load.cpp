@@ -62,6 +62,7 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/bone_key_pool.hpp"
 #include "mikudancestudio/accessory_motion_io.hpp"
 #include "mikudancestudio/bone_scale.hpp"
@@ -70,6 +71,7 @@
 #include <Windows.h>
 
 #include <cerrno>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -89,6 +91,7 @@
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/text_encoding.hpp"
+#include "mikudancestudio/original_file_encoding.hpp"
 
 namespace mikudancestudio {
 // loader-tail helpers, ported in other translation units
@@ -153,8 +156,8 @@ const char kJpModelMismatch[] =  // 0x52CB48 "... %s ..."
 }  // namespace
 
 // ---- VA 0x00434B60 --------------------------------------------------------
-int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x00434B60
-    if (app == nullptr || fileName == nullptr) return 0;
+static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* wideFileName) {
+    if (app == nullptr || (!fileName && !wideFileName)) return 0;
     auto& s = *app;
     unsigned char* const model = app->SelectedModel();
 
@@ -169,8 +172,10 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     const HWND hwnd = s.state.hwnd;
     const int language = s.EnglishUI();
 
-    const errno_t openErr =
-        _sopen_s(&fileHandle, fileName,
+    const errno_t openErr = wideFileName
+        ? _wsopen_s(&fileHandle, wideFileName,
+                    _O_BINARY | _O_RDONLY, _SH_DENYWR, _S_IREAD)
+        : _sopen_s(&fileHandle, fileName,
                  _O_BINARY | _O_RDONLY, _SH_DENYWR, _S_IREAD);
     if (openErr != 0) {
         wchar_t message[256]{};
@@ -227,6 +232,7 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     // Prepare optional tail data before importing any standard keys. A broken
     // or unknown tail remains ignorable, while allocation/I/O exceptions here
     // still leave the model and global tracks untouched.
+#if !MMD_ORIGINAL_PROFILE
     std::vector<accessory_motion_io::Track> accessoryTracks;
     std::vector<std::uint8_t> morphBlock;
     bone_scale_io::VmdExtension scaleExtension;
@@ -248,8 +254,8 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
                 }
             }
             wchar_t widePath[MAX_PATH]{};
-            MultiByteToWideChar(CP_ACP, 0, fileName, -1, widePath, MAX_PATH);
-            hasScaleExtension = bone_scale_io::LoadVmdExtension(widePath, scaleExtension,
+            if (!wideFileName) MultiByteToWideChar(CP_ACP, 0, fileName, -1, widePath, MAX_PATH);
+            hasScaleExtension = bone_scale_io::LoadVmdExtension(wideFileName ? wideFileName : widePath, scaleExtension,
                 static_cast<std::int64_t>(tailStart)) == bone_scale_io::ExtensionLoad::Loaded;
         }
     } catch (const std::exception&) {
@@ -260,6 +266,7 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
         _close(fileHandle);
         return 0;
     }
+#endif
 
     if (s.state.optflag[0] != 0) {
         // ==== camera / light / self-shadow motion =========================
@@ -381,8 +388,12 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
         // MMS: `.x` accessory keys behind the standard end code
         // (accessory_motion_io.hpp).  Anything else there is ignored, as the
         // original reader ignores it.
+#if MMD_ORIGINAL_PROFILE
+        const bool accessoriesApplied = false;
+#else
         const bool accessoriesApplied = !accessoryTracks.empty() &&
             accessory_motion_io::Apply(app, accessoryTracks) > 0;
+#endif
         _close(fileHandle);
         PanelPaint(app);
         SelectionReeval(app);
@@ -396,7 +407,16 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     }
 
     // ==== model motion =====================================================
+#if MMD_ORIGINAL_PROFILE
+    std::string modelName;
+    const auto& namedModel = *mdl::Mdl(model);
+    const bool sameModelName = std::string(namedModel.name, strnlen_s(namedModel.name, 20)) == text ||
+        (original_file_encoding::Name(namedModel.name, 20, namedModel.pmxTextBuffers[0], 20, modelName) &&
+         modelName == text);
+    if (!sameModelName) {
+#else
     if (std::strcmp(text, mdl::Mdl(model)->name) != 0) {
+#endif
         if (std::memcmp(text, kCameraLightName, 13) == 0) {
             MotionMessageBox(hwnd, language,
                 L"このモーションはカメラ・照明用です。カメラ編集モードで読み込んでください。",
@@ -437,11 +457,31 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     Allocation preparedPose(sizesFit && poseBytes ? static_cast<unsigned char*>(std::malloc(poseBytes)) : nullptr, &std::free);
     Allocation preparedKeys(sizesFit && undoBytes ? static_cast<unsigned char*>(std::malloc(undoBytes)) : nullptr, &std::free);
     std::vector<unsigned char> ikEntries;
+#if MMD_ORIGINAL_PROFILE
+    // Complete standard names can differ from the PMX loader's NUL-reserving
+    // legacy mirrors. Prepare the translation before changing undo or keys;
+    // the registrar itself deliberately keeps its original raw-name contract.
+    std::vector<std::array<char, 40>> ikNameAliases;
+#endif
     bool allocationsReady = sizesFit && (!poseBytes || preparedPose) && (!undoBytes || preparedKeys);
     if (allocationsReady) {
-        // The registrar compares the legacy fixed-width names with strcmp.
-        // Keep an extra terminator after each populated entry array as well.
-        try { ikEntries.resize(std::size_t(input.maximumIkEntries) * 21 + 1); }
+        // Keep an extra terminator beyond the fixed-width entry array.
+        try {
+            ikEntries.resize(std::size_t(input.maximumIkEntries) * 21 + 1);
+#if MMD_ORIGINAL_PROFILE
+            for (unsigned i = 0; i < record.ikChainCount; ++i) {
+                const int index = record.ikChains[i].boneIndex;
+                if (index < 0 || static_cast<unsigned>(index) >= record.boneCount) continue;
+                const auto& bone = record.boneTable[index];
+                std::string canonical;
+                if (!original_file_encoding::Name(bone.name, 20, bone.jpText, 20, canonical)) continue;
+                std::array<char, 40> alias{};
+                std::memcpy(alias.data(), canonical.data(), canonical.size());
+                std::memcpy(alias.data() + 20, bone.name, 20);
+                if (std::memcmp(alias.data(), alias.data() + 20, 20) != 0) ikNameAliases.push_back(alias);
+            }
+#endif
+        }
         catch (const std::exception&) { allocationsReady = false; }
     }
     if (!allocationsReady) {
@@ -474,7 +514,9 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     std::uint32_t& ringIdx = record.undoState[0];
     if (++ringIdx >= 30) ringIdx = 0;
     record.undoState[1] = ringIdx;
+#if !MMD_ORIGINAL_PROFILE
     bone_scale::CaptureUndo(model);
+#endif
 
     auto& undo = mikudancestudio::mdl::Mdl(model)->undoRings[0].slots[ringIdx];
     undo.operation = 2;
@@ -518,7 +560,9 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
     // runs afterwards and writes the curves a v2 tail carries (a v1 tail or no
     // tail leaves the default).  The scope touches nothing else: the standard
     // VMD body, the morph block and the bone-scale container are unchanged.
+#if !MMD_ORIGINAL_PROFILE
     bone_scale::DefaultCurveScope defaultScaleCurve;
+#endif
     unsigned char boneOk = 1;
     for (unsigned int k = 0; k < boneKeyCount; ++k) {
         input.Read(text, 15);
@@ -596,6 +640,14 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
             unsigned char* entries = n > 0 ? ikEntries.data() : nullptr;
             for (int e = 0; e < n; ++e) {
                 input.Read(entries + 21 * e, 20);
+#if MMD_ORIGINAL_PROFILE
+                for (const auto& alias : ikNameAliases) {
+                    if (std::strncmp(reinterpret_cast<const char*>(entries + 21 * e), alias.data(), 20) == 0) {
+                        std::memcpy(entries + 21 * e, alias.data() + 20, 20);
+                        break;
+                    }
+                }
+#endif
                 input.Read(&flag, 1);
                 entries[21 * e + 20] = static_cast<unsigned char>(flag != 0);
             }
@@ -615,11 +667,13 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
 
     // The prepared extensions apply only after the standard keys they refer
     // to exist. These model-facing APIs retain their own allocation policy.
+#if !MMD_ORIGINAL_PROFILE
     if (!morphBlock.empty())
         morph_curve::ApplyVmd(model, morphBlock.data(), morphBlock.size(),
                               static_cast<int>(s.state.currentFrame));
     if (hasScaleExtension)
         bone_scale_io::ApplyImportedExtension(model, scaleExtension, s.state.currentFrame);
+#endif
 
     _close(fileHandle);
     PanelPaint(app);                                    // 0x414610
@@ -628,13 +682,21 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {  // was Sub434B60, VA 0x0
                      s.PlaybackPhysicsMode());
 }
 
+int LoadVmdMotion(MMDApp* app, const char* fileName) {
+    return LoadVmdMotionPath(app, fileName, nullptr);
+}
+
 // Wide-path entry used by the ported file dialog (0x461300's GetOpenFileNameA
 // equivalent).  CP_ACP conversion matches what the ANSI dialog produced.
 void LoadVmdFile(const wchar_t* path) {
     if (g_Block == nullptr) return;
+#if MMD_ORIGINAL_PROFILE
+    LoadVmdMotionPath(g_Block, nullptr, path);
+#else
     char ansi[MAX_PATH];
     WideCharToMultiByte(CP_ACP, 0, path, -1, ansi, MAX_PATH, nullptr, nullptr);
     LoadVmdMotion(g_Block, ansi);
+#endif
 }
 
 }  // namespace mikudancestudio

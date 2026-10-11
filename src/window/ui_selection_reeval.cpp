@@ -222,7 +222,7 @@ void DragInterpolationControlPoint(MMDApp* app) {  // was Sub416280, VA 0x004162
             // scale curve).  The scale curve lives in bone_scale's side table,
             // keyed by the key slot, so it is written through that API.
             const bool allChannels = selected >= bone_scale::kInterpBoneAll;
-            const bool scaleOnly = selected == bone_scale::kInterpScaleChannel;
+            const bool scaleOnly = !MMD_ORIGINAL_PROFILE && selected == bone_scale::kInterpScaleChannel;
             for (int index = 0; index < boneKeyCapacity; ++index) {
                 mdl::BoneKey& record = records[index];
                 if (record.allocated == 0)
@@ -251,7 +251,7 @@ void DragInterpolationControlPoint(MMDApp* app) {  // was Sub416280, VA 0x004162
                     }
                 }
                 const int channel = allChannels ? 0 : selected;
-                if (scaleOnly || allChannels) {
+                if (!MMD_ORIGINAL_PROFILE && (scaleOnly || allChannels)) {
                     bone_scale::Curve curve = bone_scale::KeyCurve(model, index);
                     curve[group] = static_cast<std::uint8_t>(x);
                     curve[group + 1] = static_cast<std::uint8_t>(y);

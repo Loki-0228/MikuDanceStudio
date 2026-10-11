@@ -1,3 +1,4 @@
+#include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
 // VA 0x0040CAC0 - LayoutViewportPanels  (original: sub_40CAC0, 0x5A9 bytes,
 // was Sub40CAC0)
@@ -155,6 +156,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
         moveLeft(543, 619,  8, 36, 21);   // distance follows the widened angles
         moveLeft(550, 656, 11, 53, 14);
     }
+#if !MMD_ORIGINAL_PROFILE
     // In model mode, position, rotation and scale values use identical 53x14
     // edit boxes. The scale caption alone is sized from its localized text.
     // Install the final font before MoveWindow repaints the caption. Drawing
@@ -192,6 +194,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     moveScale(575, scaleYField, 11, scaleEditWidth, 14);
     moveScale(576, scaleZAxis,  9, 16, 17);
     moveScale(577, scaleZField, 11, scaleEditWidth, 14);
+#endif
 
     moveRight(557, 140, -22, 50, 20); // 0x40D018 coordinate-axis toggle
     moveRight(552, 195, -22, 50, 20); // power-save
@@ -208,6 +211,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
             ShowWindow(overlay, SW_SHOW);
         }
     }
+#if !MMD_ORIGINAL_PROFILE
     for (int id : {570, 571, 572, 574, 575, 576, 577}) {
         HWND control = GetDlgItem(base, id);
         if (IsWindowVisible(control)) {
@@ -215,6 +219,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
             ShowWindow(control, SW_SHOW);
         }
     }
+#endif
 }
 
 }  // namespace mikudancestudio

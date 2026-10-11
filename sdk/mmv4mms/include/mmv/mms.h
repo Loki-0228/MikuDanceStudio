@@ -30,6 +30,32 @@ typedef struct MmvRenderMaterialChannels {
     uint32_t objectIndex, materialIndex;
     float textureMultiply[4], textureAdd[4], sphereMultiply[4], sphereAdd[4], toonMultiply[4], toonAdd[4];
 } MmvRenderMaterialChannels;
+
+#define MMV_MMS_SELF_SHADOW_VERSION 1u
+/* MMS native R32F map: red = clip.z / clip.w; UV = clip.xy / clip.w
+ * * (0.5, -0.5) + 0.5. The matrix maps scene coordinates (object.world
+ * precedes it), without the camera/orbit transform. Mode is native 1 or 2.
+ * Borrowed on MmvMmsFrame.device until render returns, never CPU read back.
+ * The plugin releases all retained GPU references on MMV_DEVICE_LOST. */
+#define MMV_MMS_SHADOW_NATIVE_PROJECTED_DEPTH 1u
+typedef struct MmvMmsSelfShadow {
+    uint32_t structureSize, version, encoding, mode;
+    uint32_t width, height;
+    uint64_t frameId, texture; /* IDirect3DTexture9, same device, R32F. */
+    float lightViewProjection[16];
+} MmvMmsSelfShadow;
+
+/* Native main-color material grouping. Original is one authored-order draw;
+ * Coverage adds only an alpha==255 prepass before the translucent draw.
+ * Custom FX keep their own pass states and never receive Coverage. */
+#define MMV_MMS_MATERIAL_ORIGINAL 0u
+#define MMV_MMS_MATERIAL_OPAQUE 1u
+#define MMV_MMS_MATERIAL_TRANSLUCENT 2u
+#define MMV_MMS_MATERIAL_COVERAGE 3u
+#define MMV_MMS_MATERIAL_CUSTOM_EFFECT 1u
+typedef int (MMV_CALL *MmvMmsReadMaterialPassFn)(void* context,
+    uint32_t objectIndex, const MmvMaterial* evaluatedMaterial,
+    uint32_t effectFlags, uint32_t* colorPass);
 typedef struct MmvMmsFrame {
     uint32_t structureSize, abiVersion;
     uint64_t device;
@@ -41,6 +67,14 @@ typedef struct MmvMmsFrame {
     /* Optional ABI 1 tail. Copy raw panel values, including full-turn rotations.
        Older callers omit this tail and retain matrix-based fallback controls. */
     const MmvAccessoryControl* accessoryControls; uint32_t accessoryControlCount;
+    /* Optional ABI 1 tail. Null/absent retains the legacy plugin-generated
+       map. A supplied record with mode 0 explicitly disables self-shadow. */
+    const MmvMmsSelfShadow* nativeSelfShadow;
+    /* Optional ABI 1 tail. Invoked synchronously during render, using the
+       evaluated material rather than its sourceMaterial index. Neither the
+       callback nor its context may be retained after render returns. */
+    void* materialPassContext;
+    MmvMmsReadMaterialPassFn readMaterialPass;
 } MmvMmsFrame;
 typedef struct MmvMmsOutput {
     uint32_t structureSize, width, height, reserved;

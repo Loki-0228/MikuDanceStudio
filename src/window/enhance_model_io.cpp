@@ -49,6 +49,12 @@
 #include "mikudancestudio/ui_language.hpp"
 
 #include "mikudancestudio/texture_lookup.hpp"
+#if MMD_ORIGINAL_PROFILE
+#include "mikudancestudio/original_file_encoding.hpp"
+#include <array>
+#include <set>
+#include <vector>
+#endif
 
 namespace mikudancestudio {
 namespace {
@@ -69,6 +75,161 @@ void WideToSjis(D3DRenderer* renderer, char* out, const wchar_t* wide,
 }
 
 constexpr UINT kD3dxDefault = 0xFFFFFFFFu;
+
+#if MMD_ORIGINAL_PROFILE
+enum class PmdRefusal { Representation, Write };
+
+void RefuseOriginalPmd(MMDApp* app, PmdRefusal reason) {
+    const wchar_t* incompatible[] = {
+        L"このモデルの名前、材質参照、または構造を標準 PMD に完全に保存できません。PMX から PMD への変換には対応していません。既存のファイルは変更していません。",
+        L"The model names, material references or structure cannot be preserved in standard PMD. PMX-to-PMD conversion is unsupported. The existing file was not changed.",
+        L"模型的名称、材质引用或结构无法完整保存为标准 PMD；此版本不支持将 PMX 转换为 PMD。已有文件未改动。"};
+    const wchar_t* failed[] = {
+        L"PMD ファイルを完全に保存できませんでした。保存先と空き容量を確認してください。既存のファイルは変更していません。",
+        L"The PMD file could not be saved completely. Check the destination and free space. The existing file was not changed.",
+        L"PMD 文件未能完整保存，请检查保存位置和剩余空间。已有文件未改动。"};
+    runtime_log::Write("ORIGINAL_PROFILE PMD save refused: %s",
+        reason == PmdRefusal::Representation ? "not representable" : "write failed");
+    if (app && app->Hwnd()) {
+        const unsigned language = app->EnglishUI() <= 2 ? app->EnglishUI() : 1;
+        MessageBoxW(static_cast<HWND>(app->Hwnd()),
+            (reason == PmdRefusal::Representation ? incompatible : failed)[language],
+            L"PMD", MB_OK | MB_ICONERROR);
+    }
+    SetLastError(reason == PmdRefusal::Representation ? ERROR_INVALID_DATA : ERROR_WRITE_FAULT);
+}
+
+// The shared writer emits the narrow fields verbatim. Original MMD consumes
+// these as C strings (and forces the final English byte to zero), so reserve a
+// terminator and validate complete CP932 identities against authoritative text.
+bool OriginalPmdName(const char* raw, std::size_t capacity, const wchar_t* wide = nullptr) {
+    std::string encoded;
+    return capacity && original_file_encoding::Name(raw, capacity, wide, capacity - 1, encoded) &&
+        encoded == std::string(raw, strnlen_s(raw, capacity));
+}
+
+bool PrepareOriginalPmd(mdl::ModelRecord& model,
+                        std::vector<std::array<char, 20>>& textures) {
+    if (model.physicsMode == 2 || model.pmxVertices ||
+        model.boneCount == 0 || model.boneCount > 65535 ||
+        model.morphCount > 65535 || model.ikChainCount > 65535 ||
+        !model.boneTable || (model.vertexCount && !model.rawVertices) ||
+        (model.indexCount && !model.indices) || (model.materialCount && !model.materials) ||
+        (model.ikChainCount && !model.ikChains) || (model.morphCount && !model.morphs) ||
+        (model.morph0Count && !model.morph0Table) ||
+        (model.facialFrameCount && !model.displayFrames) ||
+        (model.rigidBodyCount && !model.rbGroups) ||
+        (model.rigidCount && !model.rigidTable) || (model.jointCount && !model.jointTable)) return false;
+    if (!OriginalPmdName(model.name, sizeof model.name, model.pmxTextBuffers[0]) ||
+        !OriginalPmdName(model.nameEn, sizeof model.nameEn, model.pmxTextBuffers[1]) ||
+        !OriginalPmdName(model.comment, sizeof model.comment, model.pmxTextBuffers[2]) ||
+        !OriginalPmdName(model.commentEn, sizeof model.commentEn, model.pmxTextBuffers[3])) return false;
+    const auto signedBoneIndex = [&](int index, bool allowNone = false) {
+        return (allowNone && index == -1) ||
+            (index >= 0 && index <= 32767 && static_cast<unsigned>(index) < model.boneCount);
+    };
+    // IK and display references are zero-extended WORDs in the PMD loader,
+    // unlike parent/tail, vertex skinning and rigid-body bone references.
+    const auto unsignedBoneIndex = [&](int index) {
+        return index >= 0 && index <= 65535 && static_cast<unsigned>(index) < model.boneCount;
+    };
+    for (unsigned i = 0; i < model.boneCount; ++i) {
+        const auto& bone = model.boneTable[i];
+        if (!OriginalPmdName(bone.name, sizeof bone.name, bone.jpText) ||
+            !OriginalPmdName(bone.nameEn, sizeof bone.nameEn, bone.enText) ||
+            !signedBoneIndex(bone.parent, true) || !signedBoneIndex(bone.tailBone, true) ||
+            bone.tailIdx < -32768 || bone.tailIdx > 32767 ||
+            static_cast<unsigned>(bone.type) > 9) return false;
+        // CoRotate uses tailIdx as a percentage, not a bone reference.
+        if ((bone.type == mdl::BoneType::UnderIk || bone.type == mdl::BoneType::RotateGrant) &&
+            !signedBoneIndex(bone.tailIdx)) return false;
+    }
+    for (unsigned i = 0; i < model.vertexCount; ++i) {
+        const auto& vertex = model.rawVertices[i];
+        if (vertex.weightPercent < 0 || vertex.weightPercent > 100 ||
+            !signedBoneIndex(vertex.bone[0], vertex.weightPercent == 0) ||
+            !signedBoneIndex(vertex.bone[1], vertex.weightPercent == 100)) return false;
+    }
+    const auto* indices = mdl::Indices(reinterpret_cast<unsigned char*>(&model));
+    if (model.indexCount % 3) return false;
+    for (unsigned i = 0; i < model.indexCount; ++i)
+        if (indices[2 * static_cast<std::size_t>(i)] >= model.vertexCount) return false;
+    for (unsigned i = 0; i < model.ikChainCount; ++i) {
+        const auto& ik = model.ikChains[i];
+        if (!unsignedBoneIndex(ik.boneIndex) || !unsignedBoneIndex(ik.targetBone) || (ik.linkCount && !ik.links)) return false;
+        for (unsigned j = 0; j < ik.linkCount; ++j) if (!unsignedBoneIndex(ik.links[j])) return false;
+    }
+    std::set<std::uint32_t> baseVertices;
+    for (unsigned i = 0; i < model.morphCount; ++i) {
+        const auto& morph = model.morphs[i];
+        if (!OriginalPmdName(morph.name, sizeof morph.name, morph.jpText) ||
+            (i && !OriginalPmdName(morph.nameEn, sizeof morph.nameEn, morph.enText)) ||
+            morph.offsetCount < 0 || (morph.offsetCount && !morph.vertexEntries) ||
+            static_cast<unsigned>(morph.panel) > 4) return false;
+        for (int j = 0; j < morph.offsetCount; ++j) {
+            const auto vertex = morph.vertexEntries[j].vertexIndex;
+            if (vertex >= model.vertexCount) return false;
+            if (i == 0) { if (!baseVertices.insert(vertex).second) return false; }
+            else if (!baseVertices.count(vertex)) return false;
+        }
+    }
+    for (unsigned i = 0; i < model.morph0Count; ++i)
+        if (model.morph0Table[i].vertexIndex >= model.vertexCount) return false;
+    for (unsigned i = 0; i < model.facialFrameCount; ++i)
+        if (model.displayFrames[i].targetIndex >= model.morphCount) return false;
+    const unsigned fixedGroups = model.facialFrameCount ? 3 : 2;
+    if (model.groupCount < fixedGroups || (model.groupCount > fixedGroups && !model.groupNames)) return false;
+    auto* groups = mdl::DisplayGroups(reinterpret_cast<unsigned char*>(&model));
+    for (unsigned i = fixedGroups; i < model.groupCount; ++i)
+        if (!OriginalPmdName(groups[i].name, sizeof groups[i].name) ||
+            !OriginalPmdName(groups[i].nameEn, sizeof groups[i].nameEn)) return false;
+    auto* rows = mdl::RigidGroups(reinterpret_cast<unsigned char*>(&model));
+    for (unsigned i = 0; i < model.rigidBodyCount; ++i)
+        if (!unsignedBoneIndex(rows[i].targetIndex) || rows[i].groupIndex < fixedGroups ||
+            rows[i].groupIndex >= model.groupCount) return false;
+    for (const auto& toon : model.pmdToonFileNames)
+        if (!OriginalPmdName(toon, sizeof toon)) return false;
+    for (unsigned i = 0; i < model.rigidCount; ++i) {
+        const auto& rigid = model.rigidTable[i];
+        if (!OriginalPmdName(rigid.name, sizeof rigid.name, rigid.jpText) ||
+            !signedBoneIndex(rigid.boneIndex, true) || rigid.group > 15 ||
+            rigid.shape > 2 || rigid.mode > 2) return false;
+    }
+    for (unsigned i = 0; i < model.jointCount; ++i) {
+        const auto& joint = model.jointTable[i];
+        if (!OriginalPmdName(joint.name, sizeof joint.name, joint.jpText) ||
+            joint.rigidA < 0 || joint.rigidB < 0 ||
+            static_cast<unsigned>(joint.rigidA) >= model.rigidCount ||
+            static_cast<unsigned>(joint.rigidB) >= model.rigidCount) return false;
+    }
+    const std::size_t directoryLength = wcsnlen_s(model.modelDirectory, 256);
+    if (directoryLength == 256) return false;
+    const auto relativePath = [&](const wchar_t* path, std::wstring& relative) {
+        const std::size_t length = wcsnlen_s(path, 280);
+        if (length == 280) return false;
+        if (!length) { relative.clear(); return true; }
+        if (length < directoryLength || _wcsnicmp(path, model.modelDirectory, directoryLength)) return false;
+        relative.assign(path + directoryLength, length - directoryLength);
+        return relative.find_first_of(L":*") == std::wstring::npos &&
+            (relative.empty() || (relative[0] != L'\\' && relative[0] != L'/'));
+    };
+    auto* materials = mdl::Materials(reinterpret_cast<unsigned char*>(&model));
+    std::uint64_t materialIndices = 0;
+    textures.resize(model.materialCount);
+    for (unsigned i = 0; i < model.materialCount; ++i) {
+        const auto& material = materials[i];
+        std::wstring texture, sphere;
+        std::string encoded;
+        if (material.faceVertexCount < 0 || material.faceVertexCount % 3 ||
+            (material.toonReference > 9 && material.toonReference != 255) ||
+            !relativePath(material.texturePath, texture) || !relativePath(material.spherePath, sphere) ||
+            !original_file_encoding::Encode((texture + (sphere.empty() ? L"" : L"*" + sphere)).c_str(), 20, encoded)) return false;
+        materialIndices += static_cast<unsigned>(material.faceVertexCount);
+        std::memcpy(textures[i].data(), encoded.data(), encoded.size());
+    }
+    return materialIndices == model.indexCount;
+}
+#endif
 
 }  // namespace
 
@@ -174,10 +335,51 @@ int CollectToonFileNames(HWND hDlg) {  // was Sub41EA20, VA 0x0041EA20
 // OVERWRITES (not adds to) the raw vertex position with its offset.
 // ===========================================================================
 void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x41EC10
+#if MMD_ORIGINAL_PROFILE
+    if (!app || !app->SelectedModel() || !path || !*path || wcsnlen_s(path, 256) == 256) {
+        RefuseOriginalPmd(app, PmdRefusal::Representation);
+        return;
+    }
+#endif
     mdl::ModelRecord& model = *mdl::Mdl(app->SelectedModel());
     D3DRenderer* renderer = app->Renderer();
 
     int fh = -1;
+#if MMD_ORIGINAL_PROFILE
+    std::vector<std::array<char, 20>> textureNames;
+    if (!PrepareOriginalPmd(model, textureNames)) {
+        RefuseOriginalPmd(app, PmdRefusal::Representation);
+        return;
+    }
+    // Write beside the destination, then publish only a complete PMD. A bad
+    // name, short write, or failed replacement must leave the old file intact.
+    wchar_t destination[MAX_PATH]{};
+    wchar_t* filename = nullptr;
+    const DWORD destinationLength = GetFullPathNameW(path, MAX_PATH, destination, &filename);
+    if (!destinationLength || destinationLength >= MAX_PATH || !filename || !*filename) {
+        RefuseOriginalPmd(app, PmdRefusal::Write);
+        return;
+    }
+    wchar_t directory[MAX_PATH]{};
+    wcsncpy_s(directory, destination, static_cast<std::size_t>(filename - destination));
+    wchar_t temporary[MAX_PATH]{};
+    if (!GetTempFileNameW(directory, L"mmd", 0, temporary)) {
+        RefuseOriginalPmd(app, PmdRefusal::Write);
+        return;
+    }
+    if (_wsopen_s(&fh, temporary, _O_BINARY | _O_WRONLY | _O_TRUNC,
+                  _SH_DENYRW, _S_IREAD | _S_IWRITE) != 0 || fh == -1) {
+        DeleteFileW(temporary);
+        RefuseOriginalPmd(app, PmdRefusal::Write);
+        return;
+    }
+    bool writeFailed = false;
+    const auto _write = [&](int descriptor, const void* bytes, unsigned count) {
+        const int written = ::_write(descriptor, bytes, count);
+        if (written < 0 || static_cast<unsigned>(written) != count) writeFailed = true;
+        return written;
+    };
+#else
     // pmode was _S_IREAD, so newly created .pmd files were read-only and
     // a second save to the same path failed with EACCES 13. All other write
     // sites in the port pass _S_IWRITE.
@@ -199,6 +401,7 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
         LegacyUiMessageBoxA(static_cast<HWND>(model.hwnd), text, "", 0);
         return;
     }
+#endif
 
     // ---- header ----------------------------------------------------------
     _write(fh, "Pmd", 3);
@@ -234,8 +437,10 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
     _write(fh, &model.indexCount, 4);
     std::uint16_t* const indices =
         mdl::Indices(reinterpret_cast<unsigned char*>(&model));
+    // Both native loaders keep four-byte CPU index slots. PMD fills their
+    // low WORDs and PMX normalizes to int32; the PMD file uses packed WORDs.
     for (std::uint32_t i = 0; i < model.indexCount; ++i)
-        _write(fh, &indices[i], 2);
+        _write(fh, &indices[2 * static_cast<std::size_t>(i)], 2);
 
     // ---- materials -------------------------------------------------------
     _write(fh, &model.materialCount, 4);
@@ -252,6 +457,9 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
         const std::uint8_t sphereFlag = mat.doubleSided != 0 ? 1 : 0;
         _write(fh, &sphereFlag, 1);
         _write(fh, &mat.faceVertexCount, 4);
+#if MMD_ORIGINAL_PROFILE
+        _write(fh, textureNames[i].data(), 20);
+#else
         // combined texture[*sphere] name, stripped of the directory prefix
         wchar_t combined[20];
         const wchar_t* name;
@@ -267,6 +475,7 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
         char sjis[0x100] = "";
         WideToSjis(renderer, sjis, name, 0x100);
         _write(fh, sjis, 0x14);
+#endif
     }
 
     // ---- bones -----------------------------------------------------------
@@ -415,7 +624,18 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
         _write(fh, joint.springs, 24);
     }
 
+#if MMD_ORIGINAL_PROFILE
+    if (_commit(fh) != 0) writeFailed = true;
+    if (_close(fh) != 0) writeFailed = true;
+    if (writeFailed || !MoveFileExW(temporary, destination,
+                                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary);
+        RefuseOriginalPmd(app, PmdRefusal::Write);
+        return;
+    }
+#else
     _close(fh);
+#endif
     wcscpy_s(model.path, 0x100, path);
 }
 
@@ -968,6 +1188,16 @@ static_assert(static_cast<UINT>(TransparentSortPrecision::Off) ==
 void RefreshTransparentSortPrecisionMenu(MMDApp* app) {
     if (app == nullptr)
         return;
+#if MMD_ORIGINAL_PROFILE
+    app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Off;
+    if (HMENU menu = GetMenu(app->state.hwnd)) {
+        if (HMENU view = GetSubMenu(menu, 2)) {
+            DeleteMenu(view, kAutoTransparentMaterialSortingMenuId, MF_BYCOMMAND);
+            DeleteMenu(view, kTransparentSortPrecisionMenuId, MF_BYCOMMAND);
+        }
+    }
+    return;
+#else
     HWND hwnd = app->state.hwnd;
     HMENU menu = GetMenu(hwnd);
     if (menu == nullptr)
@@ -1040,6 +1270,7 @@ void RefreshTransparentSortPrecisionMenu(MMDApp* app) {
                       MF_BYCOMMAND | (text.id == selected ? MF_CHECKED
                                                           : MF_UNCHECKED));
     }
+#endif
 }
 
 void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0

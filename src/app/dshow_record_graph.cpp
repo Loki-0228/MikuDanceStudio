@@ -273,6 +273,16 @@ void BindSelectedCompressor(DShowRecorder* rec) {
 // =========================================================================//
 int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
     SendMessageA(hCombo, CB_RESETCONTENT, 0, 0);
+#if MMD_ORIGINAL_PROFILE
+    const auto selectRaw = [&]() {
+        const LRESULT row = SendMessageW(hCombo, CB_ADDSTRING, 0,
+            reinterpret_cast<LPARAM>(L"AVI Raw"));
+        SendMessageW(hCombo, CB_SETITEMDATA, row, -1);
+        SendMessageW(hCombo, CB_SETCURSEL, row, 0);
+        if (rec) rec->selectedCodec = -1;
+        return static_cast<int>(row);
+    };
+#else
     const int builtInRow = static_cast<int>(SendMessageW(
         hCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(english
             ? L"Windows Media Foundation H.264 (MP4)"
@@ -297,13 +307,18 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
     const int pngRow = static_cast<int>(SendMessageW(hCombo, CB_ADDSTRING, 0,
         reinterpret_cast<LPARAM>(english == 1 ? L"PNG (transparent MOV)" : L"PNG（透明 MOV）")));
     SendMessageW(hCombo, CB_SETITEMDATA, pngRow, kNativePngMovCodec);
+#endif
     ICreateDevEnum* devEnum = nullptr;
     if (CoCreateInstance(CLSID_SystemDeviceEnum, nullptr,
                          CLSCTX_INPROC_SERVER, IID_ICreateDevEnum,
                          reinterpret_cast<void**>(&devEnum)) < 0) {
         MessageBoxA(hCombo, "Failed to create system enumerator",
                     "DirectShow", 0);
+#if MMD_ORIGINAL_PROFILE
+        return selectRaw();
+#else
         return builtInRow;
+#endif
     }
     IEnumMoniker* enumMon = nullptr;
     // Deliberate hardening: the original checks only the HRESULT (0x14000A1AE
@@ -320,7 +335,11 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
         MessageBoxA(hCombo, "Failed to create class enumerator",
                     "DirectShow", 0);
         devEnum->Release();
+#if MMD_ORIGINAL_PROFILE
+        return selectRaw();
+#else
         return builtInRow;
+#endif
     }
     enumMon->Reset();                                            // 0x4091E4 tail
     IMoniker* mon = nullptr;
@@ -357,6 +376,11 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
         mon = nullptr;
         enumMon->Next(1, &mon, &fetched);
     }
+#if MMD_ORIGINAL_PROFILE
+    enumMon->Release();
+    devEnum->Release();
+    return selectRaw();
+#else
     LRESULT index;
     if (english)
         index = SendMessageA(hCombo, CB_ADDSTRING, 0,
@@ -371,6 +395,7 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
     enumMon->Release();
     devEnum->Release();
     return builtInRow;
+#endif
 }
 
 // ===========================================================================
@@ -387,6 +412,9 @@ int FillCodecCombo(DShowRecorder* rec, HWND hCombo, char english) {
 // =========================================================================//
 void RebindCodecOnComboChange(DShowRecorder* rec, int sel, HWND hButton,
                               char english) {
+#if MMD_ORIGINAL_PROFILE
+    if (sel < -1) sel = -1;
+#endif
     if (sel < 0 || sel == kNativePngMovCodec) {
         if (rec->compressorState != nullptr) {
             std::free(rec->compressorState);
@@ -566,6 +594,13 @@ bool BuildRecordingGraph(DShowRecorder* rec, HWND hwnd, unsigned char english,
                const wchar_t* wavPath, float seconds,
                const WaveAudioContext* audio,
                unsigned char uiLanguage) {
+#if MMD_ORIGINAL_PROFILE
+    if (rec->selectedCodec < -1) {
+        MessageBoxW(hwnd, L"This MMD 9.32 profile supports AVI output only.",
+                    L"AVI export", MB_OK | MB_ICONERROR);
+        return false;
+    }
+#else
     if (rec->selectedCodec == kNativePngMovCodec) {
         const auto* output = static_cast<const std::int32_t*>(config);
         std::wstring error;
@@ -591,6 +626,7 @@ bool BuildRecordingGraph(DShowRecorder* rec, HWND hwnd, unsigned char english,
                     L"MP4 导出 / MP4 Export", MB_OK | MB_ICONERROR);
         return false;
     }
+#endif
     ReleaseCom(rec->compressorInput);
     ReleaseCom(rec->sourceOutput);
     ReleaseCom(rec->videoSource);

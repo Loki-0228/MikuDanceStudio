@@ -26,7 +26,9 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/d3d_object_guard.hpp"
+#if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_triangles.hpp"
+#endif
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/effect_api.hpp"
 #include "mikudancestudio/default_effect.hpp"
@@ -440,7 +442,10 @@ void RenderFrameScene(MMDApp* app) {
         return;
     }
     D3dObjectValidationScope validatedObjects;
-    TransparentSortFrameCache transparentSortCache(GetModuleHandleW(L"MMEffect.dll") != nullptr);
+#if !MMD_ORIGINAL_PROFILE
+    TransparentSortFrameCache transparentSortCache(
+        app->AutoTransparentMaterialSortingEnabled() && GetModuleHandleW(L"MMEffect.dll") != nullptr);
+#endif
     if (app->state.accessoryEditDialogOpen == 0) {
         for (int slot = 0; slot < kModelSlotCount; ++slot) {
             auto* model = app->ModelSlot(slot);

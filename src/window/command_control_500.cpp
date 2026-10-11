@@ -160,6 +160,7 @@
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/adaptive_shadow.hpp"
+#include "mikudancestudio/build_profile.hpp"
 
 namespace mikudancestudio {
 
@@ -752,6 +753,7 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
     }
 
     // ---- 556: checkbox 0x22C (quality / BM_GETCHECK probe control) ------
+#if !MMD_ORIGINAL_PROFILE
     case panel::kAdaptiveShadowCheckbox:
         app->AdaptiveShadowResolution() = SendMessageW(GetDlgItem(hwnd, panel::kAdaptiveShadowCheckbox),
             BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -760,6 +762,7 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
         InvalidateRect(hwnd, nullptr, FALSE);
         PostViewRefresh(app);
         break;
+#endif
     case 556: {  // 0x48DF5D
         // The checked state of 0x22C is probed by HandleNotify (ui_notify.cpp
         // 0x4398B0) and here drives the locale subsystem (0xA06C4) buffer
@@ -773,7 +776,9 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
                 ? 0x1000
                 : 0x800;
         locale->renderTargetWidth = size;   // 0x1D558
+#if !MMD_ORIGINAL_PROFILE
         app->ShadowResolutionLimit() = size;
+#endif
         locale->renderTargetHeight = size;  // 0x1D55C
         IUnknown* objects[] = {locale->hdrTexture,        // 0x1D548
                                locale->shadowDepthSurface,  // 0x1D554
@@ -848,8 +853,12 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
         char buf[0x100];
         GetWindowTextA(GetDlgItem(hwnd, panel::kSelfShadowRangeEdit), buf, 8);
         const float v = static_cast<float>(atof(buf));
+#if MMD_ORIGINAL_PROFILE
+        app->state.physicsInterval = static_cast<float>((10000.0 - double(v)) / 100000.0);
+#else
         SetShadowSliderPosition(app, static_cast<int>(v));
         if (app->AdaptiveShadowResolution()) SaveShadowResolutionPreference(app);
+#endif
         SendMessageA(GetDlgItem(hwnd, panel::kSelfShadowRangeSlider), TBM_SETPOS, 1,
                      static_cast<LPARAM>(static_cast<std::int32_t>(v)));
         app->SceneModified() = 1;

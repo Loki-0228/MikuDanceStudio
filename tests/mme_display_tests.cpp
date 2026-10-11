@@ -14,6 +14,10 @@
 #include <vector>
 #include <cstdint>
 #include <algorithm>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <wrl/client.h>
 
 using namespace mikudancestudio;
 namespace {
@@ -48,6 +52,39 @@ HWND editor = nullptr;
 using DrawIndexed = HRESULT (WINAPI*)(IDirect3DDevice9*, D3DPRIMITIVETYPE, INT, UINT, UINT, UINT, UINT);
 DrawIndexed originalDraw = nullptr;
 std::vector<unsigned> drawnMaterials;
+using Present = HRESULT(WINAPI*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
+Present originalPresent = nullptr;
+bool captureRequested = false;
+std::vector<std::uint32_t> capturedPixels;
+unsigned captureWidth = 0, captureHeight = 0;
+std::filesystem::path captureDirectory;
+HRESULT WINAPI ObservePresent(IDirect3DDevice9* device, const RECT* source, const RECT* destination,
+                              HWND window, const RGNDATA* region) {
+    if (captureRequested) {
+        Microsoft::WRL::ComPtr<IDirect3DSurface9> back, resolved, cpu;
+        Check(SUCCEEDED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back)), "get actual pre-Present backbuffer");
+        D3DSURFACE_DESC desc{}; Check(SUCCEEDED(back->GetDesc(&desc)), "read backbuffer description");
+        Check(desc.Format == D3DFMT_A8R8G8B8 || desc.Format == D3DFMT_X8R8G8B8, "BGRA comparison format");
+        auto* surface = back.Get();
+        if (desc.MultiSampleType != D3DMULTISAMPLE_NONE) {
+            Check(SUCCEEDED(device->CreateRenderTarget(desc.Width, desc.Height, desc.Format, D3DMULTISAMPLE_NONE,
+                0, FALSE, &resolved, nullptr)) && SUCCEEDED(device->StretchRect(surface, nullptr, resolved.Get(), nullptr, D3DTEXF_NONE)),
+                "resolve actual backbuffer without rebinding");
+            surface = resolved.Get();
+        }
+        Check(SUCCEEDED(device->CreateOffscreenPlainSurface(desc.Width, desc.Height, desc.Format,
+            D3DPOOL_SYSTEMMEM, &cpu, nullptr)) && SUCCEEDED(device->GetRenderTargetData(surface, cpu.Get())), "capture actual frame pixels");
+        D3DLOCKED_RECT lock{}; Check(SUCCEEDED(cpu->LockRect(&lock, nullptr, D3DLOCK_READONLY)), "lock comparison pixels");
+        captureWidth = desc.Width; captureHeight = desc.Height;
+        capturedPixels.resize(std::size_t(desc.Width) * desc.Height);
+        for (unsigned y = 0; y < desc.Height; ++y) {
+            const auto* row = reinterpret_cast<const DWORD*>(static_cast<const unsigned char*>(lock.pBits) + y * lock.Pitch);
+            for (unsigned x = 0; x < desc.Width; ++x) capturedPixels[std::size_t(y) * desc.Width + x] = row[x] & 0xFFFFFF;
+        }
+        cpu->UnlockRect(); captureRequested = false;
+    }
+    return originalPresent(device, source, destination, window, region);
+}
 HRESULT WINAPI ObserveDraw(IDirect3DDevice9* device, D3DPRIMITIVETYPE type, INT base, UINT min,
                             UINT vertices, UINT start, UINT primitives) {
     if (g_Block && g_Block->ActiveRenderObject() == g_Block->SelectedModel() &&
@@ -63,21 +100,43 @@ void CheckAlphaOrder(MMDApp* app) {
     auto* target = vtable[82]; // IDirect3DDevice9::DrawIndexedPrimitive
     Check(MH_CreateHook(target, &ObserveDraw, reinterpret_cast<void**>(&originalDraw)) == MH_OK &&
           MH_EnableHook(target) == MH_OK, "observe actual D3D material draws");
+    Check(MH_CreateHook(vtable[17], &ObservePresent, reinterpret_cast<void**>(&originalPresent)) == MH_OK &&
+          MH_EnableHook(vtable[17]) == MH_OK, "observe actual pre-Present pixels");
+    app->GroundGridEnabled() = false; app->GroundShadowEnabled() = false;
     for (int shadow : {0, 2}) {
         app->SelfShadowMode() = shadow;
+        std::vector<std::uint32_t> firstOff;
+        unsigned run = 0;
         for (auto precision : {TransparentSortPrecision::Off, TransparentSortPrecision::Low, TransparentSortPrecision::Off}) {
             app->TransparentMaterialSortPrecision() = precision;
             drawnMaterials.clear();
+            captureRequested = true;
             app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app);
             std::printf("DRAW shadow=%d precision=%d:", shadow, int(precision));
             for (auto material : drawnMaterials) std::printf(" %u", material);
             std::puts("");
-            const std::vector<unsigned> expected = precision == TransparentSortPrecision::Off
+            const std::vector<unsigned> expected = MMD_ORIGINAL_PROFILE
                 ? std::vector<unsigned>{0, 1} : std::vector<unsigned>{1, 0};
-            Check(drawnMaterials == expected, "MME off uses record order; on uses optimized passes; off restores record order");
+            Check(drawnMaterials == expected, "material draws follow the profile's native pass order with sorting off and on");
+            Check(!captureRequested && !capturedPixels.empty(), "capture came from a real Present");
+            if (run == 0) firstOff = capturedPixels;
+            if (run == 2) Check(firstOff == capturedPixels, "On to Off preserves every frame RGB pixel");
+            std::uint64_t hash = 14695981039346656037ull;
+            for (auto pixel : capturedPixels) hash = (hash ^ pixel) * 1099511628211ull;
+            std::printf("PIXELS shadow=%d run=%u precision=%d width=%u height=%u hash=%016llx\n",
+                shadow, run, int(precision), captureWidth, captureHeight, static_cast<unsigned long long>(hash));
+            if (!captureDirectory.empty()) {
+                std::filesystem::create_directories(captureDirectory);
+                const auto name = L"shadow-" + std::to_wstring(shadow) + L"-run-" + std::to_wstring(run) + L".bgra";
+                std::ofstream file(captureDirectory / name, std::ios::binary);
+                file.write(reinterpret_cast<const char*>(capturedPixels.data()), capturedPixels.size() * 4);
+                Check(bool(file), "write actual comparison pixels");
+            }
+            ++run;
         }
     }
     MH_DisableHook(target);
+    MH_DisableHook(vtable[17]);
 }
 std::uint64_t PaintHash(HWND list) {
     RECT rect{}; GetClientRect(list, &rect);
@@ -167,7 +226,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
 }
 }
 int wmain(int argc, wchar_t** argv) {
-    Check(argc == 2 || argc == 3, "model path supplied");
+    Check(argc >= 2 && argc <= 4, "model path supplied");
     bilingualFixture = argc == 3 && std::wcscmp(argv[2], L"--bilingual") == 0;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
@@ -181,11 +240,16 @@ int wmain(int argc, wchar_t** argv) {
     auto* app = new MMDApp; g_Block = app;
     app->state = MMDAppState{}; app->InitDefaults();
     Check(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "start production host");
-    Check(GetModuleHandleW(L"MMEffect.dll") && GetModuleHandleW(L"MMHack.dll"), "real MME DLLs loaded");
+    wchar_t native[4]{};
+    const bool nativeOrder = GetEnvironmentVariableW(L"MMS_MME_ORDER_NATIVE", native, 4) == 1 && native[0] == L'1';
+    Check(nativeOrder ? !GetModuleHandleW(L"MMEffect.dll") && !GetModuleHandleW(L"MMHack.dll") :
+        GetModuleHandleW(L"MMEffect.dll") && GetModuleHandleW(L"MMHack.dll"),
+        nativeOrder ? "native baseline excludes MME DLLs" : "real MME DLLs loaded");
     LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
     for (int i = 0; i < 3; ++i) { app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app); }
-    if (argc == 3 && std::wcscmp(argv[2], L"--alpha-order") == 0) {
+    if (argc >= 3 && std::wcscmp(argv[2], L"--alpha-order") == 0) {
+        if (argc == 4) captureDirectory = argv[3];
         CheckAlphaOrder(app);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }

@@ -17,6 +17,7 @@
 //     MMDApp mirrors behind arch-split accessors.
 // ===========================================================================
 #pragma once
+#include "mikudancestudio/build_profile.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -224,9 +225,17 @@ public:
     pmm_settings::State& PmmProjectSettings() { return m_pmmProjectSettings; }
     const pmm_settings::State& PmmProjectSettings() const { return m_pmmProjectSettings; }
 
+#if MMD_ORIGINAL_PROFILE
+    bool AutoTransparentMaterialSortingEnabled() const { return false; }
+#else
     bool AutoTransparentMaterialSortingEnabled() const { return m_transparentMaterialSortPrecision != TransparentSortPrecision::Off; }
+#endif
     TransparentSortPrecision& TransparentMaterialSortPrecision() { return m_transparentMaterialSortPrecision; }
+#if MMD_ORIGINAL_PROFILE
+    TransparentSortPrecision TransparentMaterialSortPrecision() const { return TransparentSortPrecision::Off; }
+#else
     TransparentSortPrecision TransparentMaterialSortPrecision() const { return m_transparentMaterialSortPrecision; }
+#endif
     bool& TransparentMaterialIndexOrderDirty() { return m_transparentMaterialIndexOrderDirty; }
 
     LetterHotkeyState& LetterHotkeys() { return m_letterHotkeys; }

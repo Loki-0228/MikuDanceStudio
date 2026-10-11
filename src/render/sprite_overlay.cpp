@@ -737,6 +737,7 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
             }
         }
 
+#if !MMD_ORIGINAL_PROFILE
         // One gate for the whole scale HUD: the row, the disabled wash and the
         // hover highlight all read bone_scale::Enabled through this single
         // per-frame call, so a stale hover operation can never brighten a
@@ -768,6 +769,7 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
             }
         }
 
+#endif
         // 0x46CF9B..0x46D71F: the six 40x30 operation highlights. The
         // paired interaction modes share one atlas cell exactly as below.
         const int operation = static_cast<int>(app->ViewportToolOperation());
@@ -797,6 +799,7 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
         // the same four x cells as the row itself, on the row's own screen
         // geometry.  The gate keeps a stale hover operation (left over from
         // before the selection or panel switched) off the washed row.
+#if !MMD_ORIGINAL_PROFILE
         if (scaleEnabled && operation >= 22 && operation <= 25) {
             const int column = operation - 22;
             const float x0 = hud.X(hud.ScaleLeftUnits(column));
@@ -805,6 +808,7 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
             append(x0, y0, x0 + scale * 40.0f, y0 + scale * 30.0f,
                    u0, 0.841796875f, u0 + 0.078125f, 0.8984375f);
         }
+#endif
 
         // 0x46D74D..0x46DB2A: operation cursor pictures in bone mode. These
         // use raw projected mouse coordinates returned by 0x499BD0 and are
@@ -817,10 +821,10 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
         const int hudDrag = static_cast<int>(app->InteractionDragMode());
         const bool hudPreview =
             (operation >= 9 && operation <= 14) ||
-            (operation >= 22 && operation <= 25) ||
+            (!MMD_ORIGINAL_PROFILE && operation >= 22 && operation <= 25) ||
             (hudDrag >= 4 && hudDrag <= 6) ||
             (hudDrag >= 10 && hudDrag <= 12) ||
-            (hudDrag >= 19 && hudDrag <= 22);
+            (!MMD_ORIGINAL_PROFILE && hudDrag >= 19 && hudDrag <= 22);
         if (app->state.optflag[0] == 0 && !hudPreview) {
             const float x = static_cast<float>(app->ViewportToolCenterX());
             const float y = static_cast<float>(app->ViewportToolCenterY());

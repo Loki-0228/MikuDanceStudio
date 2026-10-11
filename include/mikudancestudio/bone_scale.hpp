@@ -1,4 +1,5 @@
 #pragma once
+#include "mikudancestudio/build_profile.hpp"
 #include <array>
 #include <cstdint>
 #include <map>
@@ -47,7 +48,7 @@ using Curves = std::map<int, Curve>;
 // channels, 4 is the bone scale channel and 5 is the trailing "all" entry.  The
 // camera panel keeps its own layout (six channels, "all" at 6).
 constexpr int kInterpScaleChannel = 4;
-constexpr int kInterpBoneAll = 5;
+constexpr int kInterpBoneAll = MMD_ORIGINAL_PROFILE ? 4 : 5;
 constexpr int kInterpCameraAll = 6;
 using Transform = std::array<float, 16>;
 struct Snapshot { Values pose, keys; Curves curves; };
