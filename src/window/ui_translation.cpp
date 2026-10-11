@@ -232,6 +232,10 @@ HWND CreateUiDialogParamA(HINSTANCE instance, LPCSTR name, HWND owner, DLGPROC p
     DialogInit init{proc, parameter};
     return CreateDialogParamA(instance, name, owner, LocalizedDialogProc, reinterpret_cast<LPARAM>(&init));
 }
+HWND CreateUiDialogParamW(HINSTANCE instance, LPCWSTR name, HWND owner, DLGPROC proc, LPARAM parameter) {
+    DialogInit init{proc, parameter};
+    return CreateDialogParamW(instance, name, owner, LocalizedDialogProc, reinterpret_cast<LPARAM>(&init));
+}
 INT_PTR UiDialogBoxParamA(HINSTANCE instance, LPCSTR name, HWND owner, DLGPROC proc, LPARAM parameter) {
     DialogInit init{proc, parameter};
     return DialogBoxParamA(instance, name, owner, LocalizedDialogProc, reinterpret_cast<LPARAM>(&init));

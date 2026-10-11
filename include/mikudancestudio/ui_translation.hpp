@@ -11,6 +11,7 @@ namespace mikudancestudio {
 class MMDApp;
 void LocalizeChineseDialog(MMDApp* app, HWND dialog);
 HWND CreateUiDialogParamA(HINSTANCE, LPCSTR, HWND, DLGPROC, LPARAM);
+HWND CreateUiDialogParamW(HINSTANCE, LPCWSTR, HWND, DLGPROC, LPARAM);
 INT_PTR UiDialogBoxParamA(HINSTANCE, LPCSTR, HWND, DLGPROC, LPARAM);
 INT_PTR UiDialogBoxParamW(HINSTANCE, LPCWSTR, HWND, DLGPROC, LPARAM);
 int LegacyUiMessageBoxA(HWND, LPCSTR, LPCSTR, UINT);

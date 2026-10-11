@@ -228,14 +228,6 @@ static const char kMsgNoBodyJp[] =
     "\x82\xa2";
 // x64 0x7FF7CB55129C: last group-combo entry (Shift-JIS)
 static const char kGroup16Jp[] = "16(\x8f\xb0)";
-// x64 0x7FF7CB5512B8 / x86 0x52BF90: "半径" (径 = 0x8C61; 0x8CA1 would be 牽)
-static const char kLabelRadiusJp[] = "\x94\xbc\x8c\x61";
-// x64 0x7FF7CB5512D8: "　幅" (full-width space + width)
-static const char kLabelWidthJp[] = "\x81\x40\x95\x9d";
-// x64 0x7FF7CB5512E0: "高さ"
-static const char kLabelHeightJp[] = "\x8d\x82\x82\xb3";
-// x64 0x7FF7CB5512E8: "奥行"
-static const char kLabelDepthJp[] = "\x89\x9c\x8d\x73";
 
 namespace {
 
@@ -331,52 +323,121 @@ void ReadEditDegrees(HWND hWnd, float& field) {
 
 // Rename-commit for the body name edit: refresh the entry in the list combo
 // and the joint body-A/B combos in place (delete + insert at the same slot).
-// Physics records keep legacy names in CP932 regardless of Windows' active
-// ANSI code page. Decode them explicitly before sending text to Unicode
-// combo/edit controls; otherwise Japanese names become garbled on systems
-// whose active ANSI code page is not Japanese.
-std::wstring PhysicsNameWide(const char* text) {
+// PMX keeps the original Unicode name alongside its fixed-width CP932 mirror.
+// PMD has only the mirror, which may use all 20 bytes without a terminator.
+// Never interpret either format using the machine's active ANSI code page.
+std::wstring PhysicsLegacyNameWide(const char* text, std::size_t capacity) {
     std::wstring wide;
-    const std::string bounded(text, strnlen_s(text, 256));
-    if (!text_encoding::Decode(bounded.c_str(), 932, wide))
-        wide.assign(bounded.begin(), bounded.end());
+    const std::string bounded(text, strnlen_s(text, capacity));
+    if (!text_encoding::Decode(bounded.c_str(), 932, wide)) {
+        const int count = MultiByteToWideChar(932, 0, bounded.c_str(), -1, nullptr, 0);
+        if (count > 0) {
+            wide.resize(static_cast<std::size_t>(count));
+            MultiByteToWideChar(932, 0, bounded.c_str(), -1, wide.data(), count);
+            wide.resize(static_cast<std::size_t>(count - 1));
+        }
+    }
     return wide;
 }
 
-void AddPhysicsName(HWND combo, const char* text) {
-    const std::wstring wide = PhysicsNameWide(text);
+template <typename Record>
+std::wstring PhysicsNameWide(const Record& record) {
+    if (record.jpText && *record.jpText) return record.jpText;
+    if (record.enText && *record.enText) return record.enText;
+    return PhysicsLegacyNameWide(record.name, sizeof(record.name));
+}
+
+template <typename Record>
+void AddPhysicsName(HWND combo, const Record& record) {
+    const std::wstring wide = PhysicsNameWide(record);
     SendMessageW(combo, CB_ADDSTRING, 0,
                  reinterpret_cast<LPARAM>(wide.c_str()));
 }
 
-void SetPhysicsNameEdit(HWND edit, const char* text) {
-    const std::wstring wide = PhysicsNameWide(text);
+template <typename Record>
+void SetPhysicsNameEdit(HWND edit, const Record& record) {
+    const std::wstring wide = PhysicsNameWide(record);
     SetWindowTextW(edit, wide.c_str());
 }
 
-std::string PhysicsNameNarrow(const wchar_t* text, std::size_t capacity) {
-    std::string encoded;
-    if (!text_encoding::EncodeExact(text, 932, encoded)) return {};
-    const std::size_t maxLength = capacity == 0 ? 0 : capacity - 1;
-    if (encoded.size() > maxLength) {
-        encoded.resize(maxLength);
-        if (!encoded.empty()) {
-            const unsigned char last =
-                static_cast<unsigned char>(encoded.back());
-            // Do not leave a CP932 lead byte without its trailing byte.
-            if ((last >= 0x81 && last <= 0x9f) ||
-                (last >= 0xe0 && last <= 0xfc))
-                encoded.pop_back();
-        }
+std::wstring PhysicsEditText(HWND edit) {
+    const int length = GetWindowTextLengthW(edit);
+    std::wstring text(static_cast<std::size_t>(length) + 1, L'\0');
+    const int copied = GetWindowTextW(edit, text.data(), length + 1);
+    text.resize(static_cast<std::size_t>(copied));
+    return text;
+}
+
+bool PhysicsNameNarrow(const wchar_t* text, std::size_t capacity,
+                       std::string& encoded) {
+    if (!text_encoding::EncodeExact(text, 932, encoded)) return false;
+    // Walk character boundaries from the beginning: a valid trail byte can
+    // itself lie in the lead-byte range. PMD permits a full 20-byte name.
+    std::size_t length = 0;
+    while (length < encoded.size()) {
+        const std::size_t next = length +
+            (IsDBCSLeadByteEx(932, static_cast<BYTE>(encoded[length])) ? 2 : 1);
+        if (next > capacity) break;
+        length = next;
     }
-    return encoded;
+    encoded.resize(length);
+    return true;
+}
+
+template <typename Record>
+bool CollectPhysicsName(HWND edit, Record& record) {
+    const std::wstring previous = PhysicsNameWide(record);
+    const std::wstring requested = PhysicsEditText(edit);
+    // Opening, changing pages and OK must not rewrite the PMX mirror or lose
+    // the full Unicode source name, including names longer than 256 units.
+    if (requested == previous) return false;
+    std::string encoded;
+    if (!PhysicsNameNarrow(requested.c_str(), sizeof(record.name), encoded)) {
+        SetWindowTextW(edit, previous.c_str());
+        const unsigned char language = g_Block->EnglishUI();
+        const wchar_t* message = language == kUiChinese
+            ? L"此名称包含扩展模型保存格式（PMD）无法保存的字符，已保留原名称。请使用可用 Shift-JIS 表示的名称。"
+            : language == kUiJapanese
+            ? L"拡張モデルの保存形式（PMD）では保存できない文字が含まれています。元の名前を保持しました。Shift-JIS で表せる名前を使用してください。"
+            : L"This name contains characters that the enhanced-model format (PMD) cannot save. The original name was kept. Use a name representable in Shift-JIS.";
+        const wchar_t* caption = language == kUiChinese ? L"物理模型名称"
+            : language == kUiJapanese ? L"物理モデルの名前" : L"Physics model name";
+        MessageBoxW(GetParent(edit), message, caption, MB_OK | MB_ICONINFORMATION);
+        return false;
+    }
+    std::memset(record.name, 0, sizeof(record.name));
+    std::memcpy(record.name, encoded.data(), encoded.size());
+    // Scratch records borrow these pointers. The model still owns them until
+    // OK; Cancel must leave them intact. A real rename now displays the new
+    // CP932 name rather than the stale PMX source text.
+    record.jpText = nullptr;
+    record.enText = nullptr;
+    SetPhysicsNameEdit(edit, record);
+    return true;
 }
 
 void CommitNameToCombo(HWND combo, int current, const wchar_t* text) {
     if (current < 0) return;
+    const LRESULT selected = SendMessageW(combo, CB_GETCURSEL, 0, 0);
     SendMessageW(combo, CB_DELETESTRING, current, 0);
     SendMessageW(combo, CB_INSERTSTRING, current,
                  reinterpret_cast<LPARAM>(text));
+    SendMessageW(combo, CB_SETCURSEL, selected, 0);
+}
+
+void CollectBodyName(HWND dialog, Rigid& record) {
+    if (!CollectPhysicsName(GetDlgItem(dialog, kBodyNameEdit), record)) return;
+    const std::wstring name = PhysicsNameWide(record);
+    const int index = BodyComboIndex(record);
+    for (const int control : {kBodyListCombo, kBodyACombo, kBodyBCombo})
+        CommitNameToCombo(GetDlgItem(dialog, control), index, name.c_str());
+}
+
+void CollectJointName(HWND dialog, Joint& record) {
+    if (!CollectPhysicsName(GetDlgItem(dialog, kJointNameEdit), record)) return;
+    const std::wstring name = PhysicsNameWide(record);
+    CommitNameToCombo(GetDlgItem(dialog, kJointListCombo), record.constraint,
+                      name.c_str());
 }
 
 // Joint y-axis angular limit check shared by edits 765/764 (0x4B05C0).
@@ -416,7 +477,7 @@ float CheckYAngleLimit(HWND hDlg, HWND hEdit, float value) {
 LRESULT CALLBACK PhysicsEditSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {  // was Sub41EC50, VA 0x0041EC50
     MMDApp* app = g_Block;
     if (msg != WM_KEYDOWN || wParam != VK_RETURN)
-        return CallWindowProcA(app->FrameCopyEditProc(), hWnd, msg, wParam,
+        return CallWindowProcW(app->FrameCopyEditProc(), hWnd, msg, wParam,
                                lParam);
     // dirty write: invalidates the cached time like every WM_COMMAND of
     // the dialog (original app+663064 = state.timeNowHigh)
@@ -428,19 +489,7 @@ LRESULT CALLBACK PhysicsEditSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
     Joint& jt = joints[app->state.selectedJointIndex];
 
     if (hWnd == GetDlgItem(hDlg, kBodyNameEdit)) {
-        wchar_t wideText[256]{};
-        GetWindowTextW(hWnd, wideText, 256);
-        char text[sizeof(rb.name)]{};
-        const std::string encoded = PhysicsNameNarrow(wideText, sizeof(text));
-        strcpy_s(text, sizeof(text), encoded.c_str());
-        const int current = static_cast<int>(
-            SendMessageA(GetDlgItem(hDlg, kBodyListCombo), CB_GETCURSEL, 0, 0));
-        CommitNameToCombo(GetDlgItem(hDlg, kBodyListCombo), current, wideText);
-        CommitNameToCombo(GetDlgItem(hDlg, kBodyACombo), current, wideText);
-        CommitNameToCombo(GetDlgItem(hDlg, kBodyBCombo), current, wideText);
-        SendMessageA(GetDlgItem(hDlg, kBodyListCombo), CB_SETCURSEL,
-                     current, 0);
-        sprintf_s(rb.name, sizeof rb.name, "%s", text);
+        CollectBodyName(hDlg, rb);
         return 0;
     }
     if (hWnd == GetDlgItem(hDlg, kSizeXEdit)) { ReadEditFloatClamped(hWnd, rb.size[0]); return 0; }
@@ -459,17 +508,7 @@ LRESULT CALLBACK PhysicsEditSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
     if (hWnd == GetDlgItem(hDlg, kFrictionEdit)) { ReadEditFloat(hWnd, rb.friction); return 0; }
 
     if (hWnd == GetDlgItem(hDlg, kJointNameEdit)) {
-        wchar_t wideText[256]{};
-        GetWindowTextW(hWnd, wideText, 256);
-        char text[sizeof(jt.name)]{};
-        const std::string encoded = PhysicsNameNarrow(wideText, sizeof(text));
-        strcpy_s(text, sizeof(text), encoded.c_str());
-        const int current = static_cast<int>(
-            SendMessageA(GetDlgItem(hDlg, kJointListCombo), CB_GETCURSEL, 0, 0));
-        CommitNameToCombo(GetDlgItem(hDlg, kJointListCombo), current, wideText);
-        SendMessageA(GetDlgItem(hDlg, kJointListCombo), CB_SETCURSEL,
-                     current, 0);
-        sprintf_s(jt.name, sizeof jt.name, "%s", text);
+        CollectJointName(hDlg, jt);
         return 0;
     }
     if (hWnd == GetDlgItem(hDlg, kJointPosXEdit)) { ReadEditFloat(hWnd, jt.position[0]); return 0; }
@@ -512,7 +551,7 @@ LRESULT CALLBACK PhysicsEditSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
         jt.limits[10] = value / 180.0f * kPiShort;
         return 0;
     }
-    return CallWindowProcA(app->FrameCopyEditProc(), hWnd, msg, wParam,
+    return CallWindowProcW(app->FrameCopyEditProc(), hWnd, msg, wParam,
                            lParam);
 }
 
@@ -566,9 +605,9 @@ void InitPhysicsModelDialog(HWND hDlg) {  // was Sub45F670, VA 0x0045F670
             dst.mode = 1;
         // PMD no-collapse mask -> positive collision mask for editing
         dst.noCollapse = static_cast<std::uint16_t>(~dst.noCollapse);
-        AddPhysicsName(GetDlgItem(hDlg, kBodyListCombo), dst.name);
-        AddPhysicsName(GetDlgItem(hDlg, kBodyACombo), dst.name);
-        AddPhysicsName(GetDlgItem(hDlg, kBodyBCombo), dst.name);
+        AddPhysicsName(GetDlgItem(hDlg, kBodyListCombo), dst);
+        AddPhysicsName(GetDlgItem(hDlg, kBodyACombo), dst);
+        AddPhysicsName(GetDlgItem(hDlg, kBodyBCombo), dst);
         SetBodyComboIndex(dst, static_cast<int>(i));
     }
     int firstJoint = -1;
@@ -578,7 +617,7 @@ void InitPhysicsModelDialog(HWND hDlg) {  // was Sub45F670, VA 0x0045F670
         if (firstJoint < 0) firstJoint = static_cast<int>(i);
         Joint& dst = joints[i];
         std::memcpy(&dst, &model->jointTable[i], sizeof(Joint));
-        AddPhysicsName(GetDlgItem(hDlg, kJointListCombo), dst.name);
+        AddPhysicsName(GetDlgItem(hDlg, kJointListCombo), dst);
         dst.constraint = jointComboIndex++;
     }
 
@@ -616,9 +655,10 @@ void InitPhysicsModelDialog(HWND hDlg) {  // was Sub45F670, VA 0x0045F670
         SendMessageA(GetDlgItem(hDlg, kGroupCombo), CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(text));
     }
-    SendMessageA(GetDlgItem(hDlg, kGroupCombo), CB_ADDSTRING, 0,
-                 reinterpret_cast<LPARAM>(
-                     app->state.englishUI != 0 ? "16(F)" : kGroup16Jp));
+    const std::wstring group16 = app->state.englishUI != 0 ? L"16(F)"
+        : PhysicsLegacyNameWide(kGroup16Jp, sizeof(kGroup16Jp));
+    SendMessageW(GetDlgItem(hDlg, kGroupCombo), CB_ADDSTRING, 0,
+                 reinterpret_cast<LPARAM>(group16.c_str()));
 
     // neutralize every bone's edit transform before the first refresh
     for (std::uint32_t b = 0; b < model->boneCount; ++b) {
@@ -677,10 +717,7 @@ void CollectBodyEdits(MMDApp* app) {  // was Sub41FF30, VA 0x0041FF30
     HWND hDlg = app->state.frameCopyDialog;
     char text[256];
 
-    wchar_t wideName[256]{};
-    GetWindowTextW(GetDlgItem(hDlg, kBodyNameEdit), wideName, 256);
-    const std::string encodedName = PhysicsNameNarrow(wideName, sizeof rb.name);
-    strcpy_s(rb.name, sizeof rb.name, encodedName.c_str());
+    CollectBodyName(hDlg, rb);
 
     ReadEditFloatClamped(GetDlgItem(hDlg, kSizeXEdit), rb.size[0]);
     ReadEditFloatClamped(GetDlgItem(hDlg, kSizeYEdit), rb.size[1]);
@@ -729,12 +766,14 @@ void AddRigidBody(HWND hDlg) {  // was Sub45F480, VA 0x0045F480
         ++slot;
 
     Rigid& rb = bodies[slot];
+    rb.jpText = nullptr;
+    rb.enText = nullptr;
     sprintf_s(rb.name, sizeof rb.name, "BODY_%d", slot);
     const LRESULT comboIndex = SendMessageW(
         GetDlgItem(hDlg, kBodyListCombo), CB_ADDSTRING, 0,
-        reinterpret_cast<LPARAM>(PhysicsNameWide(rb.name).c_str()));
-    AddPhysicsName(GetDlgItem(hDlg, kBodyACombo), rb.name);
-    AddPhysicsName(GetDlgItem(hDlg, kBodyBCombo), rb.name);
+        reinterpret_cast<LPARAM>(PhysicsNameWide(rb).c_str()));
+    AddPhysicsName(GetDlgItem(hDlg, kBodyACombo), rb);
+    AddPhysicsName(GetDlgItem(hDlg, kBodyBCombo), rb);
     SetBodyComboIndex(rb, static_cast<int>(comboIndex));
     SendMessageA(GetDlgItem(hDlg, kBodyListCombo), CB_SETCURSEL, comboIndex, 0);
 
@@ -769,10 +808,7 @@ void CollectJointEdits(MMDApp* app) {  // was Sub4204F0, VA 0x004204F0
     HWND hDlg = app->state.frameCopyDialog;
     char text[256];
 
-    wchar_t wideName[256]{};
-    GetWindowTextW(GetDlgItem(hDlg, kJointNameEdit), wideName, 256);
-    const std::string encodedName = PhysicsNameNarrow(wideName, sizeof jt.name);
-    strcpy_s(jt.name, sizeof jt.name, encodedName.c_str());
+    CollectJointName(hDlg, jt);
 
     ReadEditFloat(GetDlgItem(hDlg, kJointPosXEdit), jt.position[0]);
     ReadEditFloat(GetDlgItem(hDlg, kJointPosYEdit), jt.position[1]);
@@ -842,8 +878,10 @@ void AddJoint(HWND hDlg) {  // was Sub43CA50, VA 0x0043CA50
         ++slot;
 
     Joint& jt = joints[slot];
+    jt.jpText = nullptr;
+    jt.enText = nullptr;
     sprintf_s(jt.name, sizeof jt.name, "JOINT_%d", slot);
-    const std::wstring wideName = PhysicsNameWide(jt.name);
+    const std::wstring wideName = PhysicsNameWide(jt);
     const LRESULT comboIndex = SendMessageW(
         GetDlgItem(hDlg, kJointListCombo), CB_ADDSTRING, 0,
         reinterpret_cast<LPARAM>(wideName.c_str()));
@@ -873,15 +911,23 @@ void AddJoint(HWND hDlg) {  // was Sub43CA50, VA 0x0043CA50
 // ---------------------------------------------------------------------------
 void UpdateShapeControls(HWND hDlg, int shape, int idx) {  // was Sub421CE0, VA 0x00421CE0
     MMDApp* app = g_Block;
-    const bool english = app->state.englishUI != 0;
+    const unsigned char language = app->EnglishUI();
+    const wchar_t* radius = language == kUiChinese ? L"半径"
+        : language == kUiJapanese ? L"半径" : L"radius";
+    // Preserve the original Japanese full-width space before the width label.
+    const wchar_t* width = language == kUiChinese ? L"宽度"
+        : language == kUiJapanese ? L"　幅" : L"width";
+    const wchar_t* height = language == kUiChinese ? L"高度"
+        : language == kUiJapanese ? L"高さ" : L"height";
+    const wchar_t* depth = language == kUiChinese ? L"深度"
+        : language == kUiJapanese ? L"奥行" : L"depth";
     Rigid* bodies = EditBodies();
     char text[256];
 
     if (shape == 0) {          // sphere: radius only
         CheckRadioButton(hDlg, kShapeSphereRadio, kShapeCapsuleRadio,
                          kShapeSphereRadio);
-        SetWindowTextA(GetDlgItem(hDlg, kSizeXLabel),
-                       english ? "radius" : kLabelRadiusJp);
+        SetWindowTextW(GetDlgItem(hDlg, kSizeXLabel), radius);
         ShowWindow(GetDlgItem(hDlg, kSizeYLabel), SW_HIDE);
         ShowWindow(GetDlgItem(hDlg, kSizeYEdit), SW_HIDE);
         ShowWindow(GetDlgItem(hDlg, kSizeZLabel), SW_HIDE);
@@ -897,12 +943,9 @@ void UpdateShapeControls(HWND hDlg, int shape, int idx) {  // was Sub421CE0, VA 
     if (shape == 1) {          // box: width x height x depth
         CheckRadioButton(hDlg, kShapeSphereRadio, kShapeCapsuleRadio,
                          kShapeBoxRadio);
-        SetWindowTextA(GetDlgItem(hDlg, kSizeXLabel),
-                       english ? "width" : kLabelWidthJp);
-        SetWindowTextA(GetDlgItem(hDlg, kSizeYLabel),
-                       english ? "height" : kLabelHeightJp);
-        SetWindowTextA(GetDlgItem(hDlg, kSizeZLabel),
-                       english ? "depth" : kLabelDepthJp);
+        SetWindowTextW(GetDlgItem(hDlg, kSizeXLabel), width);
+        SetWindowTextW(GetDlgItem(hDlg, kSizeYLabel), height);
+        SetWindowTextW(GetDlgItem(hDlg, kSizeZLabel), depth);
         ShowWindow(GetDlgItem(hDlg, kSizeYLabel), SW_SHOW);
         ShowWindow(GetDlgItem(hDlg, kSizeYEdit), SW_SHOW);
         ShowWindow(GetDlgItem(hDlg, kSizeZLabel), SW_SHOW);
@@ -920,10 +963,8 @@ void UpdateShapeControls(HWND hDlg, int shape, int idx) {  // was Sub421CE0, VA 
     // capsule: radius x height
     CheckRadioButton(hDlg, kShapeSphereRadio, kShapeCapsuleRadio,
                      kShapeCapsuleRadio);
-    SetWindowTextA(GetDlgItem(hDlg, kSizeXLabel),
-                   english ? "radius" : kLabelRadiusJp);
-    SetWindowTextA(GetDlgItem(hDlg, kSizeYLabel),
-                   english ? "height" : kLabelHeightJp);
+    SetWindowTextW(GetDlgItem(hDlg, kSizeXLabel), radius);
+    SetWindowTextW(GetDlgItem(hDlg, kSizeYLabel), height);
     ShowWindow(GetDlgItem(hDlg, kSizeYLabel), SW_SHOW);
     ShowWindow(GetDlgItem(hDlg, kSizeYEdit), SW_SHOW);
     ShowWindow(GetDlgItem(hDlg, kSizeZLabel), SW_HIDE);
@@ -1008,7 +1049,7 @@ void ApplyBodyRecordToEdits(HWND hDlg, int idx) {  // was Sub43CCD0, VA 0x0043CC
     const Rigid& rb = bodies[idx];
     for (int id = kBodyNameEdit; id <= kBoneAlignCheckbox; ++id)
         EnableWindow(GetDlgItem(hDlg, id), TRUE);
-    SetPhysicsNameEdit(GetDlgItem(hDlg, kBodyNameEdit), rb.name);
+    SetPhysicsNameEdit(GetDlgItem(hDlg, kBodyNameEdit), rb);
     SendMessageA(GetDlgItem(hDlg, kBoneCombo), CB_SETCURSEL, rb.boneIndex + 1, 0);
     SendMessageA(GetDlgItem(hDlg, kGroupCombo), CB_SETCURSEL, rb.group, 0);
     UpdateShapeControls(hDlg, rb.shape, idx);
@@ -1082,7 +1123,7 @@ void ApplyJointRecordToEdits(HWND hDlg, int idx) {  // was Sub4214A0, VA 0x00421
     const Joint& jt = joints[idx];
     for (int id = kDeleteJointButton; id <= kAngUpperZEdit; ++id)
         EnableWindow(GetDlgItem(hDlg, id), TRUE);
-    SetPhysicsNameEdit(GetDlgItem(hDlg, kJointNameEdit), jt.name);
+    SetPhysicsNameEdit(GetDlgItem(hDlg, kJointNameEdit), jt);
     SendMessageA(GetDlgItem(hDlg, kBodyACombo), CB_SETCURSEL,
                  BodyComboIndex(bodies[jt.rigidA]), 0);
     SendMessageA(GetDlgItem(hDlg, kBodyBCombo), CB_SETCURSEL,
@@ -1151,14 +1192,27 @@ void CommitPhysicsEdits(HWND hDlg) {  // was Sub4220F0, VA 0x004220F0
     physics_scale::Forget(app->SelectedModel());
     bone_scale::RestoreTransforms(app->SelectedModel());
 
+    // Scratch slots retain their source index until compaction. Surviving
+    // unrenamed records transfer the original owned text pointers; discarded
+    // or renamed slots must release theirs before the old tables disappear.
+    // Cancel never enters this path and only frees the borrowed scratch arrays.
     // ---- tear the old physics objects out of the world --------------------
-    for (std::uint32_t i = 0; i < model->jointCount; ++i)
-        RemovePhysJointByUid(scene, model->jointTable[i].constraint);
+    for (std::uint32_t i = 0; i < model->jointCount; ++i) {
+        Joint& old = model->jointTable[i];
+        RemovePhysJointByUid(scene, old.constraint);
+        const bool retained = joints[i].constraint >= 0;
+        if (!retained || joints[i].jpText != old.jpText) std::free(old.jpText);
+        if (!retained || joints[i].enText != old.enText) std::free(old.enText);
+    }
     delete[] model->jointTable;
     model->jointTable = nullptr;
-    for (std::uint32_t i = 0; i < model->rigidCount; ++i)
-        RemovePhysRigidBody(
-            scene, static_cast<btRigidBody*>(model->rigidTable[i].body));
+    for (std::uint32_t i = 0; i < model->rigidCount; ++i) {
+        Rigid& old = model->rigidTable[i];
+        RemovePhysRigidBody(scene, static_cast<btRigidBody*>(old.body));
+        const bool retained = BodyComboIndex(bodies[i]) >= 0;
+        if (!retained || bodies[i].jpText != old.jpText) std::free(old.jpText);
+        if (!retained || bodies[i].enText != old.enText) std::free(old.enText);
+    }
     delete[] model->rigidTable;
     model->rigidTable = nullptr;
 
@@ -1370,16 +1424,16 @@ INT_PTR CALLBACK PhysicsModelDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
                          SWP_NOSIZE | SWP_NOMOVE);  // x64 0x7FF7CB4AE84E: or rdx,-1, flags 3
         HWND nameEdit = GetDlgItem(hDlg, kBodyNameEdit);
         app->FrameCopyEditProc() = reinterpret_cast<WNDPROC>(
-            GetWindowLongPtrA(nameEdit, GWLP_WNDPROC));
-        SetWindowLongPtrA(nameEdit, GWLP_WNDPROC,
+            GetWindowLongPtrW(nameEdit, GWLP_WNDPROC));
+        SetWindowLongPtrW(nameEdit, GWLP_WNDPROC,
                           reinterpret_cast<LONG_PTR>(PhysicsEditSubclassProc));
         for (int id = 709; id <= 723; ++id)
-            SetWindowLongPtrA(GetDlgItem(hDlg, id), GWLP_WNDPROC,
+            SetWindowLongPtrW(GetDlgItem(hDlg, id), GWLP_WNDPROC,
                               reinterpret_cast<LONG_PTR>(PhysicsEditSubclassProc));
         for (int id = kJointPosXEdit; id <= kAngUpperZEdit; ++id)
-            SetWindowLongPtrA(GetDlgItem(hDlg, id), GWLP_WNDPROC,
+            SetWindowLongPtrW(GetDlgItem(hDlg, id), GWLP_WNDPROC,
                               reinterpret_cast<LONG_PTR>(PhysicsEditSubclassProc));
-        SetWindowLongPtrA(GetDlgItem(hDlg, kJointNameEdit), GWLP_WNDPROC,
+        SetWindowLongPtrW(GetDlgItem(hDlg, kJointNameEdit), GWLP_WNDPROC,
                           reinterpret_cast<LONG_PTR>(PhysicsEditSubclassProc));
         InitPhysicsModelDialog(hDlg);
         return 0;

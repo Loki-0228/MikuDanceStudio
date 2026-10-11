@@ -724,6 +724,15 @@ if(TARGET physics_bake_tests)
         "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
 endif()
 if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(physics_editor_encoding_tests EXCLUDE_FROM_ALL
+        tests/physics_editor_encoding_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(physics_editor_encoding_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    target_link_options(physics_editor_encoding_tests PRIVATE "/MANIFEST:NO"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(physics_editor_encoding_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    # Explicit private-desktop runner; a normal ctest process cannot meet the
+    # desktop guard, and ACP variants require separate executable manifests.
     add_executable(menu_language_tests EXCLUDE_FROM_ALL
         tests/menu_language_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(menu_language_tests PRIVATE mikudancestudio_core winmm dsound)

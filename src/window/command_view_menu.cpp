@@ -1959,8 +1959,8 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         }
         app->state.dialogFlags[6] = 1;
         app->state.enterKeyState = 1;
-        HWND dlg = CreateUiDialogParamA(
-            hInst, MAKEINTRESOURCEA(english ? 0x2AC : 0x2AB),
+        HWND dlg = CreateUiDialogParamW(
+            hInst, MAKEINTRESOURCEW(english ? 0x2AC : 0x2AB),
             hwnd, PhysicsModelDlgProc, 0);
         app->state.frameCopyDialog = dlg;
         ShowWindow(dlg, SW_SHOW);
