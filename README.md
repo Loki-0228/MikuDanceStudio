@@ -55,7 +55,7 @@ the alignment target, rebuilt with a modern toolchain
 
 #### MMV plug-in (under testing; not released)
 
-MMV is an optional plug-in that uses an MME-style effect assignment workflow. It can take over or extend parts of the original bone and morph deformation, skinning, physics, and rendering pipeline. Effects run in layers and produce meshes for MMS to draw in the final scene. MMV is still under testing and has not been released.
+MMV is an optional plug-in that uses an MME-style effect assignment workflow. It can take over or extend parts of the original bone and morph deformation, skinning, physics, and rendering pipeline. Effects run in layers and produce meshes for MMS to draw in the final scene. MMV is still under testing and has not been released because mesh modification is currently too slow.
 
 ### Curve editor and PMM/VMD extensions
 
@@ -239,7 +239,7 @@ VMD/VPD 动作数据，在 DirectX 9 视口中编辑骨骼/形态/相机/照明/
 
 #### MMV 插件（测试中，尚未发布）
 
-MMV 是采用类似 MME 的效果分配工作流的可选插件，可接管或扩展原版骨骼与形态变形、蒙皮、物理计算及渲染流程。效果按层运行并生成网格，再交由 MMS 绘制最终场景。目前仍在测试阶段，尚未发布。
+MMV 是采用类似 MME 的效果分配工作流的可选插件，可接管或扩展原版骨骼与形态变形、蒙皮、物理计算及渲染流程。效果按层运行并生成网格，再交由 MMS 绘制最终场景。由于当前网格修改性能过差，MMV 暂未发布，仍在测试阶段。
 
 ### 曲线编辑器与 PMM/VMD 扩展
 
@@ -426,7 +426,7 @@ Bullet 2.75 剛体物理、AVI 動画録画、VSQ 音源との同期、アニメ
 
 #### MMV プラグイン（テスト中・未公開）
 
-MMV は MME に似たエフェクト割り当て方式を使う任意のプラグインです。オリジナルのボーン／モーフ変形、スキニング、物理計算、描画処理を引き継ぐ、または拡張します。エフェクトをレイヤーごとに実行してメッシュを生成し、最終シーンは MMS が描画します。現在もテスト中で、まだ公開されていません。
+MMV は MME に似たエフェクト割り当て方式を使う任意のプラグインです。オリジナルのボーン／モーフ変形、スキニング、物理計算、描画処理を引き継ぐ、または拡張します。エフェクトをレイヤーごとに実行してメッシュを生成し、最終シーンは MMS が描画します。現在はメッシュ変更処理が遅すぎるため公開を見合わせており、引き続きテスト中です。
 
 ### 曲線エディタと PMM/VMD 拡張
 
