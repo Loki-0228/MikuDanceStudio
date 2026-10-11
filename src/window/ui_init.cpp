@@ -516,7 +516,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
         ApplyUiFontToControl(app, control, c.id);
         initializeTrackRange(control, c.id);
         InstallControlSubclass(app, control, c.id);
-        InstallWhiteReferenceCheckboxPaint(control);
+        InstallPanelCheckboxPaint(control);
     }
 
     curve_host::CreateControls(app, hwnd);
@@ -533,6 +533,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     SendMessageW(adaptiveShadow, BM_SETCHECK, app->AdaptiveShadowResolution() ? BST_CHECKED : BST_UNCHECKED, 0);
     ApplyUiFontToControl(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
     InstallControlSubclass(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
+    InstallPanelCheckboxPaint(adaptiveShadow);
 
     // UI-init tail (original 0x004675FB / 0x00467602, adjacent calls):
     // toon gradient textures, then the in-scene HUD font atlas.  Both are

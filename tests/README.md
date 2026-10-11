@@ -160,3 +160,7 @@ MikuMikuDance.exe <另一个新输出前缀> 1 --emm-save-on [素材PMM绝对路
 `mme_display_tests` 是需本地 MME DLL 的隐藏集成测试，输出名为 `MikuMikuDance.exe`。将它和同一版本的 `d3d9.dll`、`MMEffect.dll`、`MMHack.dll` 放入独立测试目录。先运行 `python tests/mme_display_fixtures.py <输出目录>` 生成原创小模型，再分别传入 `bilingual.pmx --bilingual` 和 `alpha-order.pmx --alpha-order` 的绝对路径。前者验证实际列表像素、翻译开关和未改变的绑定文本；后者观测真正的 D3D 材质绘制顺序。测试不会保存输入模型，也不显示或激活窗口。保留这组测试；移除相应兼容行为时再评估删除。
 
 `frame_benchmark` 和 `frame_benchmark_mme` 新增 `--adaptive-shadow 0|1` 与 `--dynamic-precision 0..9999`，JSON 记录实际贴图尺寸、精度值和阴影投影矩阵。后者通过真实滑条消息输入，检查面板刷新不会复位精度，也不会改变光源或阴影范围。验收数据与限制见 [阴影、预览与 MME 修复](../docs/SHADOW_PREVIEW_MME_20261011.md)。
+
+动态精度与固定阴影范围的方向一致：数值越小，精度越高。`native_shadow_cycle` 通过 `native_shadow_cycle.py` 生成无描边的双面 PMX 投影者和接收面，运行隐藏生产渲染。它验证实际遮挡、两个模式下转动相机时阴影贴图一致、动态精度改变贴图分辨率，以及取消动态缩放后贴图逐位恢复。此回归使用独立程序副本，不修改用户配置。
+
+`frame_benchmark --verify-shadow-cycle` 可用于指定的 PMX 模型，需同时提供 `--throughput`、`--viewport`、`--self-shadow 1|2` 和 PNG 输出路径。它保存固定、禁用投影、动态低精度、动态高精度及恢复后的画面和深度贴图；禁用投影仅临时修改内存中的材质标志，不写入模型。真实模型验证记录见 [自阴影修复](../docs/NATIVE_SHADOW_COVERAGE_20261011.md)。

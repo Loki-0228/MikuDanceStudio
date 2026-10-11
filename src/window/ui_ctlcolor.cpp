@@ -116,7 +116,9 @@ LRESULT HandleCtlColor(HWND control, HDC dc) {
     if (controlId == panel::kAdaptiveShadowCheckbox) {
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, RGB(255, 255, 255));
-        return brushResult(8);
+        // The checkbox subclass paints the matching panel gradient at its
+        // actual position; the slider's solid brush belongs to another row.
+        return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH));
     }
     if (controlId == panel::kCameraRefModelCheckbox ||
         controlId == panel::kCameraRefBoneCheckbox) {

@@ -148,14 +148,13 @@ float4 BufferShadow_PS(float4 ZCalcTex : TEXCOORD0,float3 N : TEXCOORD1,float3 E
 	TransTexCoord.x = (1.0f + ZCalcTex.x)*0.5f;
 	TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
    
-	if(TransTexCoord.x<0.0f)      return EgColor + Specula;
-	else if(TransTexCoord.x>1.0f) return EgColor + Specula;
-	else if(TransTexCoord.y<0.0f) return EgColor + Specula;
-	else if(TransTexCoord.y>1.0f) return EgColor + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z-tex2D(DefSampler,TransTexCoord).r , 0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z-tex2D(DefSampler,TransTexCoord).r , 0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		comp = min(saturate(dot(normalize(N),-LightDir)*3),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
 			float4 ans = EgColor + Specula;
@@ -232,26 +231,13 @@ float4 BShadowTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,floa
    TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
    float alp = TexCMul.w + TexCAdd.w;
 
-	if(TransTexCoord.x<0.0f){
-		float4 ans = EgColor * ((tex2D(s1,Tex) * TexCMul + TexCAdd)*alp + (1-alp)) + Specula;
-		ans.w = EgColor.w * tex2D(s1,Tex).w;
-		return ans;
-	}else if(TransTexCoord.x>1.0f){
-		float4 ans = EgColor * ((tex2D(s1,Tex) * TexCMul + TexCAdd)*alp + (1-alp)) + Specula;
-		ans.w = EgColor.w * tex2D(s1,Tex).w;
-		return ans;
-	}else if(TransTexCoord.y<0.0f){
-		float4 ans = EgColor * ((tex2D(s1,Tex) * TexCMul + TexCAdd)*alp + (1-alp)) + Specula;
-		ans.w = EgColor.w * tex2D(s1,Tex).w;
-		return ans;
-	}else if(TransTexCoord.y>1.0f){
-		float4 ans = EgColor * ((tex2D(s1,Tex) * TexCMul + TexCAdd)*alp + (1-alp)) + Specula;
-		ans.w = EgColor.w * tex2D(s1,Tex).w;
-		return ans;
-	}else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		comp = min(saturate(dot(normalize(N),-LightDir)*3),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
 			float4 ans = EgColor*((tex2D(s1,Tex) * TexCMul + TexCAdd)*alp +(1-alp)) + Specula*comp;
@@ -327,14 +313,13 @@ float4 BShadowSphia_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float3
 	if(spadd) ans = EgColor + (tex2D(s1,Tex) * SphCMul + SphCAdd)*alp;
 	else	  ans = EgColor * ((tex2D(s1,Tex) * SphCMul + SphCAdd)*alp+(1-alp));
 	ans.w = EgColor.w * tex2D(s1,Tex).w;
-	if(TransTexCoord.x<0.0f)      return ans + Specula;
-	else if(TransTexCoord.x>1.0f) return ans + Specula;
-	else if(TransTexCoord.y<0.0f) return ans + Specula;
-	else if(TransTexCoord.y>1.0f) return ans + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		comp = min(saturate(dot(normalize(N),-LightDir)*3),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
 			ans = ans + Specula*comp;
@@ -342,7 +327,7 @@ float4 BShadowSphia_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float3
 			else	   ans.w = EgColor.w * tex2D(s1,Tex).w;
 			return ans;
 		}else{
-			ans = ans*comp + ans*ToonColor*(1-comp) + Specula*comp;
+			ans = ans*lerp(ToonColor, 1, comp) + Specula*comp;
 			if(transp) ans.a = 0.5f;
 			else	   ans.w = EgColor.w * tex2D(s1,Tex).w;
 			return ans;
@@ -425,21 +410,20 @@ float4 BShadowSphiaTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1
 	else	  ans = EgColor * (tex2D(s1,Tex) * TexCMul + TexCAdd) * (tex2D(s2,SpTex) * SphCMul + SphCAdd);
 	ans.w = EgColor.w * tex2D(s1,Tex).w * tex2D(s2,SpTex).w;
 	
-	if(TransTexCoord.x<0.0f)      return ans + Specula;
-	else if(TransTexCoord.x>1.0f) return ans + Specula;
-	else if(TransTexCoord.y<0.0f) return ans + Specula;
-	else if(TransTexCoord.y>1.0f) return ans + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		comp = min(saturate(dot(normalize(N),-LightDir)*3),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
 			ans = ans + Specula*comp;
 			if(transp) ans.a = 0.5f;
 			return ans;
 		}else{
-			ans = ans*comp + ans*ToonColor*(1-comp) + Specula*comp;
+			ans = ans*lerp(ToonColor, 1, comp) + Specula*comp;
 			if(transp) ans.a = 0.5f;
 			return ans;
 		}
@@ -496,14 +480,13 @@ float4 BShadowTexCd2_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float
    TransTexCoord.x = (1.0f + ZCalcTex.x)*0.5f;
    TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
 
-	if(TransTexCoord.x<0.0f)      return EgColor * (tex2D(s1,Tex) * SphCMul + SphCAdd) + Specula;
-	else if(TransTexCoord.x>1.0f) return EgColor * (tex2D(s1,Tex) * SphCMul + SphCAdd) + Specula;
-	else if(TransTexCoord.y<0.0f) return EgColor * (tex2D(s1,Tex) * SphCMul + SphCAdd) + Specula;
-	else if(TransTexCoord.y>1.0f) return EgColor * (tex2D(s1,Tex) * SphCMul + SphCAdd) + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		comp = min(saturate(dot(normalize(N),-LightDir)*3),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
 			float4 ans = EgColor*(tex2D(s1,Tex) * SphCMul + SphCAdd) + Specula*comp;
@@ -576,21 +559,20 @@ float4 BShadowTextureTexCd2Tec_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCO
 	else	  ans = EgColor * (tex2D(s1,Tex) * TexCMul + TexCAdd) * (tex2D(s2,SpTex) * SphCMul + SphCAdd);
 	ans.w = (tex2D(s1,Tex) * TexCMul + TexCAdd).w;
 	
-	if(TransTexCoord.x<0.0f)      return ans + Specula;
-	else if(TransTexCoord.x>1.0f) return ans + Specula;
-	else if(TransTexCoord.y<0.0f) return ans + Specula;
-	else if(TransTexCoord.y>1.0f) return ans + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		comp = min(saturate(dot(normalize(N),-LightDir)*3),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
 			ans = ans + Specula*comp;
 			if(transp) ans.a = 0.5f;
 			return ans;
 		}else{
-			ans = ans*comp + ans*ToonColor*(1-comp) + Specula*comp;
+			ans = ans*lerp(ToonColor, 1, comp) + Specula*comp;
 			if(transp) ans.a = 0.5f;
 			return ans;
 		}
@@ -658,14 +640,13 @@ float4 DiffuseBufferShadow_PS(float4 ZCalcTex : TEXCOORD0,float3 N : TEXCOORD1,f
    TransTexCoord.x = (1.0f + ZCalcTex.x)*0.5f;
    TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
 
-	if(TransTexCoord.x<0.0f)      return Color + Specula;
-	else if(TransTexCoord.x>1.0f) return Color + Specula;
-	else if(TransTexCoord.y<0.0f) return Color + Specula;
-	else if(TransTexCoord.y>1.0f) return Color + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		if(comp==1.0f){
 			return Color + Specula;
 		}else{
@@ -739,14 +720,13 @@ float4 DiffuseBSTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,fl
    TransTexCoord.x = (1.0f + ZCalcTex.x)*0.5f;
    TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
 
-	if(TransTexCoord.x<0.0f)      return Color * tex2D(s1,Tex) + Specula;
-	else if(TransTexCoord.x>1.0f) return Color * tex2D(s1,Tex) + Specula;
-	else if(TransTexCoord.y<0.0f) return Color * tex2D(s1,Tex) + Specula;
-	else if(TransTexCoord.y>1.0f) return Color * tex2D(s1,Tex) + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		if(comp==1.0f){
 			return Color * tex2D(s1,Tex) + Specula;
 		}else{
@@ -820,14 +800,13 @@ float4 DiffuseBSSphia_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,floa
 	if(spadd) ans = Color + texUV;
 	else	  ans = Color * texUV;
 
-	if(TransTexCoord.x<0.0f)      return ans + Specula;
-	else if(TransTexCoord.x>1.0f) return ans + Specula;
-	else if(TransTexCoord.y<0.0f) return ans + Specula;
-	else if(TransTexCoord.y>1.0f) return ans + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		if(comp==1.0f){
 			return ans + Specula;
 		}else{
@@ -915,14 +894,13 @@ float4 DiffuseBSSphiaTex_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,f
 	if(spadd) ans = Color * tex1UV + tex2UV;
 	else	  ans = Color * tex1UV * tex2UV;
 
-	if(TransTexCoord.x<0.0f)      return ans + Specula;
-	else if(TransTexCoord.x>1.0f) return ans + Specula;
-	else if(TransTexCoord.y<0.0f) return ans + Specula;
-	else if(TransTexCoord.y>1.0f) return ans + Specula;
-	else{
+	{
 		float comp;
 		if(parthf) comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII2*TransTexCoord.y-0.3f);
 		else	   comp=1-saturate(max(ZCalcTex.z - tex2D(DefSampler,TransTexCoord).r,0.0f)*SKII1-0.3f);
+        // Coverage affects occlusion only, never the material's lighting.
+        float3 coverage = abs(float3(TransTexCoord, ZCalcTex.z) * 2 - 1);
+        if (max(coverage.x, max(coverage.y, coverage.z)) > 1) comp = 1;
 		if(comp==1.0f){
 			return ans + Specula;
 		}else{

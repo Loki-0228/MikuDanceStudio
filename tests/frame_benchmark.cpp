@@ -162,6 +162,7 @@ struct Options {
     int dynamicPrecision = -1;
     int sortPrecision = -1;
     bool verifyViewToggles = false;
+    bool verifyShadowCycle = false;
     bool requireMmv = false;   // sampling may start only with MMV loaded
     bool forbidMmv = false;    // sampling may start only without MMV loaded
     const wchar_t* processor = L"auto";
@@ -297,6 +298,8 @@ int ParseOptions(int argc, wchar_t** argv, Options& options) {
             options.sortPrecision = int(value);
         } else if (wcscmp(arg, L"--verify-view-toggles") == 0) {
             options.verifyViewToggles = true;
+        } else if (wcscmp(arg, L"--verify-shadow-cycle") == 0) {
+            options.verifyShadowCycle = true;
         } else if (wcscmp(arg, L"--require-mmv") == 0) {
             options.requireMmv = true;
         } else if (wcscmp(arg, L"--forbid-mmv") == 0) {
@@ -1502,6 +1505,133 @@ int wmain(int argc, wchar_t** argv) {
         query->Release();
         ShutdownCleanup(app); delete app; g_Block=nullptr;
         return kExitViewport;
+    }
+
+    // Keep the measured pose fixed while testing the complete producer/receiver
+    // path. Comparing with casters disabled distinguishes occlusion from toon
+    // shading. No model data is saved, and the window remains hidden.
+    if (options.verifyShadowCycle) {
+        if (!throughput || native || options.skinOnly || !options.output ||
+            !options.viewportGiven || !UseEffectModelRenderer(app)) return 47;
+        std::vector<std::vector<DWORD>> shadowMaps;
+        std::vector<unsigned> shadowWidths;
+        const auto capture = [&](const wchar_t* suffix) {
+            installViewport();
+            app->state.messageSeen = 10;
+            RenderFrameScene(app);
+            IDirect3DSurface9* source = nullptr;
+            IDirect3DSurface9* readback = nullptr;
+            std::vector<DWORD> pixels;
+            if (FAILED(device->GetRenderTarget(0, &source))) return pixels;
+            D3DSURFACE_DESC desc{}; source->GetDesc(&desc);
+            const std::wstring path = std::wstring(options.output) + suffix;
+            RECT area{0, 0, requestedWidth, requestedHeight};
+            d3dx::Get().saveSurfaceToFileW(path.c_str(), 3, source, nullptr, &area);
+            if (desc.MultiSampleType != D3DMULTISAMPLE_NONE) {
+                IDirect3DSurface9* resolved = nullptr;
+                if (FAILED(device->CreateRenderTarget(desc.Width, desc.Height, desc.Format,
+                        D3DMULTISAMPLE_NONE, 0, FALSE, &resolved, nullptr)) ||
+                    FAILED(device->StretchRect(source, nullptr, resolved, nullptr, D3DTEXF_NONE))) {
+                    if (resolved) resolved->Release();
+                    source->Release();
+                    return pixels;
+                }
+                source->Release(); source = resolved;
+            }
+            if (SUCCEEDED(device->CreateOffscreenPlainSurface(desc.Width, desc.Height,
+                    desc.Format, D3DPOOL_SYSTEMMEM, &readback, nullptr)) &&
+                SUCCEEDED(device->GetRenderTargetData(source, readback))) {
+                D3DLOCKED_RECT locked{};
+                if (SUCCEEDED(readback->LockRect(&locked, &area, D3DLOCK_READONLY))) {
+                    for (int y = 0; y < requestedHeight; ++y) {
+                        const auto* row = reinterpret_cast<const DWORD*>(
+                            static_cast<const char*>(locked.pBits) + y * locked.Pitch);
+                        pixels.insert(pixels.end(), row, row + requestedWidth);
+                    }
+                    readback->UnlockRect();
+                }
+            }
+            if (readback) readback->Release();
+            source->Release();
+            if (auto* shadow = app->Renderer()->shadowSurface) {
+                const std::wstring map = path + L".shadow.dds";
+                d3dx::Get().saveSurfaceToFileW(map.c_str(), 4, shadow, nullptr, nullptr);
+                shadow->GetDesc(&desc);
+                readback = nullptr;
+                std::vector<DWORD> depths;
+                if (SUCCEEDED(device->CreateOffscreenPlainSurface(desc.Width, desc.Height,
+                        desc.Format, D3DPOOL_SYSTEMMEM, &readback, nullptr)) &&
+                    SUCCEEDED(device->GetRenderTargetData(shadow, readback))) {
+                    D3DLOCKED_RECT locked{};
+                    if (SUCCEEDED(readback->LockRect(&locked, nullptr, D3DLOCK_READONLY))) {
+                        for (unsigned y = 0; y < desc.Height; ++y) {
+                            const auto* row = reinterpret_cast<const DWORD*>(
+                                static_cast<const char*>(locked.pBits) + y * locked.Pitch);
+                            depths.insert(depths.end(), row, row + desc.Width);
+                        }
+                        readback->UnlockRect();
+                    }
+                }
+                if (readback) readback->Release();
+                shadowMaps.push_back(std::move(depths));
+                shadowWidths.push_back(desc.Width);
+            }
+            return pixels;
+        };
+        const auto toggle = [&](bool enabled) {
+            HWND checkbox = GetDlgItem(app->MainWindow(), panel::kAdaptiveShadowCheckbox);
+            SendMessageW(checkbox, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+            CommandDispatch(checkbox, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED));
+        };
+        toggle(false);
+        const float fixedRange = app->ShadowDistance();
+        const auto fixed = capture(L".fixed.png");
+        struct Caster { mdl::ModelMaterialRecord* material; unsigned flags; };
+        std::vector<Caster> casters;
+        for (int slot = 0; slot < kModelSlotCount; ++slot) {
+            auto* model = app->ModelSlot(slot);
+            if (!model || mdl::Mdl(model)->physicsMode != 2) continue;
+            auto* materials = mdl::Materials(model);
+            for (unsigned i = 0; i < mdl::Mdl(model)->materialCount; ++i) {
+                casters.push_back({materials + i, materials[i].flags});
+                materials[i].flags &= ~4u;
+            }
+        }
+        const auto unoccluded = capture(L".unoccluded.png");
+        for (auto caster : casters) caster.material->flags = caster.flags;
+        toggle(true);
+        HWND slider = GetDlgItem(app->MainWindow(), panel::kSelfShadowRangeSlider);
+        const auto precision = [&](int value) {
+            SendMessageW(slider, TBM_SETPOS, TRUE, value);
+            SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(slider));
+        };
+        precision(9999);
+        capture(L".dynamic.png");
+        precision(0);
+        capture(L".precise.png");
+        toggle(false);
+        const auto restored = capture(L".restored.png");
+        std::size_t occludedPixels = 0, changedPixels = 0;
+        if (fixed.empty() || fixed.size() != unoccluded.size() || fixed.size() != restored.size()) return 48;
+        for (std::size_t i = 0; i < fixed.size(); ++i) {
+            int occlusion = 0, change = 0;
+            for (int shift : {0, 8, 16}) {
+                occlusion = std::max(occlusion, std::abs(int((fixed[i] >> shift) & 255) - int((unoccluded[i] >> shift) & 255)));
+                change = std::max(change, std::abs(int((fixed[i] >> shift) & 255) - int((restored[i] >> shift) & 255)));
+            }
+            occludedPixels += occlusion > 8;
+            changedPixels += change > 2;
+        }
+        const bool sameMap = shadowMaps.size() == 5 && !shadowMaps[0].empty() && shadowMaps[0] == shadowMaps[4];
+        const bool precisionOrder = shadowWidths.size() == 5 && shadowWidths[3] >= shadowWidths[2];
+        std::printf("shadow_cycle occluded_pixels=%zu restored_changed_pixels=%zu range_preserved=%u map_identical=%u precision_order=%u low_width=%u high_width=%u\n",
+            occludedPixels, changedPixels, fixedRange == app->ShadowDistance(), sameMap, precisionOrder,
+            shadowWidths.size() == 5 ? shadowWidths[2] : 0, shadowWidths.size() == 5 ? shadowWidths[3] : 0);
+        // MSAA/transparent surface ties can vary at a few triangle-edge pixels.
+        // Require the restored shadow depths to be bit-exact, and reject any
+        // visible region changing after toggling (more than 0.1% of the frame).
+        if (occludedPixels < 32 || changedPixels > fixed.size() / 1000 || !sameMap ||
+            !precisionOrder || fixedRange != app->ShadowDistance()) return 49;
     }
 
     // ---- optional outputs (historical contract) --------------------------
