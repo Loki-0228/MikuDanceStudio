@@ -17,9 +17,9 @@
 | 音视频 | 保留现代音视频导入与 MP4/MOV 输出，依赖 Windows 媒体组件 | WAV 音频、AVI 背景与 AVI 输出 |
 | PMM、VMD、VPD 保存 | 可写 MMS 扩展数据 | 仅写标准内容，忽略读取到的 MMS 扩展 |
 | MME | 保留原生 DX9 接口，插件需另行安装 | 保留原生 DX9 接口，插件需另行安装 |
-| 程序体积（本次 x64 产物） | 4,754,432 字节，约 4.75 MB | 2,089,472 字节，约 2.09 MB |
+| 程序体积（本次 x64 产物） | 4,754,944 字节，约 4.75 MB | 2,089,984 字节，约 2.09 MB |
 
-两个 ZIP 均包含程序、使用说明及许可，不附带用户配置、模型、MME 或 MMV 插件。完整包包含 MMV 宿主接口；`MMV4MMS.dll` 仍处于单独测试阶段，不在此次公开附件中。最小包体积比完整包约小 56%，这不是运行速度的对比结果。
+两个 ZIP 均仅包含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，不附带用户配置、模型、MME 或 MMV 插件。完整包包含 MMV 宿主接口；`MMV4MMS.dll` 仍处于单独测试阶段，不在此次公开附件中。最小包体积比完整包约小 56%，这不是运行速度的对比结果。
 
 最小包仍保留三语界面等便利修复，并非原版 MMD 的逐字节复刻。它按原版格式的名称编码和字段长度检查保存内容：名称与文件内引用须能完整表示为 CP932，超出范围时拒绝保存。模型编辑只提供 PMD 保存；最小包拒绝 PMX 到 PMD 的有损转换。
 
@@ -31,21 +31,7 @@
 
 ## English
 
-AI coding tools were used in this project's development. Despite testing over
-a period of time, the code may still contain low-quality or redundant
-AI-generated implementations (slop) and undiscovered bugs.
-
-MikuDanceStudio is a Windows desktop 3D dance animation studio written in C++:
-load PMD/PMX models and VMD/VPD motion data, edit bones / morphs / camera /
-lighting / accessories in a DirectX 9 viewport, with built-in Bullet 2.75 rigid
-body physics, AVI video recording, VSQ audio alignment, and animation data
-export.
-
-This project is a continuation of a behavior-level port of
-[MikuMikuDance](https://learnmmd.com/downloads/) v932: the observable behavior
-of the original program (UI, file formats, rendering, physics solve order) is
-the alignment target, rebuilt with a modern toolchain
-(MSVC v143 / CMake / Conan 2).
+MikuDanceStudio (MMS) is a Windows desktop application for creating and editing MMD dance animations. [v2026.10.11.7](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.11.7) provides Windows x64 full and minimal packages, with MMS additions in the full package and original MMD features plus related fixes in the minimal package. Both ZIPs contain only `MikuMikuDance.exe` and the license files in `licenses/`, so if you use both versions, extract them into separate directories and run each directory's executable.
 
 ### Features
 
@@ -240,16 +226,7 @@ Bullet Physics (zlib), Alembic and Imath (BSD-3-Clause), MinHook (BSD-2-Clause),
 
 ## 中文
 
-本项目开发过程中使用了 AI 编程工具。虽然已经进行了一段时间的测试，代码中仍可能存在
-AI 生成的低质量或冗余实现（slop），以及尚未发现的 bug。
-
-MikuDanceStudio 是一个用 C++ 编写的 Windows 桌面 3D 舞蹈动画工作室：加载 PMD/PMX 模型、
-VMD/VPD 动作数据，在 DirectX 9 视口中编辑骨骼/形态/相机/照明/附件，内建 Bullet 2.75
-刚体物理、AVI 视频录制与 VSQ 音频对齐，并可导出动画数据。
-
-本工程是 [MikuMikuDance](https://learnmmd.com/downloads/) v932 行为级移植的延续：
-以原版程序的可观测行为（UI、文件格式、渲染、物理求解序列）为对齐目标，在现代工具链
-（MSVC v143 / CMake / Conan 2）下重建整个应用程序。
+MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌面应用。[v2026.10.11.7](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.11.7) 提供 Windows x64 完整包与最小包，完整包保留 MMS 新增功能，最小包保留 MMD 原有功能及相关缺陷修复。两个 ZIP 均仅含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，同时使用两版时须分别解压到不同目录，并运行各自目录中的主程序。
 
 ### 功能
 
@@ -420,20 +397,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 
 ## 日本語
 
-本プロジェクトの開発には AI コーディングツールを使用しています。一定期間のテストを
-行っていますが、AI が生成した低品質または冗長な実装（slop）や、未発見のバグが
-コードに残っている可能性があります。
-
-MikuDanceStudio は C++ で書かれた Windows デスクトップ向け 3D ダンスアニメーション
-スタジオです。PMD/PMX モデルと VMD/VPD モーションデータを読み込み、DirectX 9
-ビューポート上でボーン／モーフ／カメラ／照明／アクセサリを編集できます。
-Bullet 2.75 剛体物理、AVI 動画録画、VSQ 音源との同期、アニメーションデータの
-エクスポートを内蔵しています。
-
-本プロジェクトは [MikuMikuDance](https://learnmmd.com/downloads/) v932 の
-動作レベルでの移植を継続するものです。オリジナルの観測可能な動作（UI、ファイル
-フォーマット、レンダリング、物理求解の順序）を合わせ込みの目標とし、現代的な
-ツールチェーン（MSVC v143 / CMake / Conan 2）でアプリケーション全体を再構築します。
+MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・編集する Windows デスクトップアプリです。[v2026.10.11.7](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.11.7) では Windows x64 向けに、MMS の追加機能を含む完全版と、MMD 本来の機能および関連する不具合修正を含む最小版を配布しています。どちらの ZIP も `MikuMikuDance.exe` と `licenses/` 内のライセンスファイルのみを含むため、両方を使う場合は別々のフォルダーに展開し、それぞれの実行ファイルを起動してください。
 
 ### 機能
 

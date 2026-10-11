@@ -128,6 +128,33 @@ void QuatMultiply(float out[4], const float a[4], const float b[4]) {
     out[3] = b[3] * a[3] - b[0] * a[0] - b[1] * a[1] - b[2] * a[2];
 }
 
+// Rotation channels carry orientation only. Keep this separate from the raw
+// multiply: the selected-root orbit below also multiplies position vectors.
+void NormalizeRotation(float rotation[4]) {
+    double length2 = 0.0;
+    for (int i = 0; i < 4; ++i)
+        length2 += double(rotation[i]) * rotation[i];
+    if (!std::isfinite(length2) || length2 == 0.0) {
+        rotation[0] = rotation[1] = rotation[2] = 0.0f;
+        rotation[3] = 1.0f;
+        return;
+    }
+    const double inverseLength = 1.0 / std::sqrt(length2);
+    for (int i = 0; i < 4; ++i)
+        rotation[i] = static_cast<float>(double(rotation[i]) * inverseLength);
+}
+
+void ApplyRotation(float rotation[4], const float delta[4]) {
+    float before[4], result[4];
+    std::memcpy(before, rotation, sizeof(before));
+    // Normalize before multiplying as well, so an old drifted pose cannot
+    // overflow the float quaternion product during the next edit.
+    NormalizeRotation(before);
+    QuatMultiply(result, before, delta);
+    NormalizeRotation(result);
+    std::memcpy(rotation, result, sizeof(result));
+}
+
 unsigned char* CurrentModel(MMDApp* app) {
     return app->ModelSlot(app->state.slotIdx);
 }
@@ -653,6 +680,19 @@ void BoneEditModes(MMDApp* app) {
                 Vec3Normalize(axis);
             }
         }
+        // View axes, direct-mode bases and authored fixed axes can have a
+        // non-unit length. Without this, opposite drags multiply by |dq|^2
+        // instead of cancelling, and the conjugate used for orbiting selected
+        // roots is not an inverse. Normalize only the edit axis/orientation;
+        // leave authored bone stretch and the world matrices untouched.
+        const double axisLength2 = double(axis[0]) * axis[0] +
+            double(axis[1]) * axis[1] + double(axis[2]) * axis[2];
+        if (!std::isfinite(ang) || ang == 0.0f ||
+            !std::isfinite(axisLength2) || axisLength2 == 0.0)
+            return;
+        const double inverseAxisLength = 1.0 / std::sqrt(axisLength2);
+        for (int i = 0; i < 3; ++i)
+            axis[i] = static_cast<float>(double(axis[i]) * inverseAxisLength);
         unsigned char* dirty =
             mikudancestudio::mdl::Mdl(model)->bonePhysicsState;
         if (dirty != nullptr)
@@ -665,9 +705,8 @@ void BoneEditModes(MMDApp* app) {
                        OriginalSinTimes(ang, axis[1]),
                        OriginalSinTimes(ang, axis[2]),
                        OriginalCos(ang)};
-        float out[4];
-        QuatMultiply(out, bone.rotQuat, dq);
-        std::memcpy(bone.rotQuat, out, sizeof(out));
+        NormalizeRotation(dq);
+        ApplyRotation(bone.rotQuat, dq);
 
         // child-bone propagation loop (0x476E42..0x477257, lifted from
         // disassembly): every type-1/2 bone of the marked wave whose
@@ -696,9 +735,7 @@ void BoneEditModes(MMDApp* app) {
                 ch.trans[0] += r2[0] - off[0];
                 ch.trans[1] += r2[1] - off[1];
                 ch.trans[2] += r2[2] - off[2];
-                float oq[4];
-                QuatMultiply(oq, ch.rotQuat, dq);    // 0x4771EB
-                std::memcpy(ch.rotQuat, oq, sizeof(oq));
+                ApplyRotation(ch.rotQuat, dq);      // 0x4771EB
             }
         }
         return;

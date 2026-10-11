@@ -34,8 +34,10 @@
 | `morph_import_tests.cpp` | 表情记录步长、Unicode 控件、VSQ 歌词/时间隔离；可另传 VMD 验证实际素材。 |
 | `ui_language_tests.cpp` | 多语言字符串、控件语义、时间轴固定标题翻译、实际 PMX 导入后的 Unicode 绘制与中日文字号。 |
 | `ui_message_tests.cpp` | 实际对话框资源和消息。 |
+| `video_export_range_tests.cpp` | 由私有桌面 runner 显式运行；实际三语导出对话框的范围默认值、宽高比例初始化、重复打开、取消和确认读回。两档共用，编码器枚举用固定选项隔离；不创建设备、不编码视频、不注册普通 CTest。 |
 | `panel_key_tests.cpp` | 时间轴登记、编辑与帧链。 |
 | `bone_scale_tests.cpp` | 原生缩放的坐标变换、斜切保留、层级继承、全骨骼类型、关键帧插值、撤销重做与剪贴板。 |
+| `bone_rotation_drag_tests.cpp` | CPU 回归，经真实拖拽与骨骼变换入口验证 PMD/PMX、视口与轴按钮、局部/全局/视角坐标各 10,000 次往返操作；检查旋转与矩阵不积累缩放、多选轨道与子骨半径、旧漂移和非法输入，以及完整档合法缩放保留。两档均注册。 |
 | `bone_scale_hud_tests.cpp` | 隐藏窗口的真实 GPU 回读：四个缩放按钮、相机和配件禁用蒙版、透明边缘及三档 DPI；不读取桌面。 |
 | `bone_scale_io_tests.cpp` | PMM 缩放记录和单文件 VMD 扩展的编解码、校验、未知版本、帧偏移及骨骼匹配。 |
 | `affine_skinning_tests.cpp` | 非均匀缩放和斜切的独立数值参考；BDEF、PMD、SDEF 的位置和法线、极分解及单位缩放旧路径一致性。 |

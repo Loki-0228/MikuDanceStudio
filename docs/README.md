@@ -21,6 +21,7 @@
 | 主题 | 文档 |
 | --- | --- |
 | 行为核对与问题记录 | [验证方法](VERIFY_METHOD.md)、[用户测试修复记录](USER_TEST_FIXES_2026-09.md) |
+| 骨骼反复旋转与视频导出范围 | [原因、修复及两档验收](ROTATION_EXPORT_FIXES_20261011.md) |
 | 性能采样 | [帧基准说明](FRAME_BENCHMARK.md) |
 | 透明排序主分支集成 | [合并、后台回归与双 build 对照](CLOUD_SORT_MAIN_INTEGRATION_2026-09-27.md) |
 | 先前的六档排序上限格式 | [六档上限、双字段迁移与验证（历史）](TRANSPARENT_SORT_LIMIT_PMM_2026-09-27.md) |

@@ -492,6 +492,12 @@ add_test(NAME geometry_workers_thread_limit COMMAND geometry_workers_tests defau
 add_test(NAME geometry_workers_active_override COMMAND geometry_workers_tests ACTIVE 12)
 add_test(NAME geometry_workers_passive_override COMMAND geometry_workers_tests PASSIVE 12)
 
+add_executable(bone_rotation_drag_tests EXCLUDE_FROM_ALL tests/bone_rotation_drag_tests.cpp)
+target_link_libraries(bone_rotation_drag_tests PRIVATE mikudancestudio_core winmm dsound)
+set_target_properties(bone_rotation_drag_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME bone_rotation_drag COMMAND bone_rotation_drag_tests)
+
 # ---------------------------------------------------------------------------
 # d3dx9_43 import stubs - MikuMikuEffect (MME) compatibility
 # ---------------------------------------------------------------------------
@@ -798,6 +804,14 @@ if(TARGET physics_bake_tests)
         "${MIKUDANCESTUDIO_GEN_RES}")
 endif()
 if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(video_export_range_tests EXCLUDE_FROM_ALL
+        tests/video_export_range_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(video_export_range_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    target_link_options(video_export_range_tests PRIVATE "/MANIFEST:NO"
+        "${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(video_export_range_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    # Run explicitly on a private desktop; no device or video output is needed.
     add_executable(physics_editor_encoding_tests EXCLUDE_FROM_ALL
         tests/physics_editor_encoding_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(physics_editor_encoding_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)

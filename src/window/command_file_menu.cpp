@@ -562,7 +562,6 @@ INT_PTR __stdcall BlinkRegisterDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
 INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                                 LPARAM lParam) {  // was Sub40F2F0, VA 0x0040F2F0
     MMDApp* app = g_Block;
-    char text[0x100];
     if (msg == WM_INITDIALOG) {
         MakeDialogTopmostIfRequested(app, hDlg);
         LocalizeChineseDialog(app, hDlg);
@@ -575,28 +574,30 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
             : app->EnglishUI() == 2 ? L"视频导出设置" : L"動画出力設定");
 #endif
         const HWND main = MainHwnd(app);
-        PrefillEdit(hDlg, panel::kAviStartFrameEdit, "0");
-        GetWindowTextA(GetDlgItem(main, panel::kPlayStopFrameEdit), text, 8);
-        PrefillEdit(hDlg, panel::kAviEndFrameEdit, text);
-        std::uint32_t defaultEnd = app->LastRegisteredFrame();
-        if (const WaveAudioContext* audio = app->Audio();
-            audio != nullptr && audio->dataSize > 0 &&
-            audio->format.nAvgBytesPerSec > 0) {
-            const double audioFrames = std::ceil(
-                static_cast<double>(audio->dataSize) * g_FrameScale /
-                audio->format.nAvgBytesPerSec);
-            if (audioFrames > defaultEnd)
-                defaultEnd = static_cast<std::uint32_t>(audioFrames);
+        BOOL stopValid = FALSE;
+        const int playbackStop = static_cast<int>(GetDlgItemInt(
+            main, panel::kPlayStopFrameEdit, &stopValid, TRUE));
+        std::uint32_t defaultEnd = stopValid && playbackStop > 0
+            ? static_cast<std::uint32_t>(playbackStop) : 0;
+        if (defaultEnd == 0) {
+            defaultEnd = app->LastRegisteredFrame();
+            if (const WaveAudioContext* audio = app->Audio();
+                audio != nullptr && audio->dataSize > 0 &&
+                audio->format.nAvgBytesPerSec > 0) {
+                const double audioFrames = std::ceil(
+                    static_cast<double>(audio->dataSize) * g_FrameScale /
+                    audio->format.nAvgBytesPerSec);
+                if (audioFrames > defaultEnd)
+                    defaultEnd = static_cast<std::uint32_t>(audioFrames);
+            }
         }
-        sprintf_s(text, 0x100, "%u", static_cast<unsigned>(defaultEnd));
-        PrefillEdit(hDlg, panel::kAviEndFrameEdit, text);
-        PrefillEdit(hDlg, panel::kAviFpsEdit, "30");
-        sprintf_s(text, 0x100, "%5d",
-                  app->RenderWidth());
-        PrefillEdit(hDlg, panel::kAviWidthEdit, text);
-        sprintf_s(text, 0x100, "%5d",
-                  app->RenderHeight());
-        PrefillEdit(hDlg, panel::kAviHeightEdit, text);
+        // Set complete values: selection replacement can append frame defaults
+        // or insert dimensions into text already set by the aspect-ratio handler.
+        SetDlgItemInt(hDlg, panel::kAviStartFrameEdit, 0, FALSE);
+        SetDlgItemInt(hDlg, panel::kAviEndFrameEdit, defaultEnd, FALSE);
+        SetDlgItemInt(hDlg, panel::kAviFpsEdit, 30, FALSE);
+        SetDlgItemInt(hDlg, panel::kAviWidthEdit, app->RenderWidth(), TRUE);
+        SetDlgItemInt(hDlg, panel::kAviHeightEdit, app->RenderHeight(), TRUE);
         app->AviOutputWidth() = app->RenderWidth();
         app->AviOutputHeight() = app->RenderHeight();
         const wchar_t* closeText = app->EnglishUI() == 1
