@@ -106,9 +106,11 @@ MikuMikuDance.exe <另一个新输出前缀> 1 --emm-save-on [素材PMM绝对路
 
 ## 密集透明累积专项
 
-`model_alpha_occlusion_tests --low-alpha` 使用内置 SM3 资源 118，比较 256 层 alpha=1/255 和 512 层 alpha=2/255 的黑色面在白底上的结果与双精度解析式，容差 2，并核对最终 A=255。该模式和 `--peel-budget` 都自己选择 1024 层剥离档（五档格式下为「高」），不依赖进程默认档位。`--peel-budget` 使用该档位与 1152 层，检查预算耗尽后最近的绿色层仍显示。两项已注册 CTest；以 `MIKUDANCESTUDIO_TRACE_FILE` 日志核对实际走过分层路径，避免把能力不足时的直接回退误报为预算覆盖。背景窗口隐藏，像素来自目标读回。前后 build 证据见 [浮点合成修复](../docs/CLOUD_FLOAT_COMPOSITING_2026-09-26.md)。
+`model_alpha_occlusion_tests --low-alpha` 使用内置 SM3 资源 118，比较 256 层 alpha=1/255 和 512 层 alpha=2/255 的黑色面在白底上的结果与双精度解析式，容差 2，并核对最终 A=255。该模式明确选择最高档；`--peel-budget` 是保留的历史参数名，选择高档直接排序完整三角形，使用 1152 层检查最近的绿色层仍显示，不再表示固定的 1024 层预算。最高档以 `MIKUDANCESTUDIO_TRACE_FILE` 的实际层数、`complete` 与 `committed` 核对完整剥离，不能仅凭最终像素把回退误报为剥离通过。背景窗口隐藏，像素来自目标读回。历史实现见[浮点合成修复](../docs/CLOUD_FLOAT_COMPOSITING_2026-09-26.md)，当前夹具与档位复核见[透明排序回归复核](../docs/TRANSPARENT_SORT_VALIDATION_20261011.md)。
 
 三个专项均支持附加 `--msaa`，使用实际 4x 目标和同尺寸 resolve 后读回；硬件不支持时明确失败。MSAA 三项也注册 CTest。`--intersections` 同时覆盖不透明表面夹在两个透明表面之间，保证后方颜色不会混进前方透明层。
+
+普通遮挡场景默认显式选择标准档，`--precision low|standard|high|maximum` 可分别验证四档；不能与专项模式混用。产品默认仍为关闭，原始提交顺序由独立的 `--sort-off` 及 MME 模块存在用例验证。完整档注册上述开启排序的 GPU 用例；最小档仅注册此测试程序的两项关闭排序用例，并在创建窗口前拒绝开启排序的参数。测试直接发布纹理池条目时必须使查询缓存失效，并检查路径确实解析到预期槽位和纹理；清理时先清空条目、失效缓存，再释放纹理。
 
 
 ## 五档透明排序上限与 PMM v2

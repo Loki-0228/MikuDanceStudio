@@ -10,8 +10,9 @@
 // the opaque surface's depth before it can blend in, in both submission orders
 // and both model ABIs. The mode explicitly selects Maximum.
 //
-// Scenes that need peeling select Maximum explicitly. Other scenes keep the
-// process default.
+// Scenes that need peeling select Maximum explicitly. Ordinary occlusion uses
+// Standard; --precision low|standard|high|maximum selects the same assertions
+// at another sorting tier. The product's default remains Off.
 // --sort-off checks native material/model pass order and On -> Off index restore,
 // using real draw/readback on PMD and PMX with fixed, SM2 and SM3 rendering.
 //
@@ -63,6 +64,7 @@
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/model_alpha_pass.hpp"
+#include "mikudancestudio/texture_lookup.hpp"
 #if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_geometry.hpp"
 #endif
@@ -288,6 +290,30 @@ void Check(bool ok, const char* message) {
         std::fprintf(stderr, "FAIL: %s\n", message);
         std::exit(1);
     }
+}
+
+// Direct fixture publication must honor the same lookup generation contract
+// as LoadTextureShared. The renderer indexes names only after invalidation.
+void PublishFixtureTexture(D3DRenderer* renderer, UINT slot, const wchar_t* path,
+                           IDirect3DTexture9* texture, const unsigned char (&tag)[4]) {
+    auto& entry = renderer->resourcePool[slot];
+    Check(!entry.heapBuffer && !entry.comObject, "fixture texture slot is empty before publication");
+    entry.heapBuffer = const_cast<wchar_t*>(path);
+    entry.comObject = reinterpret_cast<IUnknown*>(texture);
+    std::memcpy(&entry.tag, tag, sizeof(tag));
+    InvalidateTextureLookup();
+    const auto* found = FindTextureResource(renderer, path);
+    Check(found == &entry && found->comObject == reinterpret_cast<IUnknown*>(texture),
+          "published fixture path resolves to its exact pool slot and texture");
+}
+
+void ReleaseFixtureTexture(D3DRenderer* renderer, UINT slot, IDirect3DTexture9* texture) {
+    auto& entry = renderer->resourcePool[slot];
+    Check(entry.comObject == reinterpret_cast<IUnknown*>(texture),
+          "fixture texture release matches the published pool entry");
+    entry = {};
+    InvalidateTextureLookup();
+    texture->Release();
 }
 
 // Copies the rendered frame into the readback surface. GetRenderTargetData
@@ -888,12 +914,7 @@ void RunDisplayStateScene(MMDApp* app, IDirect3DDevice9* device,
     Check((tag[3] & kTextureUsesAlpha) == 0,
           "the opaque black texel classifies the display-state texture as "
           "opaque");
-    renderer->resourcePool[kDisplayStatePoolSlot].heapBuffer =
-        const_cast<wchar_t*>(kDisplayStatePath);
-    renderer->resourcePool[kDisplayStatePoolSlot].comObject =
-        reinterpret_cast<IUnknown*>(texture);
-    std::memcpy(&renderer->resourcePool[kDisplayStatePoolSlot].tag, tag,
-                sizeof(tag));
+    PublishFixtureTexture(renderer, kDisplayStatePoolSlot, kDisplayStatePath, texture, tag);
 
     const auto savedPrecision = app->TransparentMaterialSortPrecision();
     // The WM_COMMAND 0xD6 handler (command_dispatch.cpp case 0xD6) writes the
@@ -958,6 +979,7 @@ void RunDisplayStateScene(MMDApp* app, IDirect3DDevice9* device,
     }
     app->state.characterTransparentMode = savedTransparentMode;
     app->TransparentMaterialSortPrecision() = savedPrecision;
+    ReleaseFixtureTexture(renderer, kDisplayStatePoolSlot, texture);
     std::printf("displayState scenes sampled 18 pixels per tier\n");
 }
 
@@ -1012,11 +1034,7 @@ void RunLayerStackCase(MMDApp* app, IDirect3DDevice9* device,
           "translucent");
     // The same pool flow the other fixtures use: the material names the
     // path, and the pass resolves it back to this texture and its tag.
-    renderer->resourcePool[slot].heapBuffer =
-        const_cast<wchar_t*>(fixture.texturePath);
-    renderer->resourcePool[slot].comObject =
-        reinterpret_cast<IUnknown*>(texture);
-    std::memcpy(&renderer->resourcePool[slot].tag, tag, sizeof(tag));
+    PublishFixtureTexture(renderer, slot, fixture.texturePath, texture, tag);
 
     std::vector<ModelVertex> vertices;
     std::vector<WORD> indices;
@@ -1079,7 +1097,7 @@ void RunLayerStackCase(MMDApp* app, IDirect3DDevice9* device,
                 static_cast<int>(measured >> 24 & 0xFF), expected,
                 kLowAlphaTolerance, static_cast<unsigned long>(measured));
     readback->UnlockRect();
-    texture->Release();
+    ReleaseFixtureTexture(renderer, slot, texture);
 }
 
 // The --low-alpha scenes. Each case is the shared black-layer stack at its own
@@ -1093,7 +1111,7 @@ void RunLowAlphaScenes(MMDApp* app, IDirect3DDevice9* device,
     for (std::size_t index = 0; index < std::size(kLowAlphaCases); ++index) {
         RunLayerStackCase(app, device, backbuffer, readback, resource, identity,
                           kLowAlphaCases[index],
-                          kLowAlphaPoolBase + static_cast<UINT>(index),
+                          kLowAlphaPoolBase,
                           "low-alpha");
     }
 }
@@ -1122,7 +1140,7 @@ void RunMaximumLimitScenes(MMDApp* app, IDirect3DDevice9* device,
                     present.BackBufferHeight);
         RunLayerStackCase(app, device, backbuffer, readback, resource, identity,
                           fixture,
-                          kMaximumLimitPoolBase + static_cast<UINT>(index),
+                          kMaximumLimitPoolBase,
                           "maximum-limit");
     }
 }
@@ -1146,12 +1164,7 @@ void RunPeelBudgetScene(MMDApp* app, IDirect3DDevice9* device,
     Check((tag[3] & kTextureUsesAlpha) != 0,
           "the half-transparent texels classify the peel-budget texture as "
           "translucent");
-    renderer->resourcePool[kPeelBudgetPoolSlot].heapBuffer =
-        const_cast<wchar_t*>(kPeelBudgetPath);
-    renderer->resourcePool[kPeelBudgetPoolSlot].comObject =
-        reinterpret_cast<IUnknown*>(texture);
-    std::memcpy(&renderer->resourcePool[kPeelBudgetPoolSlot].tag, tag,
-                sizeof(tag));
+    PublishFixtureTexture(renderer, kPeelBudgetPoolSlot, kPeelBudgetPath, texture, tag);
 
     std::vector<ModelVertex> vertices;
     std::vector<WORD> indices;
@@ -1209,7 +1222,7 @@ void RunPeelBudgetScene(MMDApp* app, IDirect3DDevice9* device,
                 kPeelBudgetExpectedGreen, kPeelBudgetExpectedBlue,
                 kPeelBudgetTolerance, static_cast<unsigned long>(measured));
     readback->UnlockRect();
-    texture->Release();
+    ReleaseFixtureTexture(renderer, kPeelBudgetPoolSlot, texture);
 }
 
 }  // namespace
@@ -1224,9 +1237,27 @@ int main(int argc, char** argv) {
     bool maximumFullSize = false;
     bool msaaRequested = false;
     bool sortOffOnly = false;
+    bool precisionRequested = false;
+    TransparentSortPrecision precision = TransparentSortPrecision::Standard;
+    const char* precisionName = "standard";
     HMODULE mmeMarker = nullptr;
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--mme-marker") == 0) {
+        if (std::strcmp(argv[i], "--precision") == 0) {
+            if (++i == argc) {
+                std::fputs("--precision needs low, standard, high or maximum\n", stderr);
+                return 2;
+            }
+            precisionName = argv[i];
+            if (std::strcmp(precisionName, "low") == 0) precision = TransparentSortPrecision::Low;
+            else if (std::strcmp(precisionName, "standard") == 0) precision = TransparentSortPrecision::Standard;
+            else if (std::strcmp(precisionName, "high") == 0) precision = TransparentSortPrecision::High;
+            else if (std::strcmp(precisionName, "maximum") == 0) precision = TransparentSortPrecision::Maximum;
+            else {
+                std::fputs("--precision needs low, standard, high or maximum; use --sort-off for Off\n", stderr);
+                return 2;
+            }
+            precisionRequested = true;
+        } else if (std::strcmp(argv[i], "--mme-marker") == 0) {
             Check(i + 1 < argc, "MME presence marker requires a DLL path");
             mmeMarker = LoadLibraryA(argv[++i]);
             Check(mmeMarker && GetModuleHandleW(L"MMEffect.dll") == mmeMarker,
@@ -1253,6 +1284,18 @@ int main(int argc, char** argv) {
         std::fputs("Choose a single scene mode\n", stderr);
         return 2;
     }
+    const bool ordinary = !intersectionsOnly && !lowAlphaOnly && !peelBudgetOnly &&
+        !maximumLimitOnly && !sortOffOnly;
+    if (precisionRequested && !ordinary) {
+        std::fputs("--precision applies only to ordinary occlusion; scene modes select their own tier\n", stderr);
+        return 2;
+    }
+#if MMD_ORIGINAL_PROFILE
+    if (!sortOffOnly) {
+        std::fputs("The original profile supports this fixture's --sort-off mode only\n", stderr);
+        return 2;
+    }
+#endif
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     // One local target size drives the window, the device, the readback surface
     // and the MSAA resolve surface. Maximum defaults to 16x16; the other modes
@@ -1318,6 +1361,10 @@ int main(int argc, char** argv) {
     app->Hwnd() = window;
     app->EnglishUI() = 1;
     app->PlaybackActive() = 1;
+    if (ordinary) {
+        app->TransparentMaterialSortPrecision() = precision;
+        std::printf("occlusion precision=%s (%u)\n", precisionName, unsigned(precision));
+    }
     auto& present = renderer->presentParameters;
     present = pp;
     IDirect3DDevice9* device = nullptr;
@@ -1381,26 +1428,10 @@ int main(int argc, char** argv) {
           "are classified translucent from their own texels");
     // The pool scan stops at the first empty slot, so the two entries are
     // contiguous from index 0 and their names live as long as the renderer.
-    renderer->resourcePool[0].heapBuffer = const_cast<wchar_t*>(kNearPath);
-    renderer->resourcePool[0].comObject =
-        reinterpret_cast<IUnknown*>(nearTexture);
-    std::memcpy(&renderer->resourcePool[0].tag, nearTag, sizeof(nearTag));
-    renderer->resourcePool[1].heapBuffer = const_cast<wchar_t*>(kFarPath);
-    renderer->resourcePool[1].comObject =
-        reinterpret_cast<IUnknown*>(farTexture);
-    std::memcpy(&renderer->resourcePool[1].tag, farTag, sizeof(farTag));
-    renderer->resourcePool[2].heapBuffer =
-        const_cast<wchar_t*>(kTwoLayerRearPath);
-    renderer->resourcePool[2].comObject =
-        reinterpret_cast<IUnknown*>(twoLayerRearTexture);
-    std::memcpy(&renderer->resourcePool[2].tag, twoLayerRearTag,
-                sizeof(twoLayerRearTag));
-    renderer->resourcePool[3].heapBuffer =
-        const_cast<wchar_t*>(kTwoLayerFrontPath);
-    renderer->resourcePool[3].comObject =
-        reinterpret_cast<IUnknown*>(twoLayerFrontTexture);
-    std::memcpy(&renderer->resourcePool[3].tag, twoLayerFrontTag,
-                sizeof(twoLayerFrontTag));
+    PublishFixtureTexture(renderer.get(), 0, kNearPath, nearTexture, nearTag);
+    PublishFixtureTexture(renderer.get(), 1, kFarPath, farTexture, farTag);
+    PublishFixtureTexture(renderer.get(), 2, kTwoLayerRearPath, twoLayerRearTexture, twoLayerRearTag);
+    PublishFixtureTexture(renderer.get(), 3, kTwoLayerFrontPath, twoLayerFrontTexture, twoLayerFrontTag);
 
     // Stage 0 samples the toon table. A null stage-0 texture lets the fixed
     // pipeline drop its cascade before stage 1 ever runs, so the fixture binds
@@ -1556,12 +1587,7 @@ int main(int argc, char** argv) {
     Check((pmxOpaqueTag[3] & kTextureUsesAlpha) == 0,
           "the PMX alpha fixture texture is opaque, so the material alpha is "
           "the only reason its surface blends");
-    renderer->resourcePool[4].heapBuffer =
-        const_cast<wchar_t*>(kPmxAlphaPath);
-    renderer->resourcePool[4].comObject =
-        reinterpret_cast<IUnknown*>(pmxOpaqueTexture);
-    std::memcpy(&renderer->resourcePool[4].tag, pmxOpaqueTag,
-                sizeof(pmxOpaqueTag));
+    PublishFixtureTexture(renderer.get(), 4, kPmxAlphaPath, pmxOpaqueTexture, pmxOpaqueTag);
     const std::vector<MaterialSpec> pmxMaterialAlphaSpecs{
         {kPmxAlphaPath, 0.5f, 0, 6}, {kTwoLayerRearPath, 1.0f, 6, 6}};
     auto pmxMaterialAlphaScene = BuildModel(
@@ -2096,46 +2122,51 @@ int main(int argc, char** argv) {
         }
         device->SetTransform(D3DTS_WORLD,&identity);
 
-        // Shadow depth must reject transparent texels, while preserving real
-        // caster pixels and the unmasked path used for accessories.
+        // Native ZValuePlotTec writes projected depth without clipping texel
+        // alpha. The former shadow-alpha experiment was withdrawn; material
+        // caster gates live above this shader and are not exercised here.
         if (resource != 0) {
             using namespace mikudancestudio::d3dx;
-            for (int variant = 0; variant < 3; ++variant) {
-                const bool alphaTechnique = SUCCEEDED(FxSetTechnique(renderer->effect, "ZValuePlotAlphaTec"));
-                if (!alphaTechnique) FxSetTechnique(renderer->effect, "ZValuePlotTec");
-                const float opacity = variant == 1 ? 0.0f : 1.0f;
-                FxSetInt(renderer->effect, "ShadowAlphaEnabled", variant != 2);
-                FxSetInt(renderer->effect, "ShadowHasTexture", TRUE);
-                FxSetFloatArray(renderer->effect, "ShadowDiffuseAlpha", &opacity, 1);
-                FxSetMatrix(renderer->effect, "matLightViewProj",
-                            reinterpret_cast<const D3DXMATRIXF*>(&identity));
-                device->SetTexture(1, nearTexture);
-                device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, kBackground, 1, 0);
-                device->BeginScene();
+            for (const float depthShift : {0.0f, 0.125f}) {
+                D3DMATRIX lightProjection = identity;
+                lightProjection._43 = depthShift;
+                Check(SUCCEEDED(FxSetTechnique(renderer->effect, "ZValuePlotTec")),
+                      "select the existing native depth technique");
+                Check(SUCCEEDED(FxSetMatrix(renderer->effect, "matLightViewProj",
+                            reinterpret_cast<const D3DXMATRIXF*>(&lightProjection))),
+                      "set the native light projection");
+                Check(SUCCEEDED(device->SetTexture(1, nearTexture)), "bind the three-alpha-band texture");
+                Check(SUCCEEDED(device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
+                                              kBackground, 1, 0)), "clear native depth fixture");
+                Check(SUCCEEDED(device->BeginScene()), "begin native depth fixture");
                 UINT passes = 0;
-                Check(SUCCEEDED(FxBegin(renderer->effect, &passes)), "begin shadow-alpha effect");
-                Check(SUCCEEDED(FxBeginPass(renderer->effect, 0)), "begin shadow-alpha pass");
-                device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-                device->SetFVF(kModelFvf);
-                device->SetStreamSource(0, front->vertexBuffer, 0, kModelStride);
-                device->SetIndices(front->indexBuffer);
+                Check(SUCCEEDED(FxBegin(renderer->effect, &passes)) && passes == 1,
+                      "begin the single native depth effect pass");
+                Check(SUCCEEDED(FxBeginPass(renderer->effect, 0)), "begin native depth pass");
+                Check(SUCCEEDED(device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE)), "set depth fixture culling");
+                Check(SUCCEEDED(device->SetFVF(kModelFvf)), "set depth fixture vertex format");
+                Check(SUCCEEDED(device->SetStreamSource(0, front->vertexBuffer, 0, kModelStride)), "bind depth fixture vertices");
+                Check(SUCCEEDED(device->SetIndices(front->indexBuffer)), "bind depth fixture indices");
                 Check(SUCCEEDED(device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0,
-                    front->record->vertexCount, 0, front->record->indexCount / 3)), "draw shadow alpha fixture");
-                FxEndPass(renderer->effect); FxEnd(renderer->effect);
-                device->EndScene();
-                ReadRenderedPixels(device, backbuffer, readback, "read shadow alpha fixture");
+                    front->record->vertexCount, 0, front->record->indexCount / 3)), "draw native depth fixture");
+                Check(SUCCEEDED(FxEndPass(renderer->effect)), "end native depth pass");
+                Check(SUCCEEDED(FxEnd(renderer->effect)), "end native depth effect");
+                Check(SUCCEEDED(device->EndScene()), "end native depth fixture");
+                ReadRenderedPixels(device, backbuffer, readback, "read native depth fixture");
                 D3DLOCKED_RECT lock{};
-                Check(SUCCEEDED(readback->LockRect(&lock, nullptr, D3DLOCK_READONLY)), "lock shadow alpha pixels");
+                Check(SUCCEEDED(readback->LockRect(&lock, nullptr, D3DLOCK_READONLY)), "lock native depth pixels");
+                const int expectedDepth = static_cast<int>(std::lround(255.0f * (kNearDepth + depthShift)));
                 for (int band = 0; band < 3; ++band) {
                     const int x = 48, y = 80 - band * 32;
                     const DWORD pixel = Row(lock,y)[x];
-                    const bool hole = variant == 1 || (variant == 0 && band == 0);
-                    const bool correct = hole ? (pixel & 0xffffff) == 0xffffff :
-                        std::abs(int(pixel >> 16 & 255) - 64) <= 1 && (pixel & 0xffff) == 0;
-                    ExpectPixel(correct,x,y,pixel,"shadow alpha mask","transparent/half/opaque",
-                                hole ? "untouched shadow background" : "caster depth");
+                    const bool correct = int(pixel >> 16 & 255) == expectedDepth &&
+                        (pixel & 0xffff) == 0 && (pixel >> 24) == 255;
+                    ExpectPixel(correct,x,y,pixel,"native projected shadow depth","transparent/half/opaque",
+                                "round(255 * projected z/w), G=B=0 and A=255 for all texel alpha bands");
                 }
-                readback->UnlockRect();
+                Check(SUCCEEDED(readback->UnlockRect()), "unlock native depth pixels");
+                std::printf("native-shadow resource=%d depth-shift=%.3f expected-red=%d bands=3\n",
+                            resource, depthShift, expectedDepth);
             }
         }
         if (renderer->effect) {
@@ -2156,11 +2187,11 @@ int main(int argc, char** argv) {
         g_resolveTarget = nullptr;
     }
     backbuffer->Release();
-    nearTexture->Release();
-    farTexture->Release();
-    twoLayerRearTexture->Release();
-    twoLayerFrontTexture->Release();
-    pmxOpaqueTexture->Release();
+    ReleaseFixtureTexture(renderer.get(), 4, pmxOpaqueTexture);
+    ReleaseFixtureTexture(renderer.get(), 3, twoLayerFrontTexture);
+    ReleaseFixtureTexture(renderer.get(), 2, twoLayerRearTexture);
+    ReleaseFixtureTexture(renderer.get(), 1, farTexture);
+    ReleaseFixtureTexture(renderer.get(), 0, nearTexture);
     toonTexture->Release();
     device->Release();
     renderer->device = nullptr;
