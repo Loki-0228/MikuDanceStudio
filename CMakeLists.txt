@@ -370,6 +370,7 @@ add_library(mikudancestudio_core STATIC
     src/render/scene_font.cpp
     src/exports/effect_api.cpp
     src/exports/effect_names.cpp
+    src/exports/effect_apng.cpp
     src/unported/stubs.cpp
 )
 
@@ -399,6 +400,7 @@ target_link_libraries(mikudancestudio_core PUBLIC
     BULLET275::BULLET275
     Alembic::Alembic
     minhook::minhook
+    bcrypt      # SHA256 allowlist for native MME APNG reset compatibility
     user32      # RegisterClass / CreateWindow / MessageBox
     gdi32       # CreateSolidBrush / GetStockObject
     msimg32     # GradientFill (0x40DF10 panel fill)
