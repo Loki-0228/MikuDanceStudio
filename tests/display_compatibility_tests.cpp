@@ -66,6 +66,51 @@ template<class Function> void Hook(Function target, Function detour, Function* o
         reinterpret_cast<void**>(original)) == MH_OK, "create test hook");
     Require(MH_EnableHook(reinterpret_cast<void*>(target)) == MH_OK, "enable test hook");
 }
+
+void CheckShadowCheckboxPainting(MMDApp* app, HWND checkbox) {
+    RECT client{}, main{};
+    GetClientRect(checkbox, &client);
+    GetClientRect(app->MainWindow(), &main);
+    POINT origin{};
+    MapWindowPoints(checkbox, app->MainWindow(), &origin, 1);
+    HDC painted = CreateCompatibleDC(nullptr), panel = CreateCompatibleDC(nullptr);
+    BITMAPINFO info{};
+    info.bmiHeader = {sizeof(BITMAPINFOHEADER), main.right, -main.bottom, 1, 32, BI_RGB};
+    void* bits = nullptr;
+    HBITMAP paintedBitmap = CreateDIBSection(painted, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HBITMAP panelBitmap = CreateDIBSection(panel, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    Require(paintedBitmap && panelBitmap, "create offscreen theme test surfaces");
+    const auto oldPainted = SelectObject(painted, paintedBitmap), oldPanel = SelectObject(panel, panelBitmap);
+    const COLORREF savedTop = app->ThemeColorAt(20), savedBottom = app->ThemeColorAt(11);
+    // Exercise distinct panel colors and a live palette change; no desktop capture.
+    for (COLORREF top : {RGB(36, 40, 48), RGB(40, 110, 160)}) {
+        app->ThemeColorAt(20) = top;
+        app->ThemeColorAt(11) = RGB(80, 50, 70);
+        HandlePaletteChanged(panel);
+        SendMessageW(checkbox, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(painted), PRF_CLIENT);
+        bool matches = true;
+        for (int y = 1; y < client.bottom - 1; ++y) {
+            const int x = client.right - 2;
+            matches &= GetPixel(painted, x, y) == GetPixel(panel, origin.x + x, origin.y + y);
+            if (y == 1) std::printf("THEME origin=%ld,%ld size=%ld,%ld main=%ld,%ld flags=%d,%d actual=%06lx panel=%06lx\n",
+                origin.x, origin.y, client.right, client.bottom, main.right, main.bottom,
+                app->state.optflag[0], app->state.optflag[6], GetPixel(painted, x, y), GetPixel(panel, origin.x+x, origin.y+y));
+        }
+        Check(matches, "dynamic checkbox background matches its shadow panel after theme change");
+        unsigned white = 0;
+        for (int y = 1; y < client.bottom - 1; ++y)
+            for (int x = 20; x < client.right - 4; ++x) {
+                const COLORREF color = GetPixel(painted, x, y);
+                white += GetRValue(color) > 220 && GetGValue(color) > 220 && GetBValue(color) > 220;
+            }
+        Check(white > 8, "dynamic checkbox caption stays readable on themed panels");
+    }
+    app->ThemeColorAt(20) = savedTop;
+    app->ThemeColorAt(11) = savedBottom;
+    SelectObject(painted, oldPainted); SelectObject(panel, oldPanel);
+    DeleteObject(paintedBitmap); DeleteObject(panelBitmap);
+    DeleteDC(painted); DeleteDC(panel);
+}
 }
 
 int main(int argc, char** argv) {
@@ -81,11 +126,13 @@ int main(int argc, char** argv) {
     app->state = MMDAppState{};
     app->InitDefaults();
     Require(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "initialize production host");
+    HandleWindowSize(app); // Hidden ShowWindow does not send the visible startup resize.
     Check(!IsWindowVisible(app->MainWindow()), "startup window stays hidden");
     const float shadowRange = app->ShadowDistance();
     const auto light = app->SceneLight();
     const HWND dynamic = GetDlgItem(app->MainWindow(), panel::kAdaptiveShadowCheckbox);
     const HWND shadowSlider = GetDlgItem(app->MainWindow(), panel::kSelfShadowRangeSlider);
+    CheckShadowCheckboxPainting(app, dynamic);
     RECT dynamicRect{}; GetWindowRect(dynamic, &dynamicRect);
     for (int id : {560, 561, 562, 563, 564, 565}) {
         RECT other{}, overlap{}; GetWindowRect(GetDlgItem(app->MainWindow(), id), &other);
@@ -94,6 +141,9 @@ int main(int argc, char** argv) {
     SendMessageW(dynamic, BM_SETCHECK, BST_CHECKED, 0);
     SendMessageW(app->MainWindow(), WM_COMMAND, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
     Check(app->AdaptiveShadowResolution(), "real checkbox enables dynamic scaling");
+    Check(DynamicShadowMultiplier(0) > DynamicShadowMultiplier(5000) &&
+          DynamicShadowMultiplier(5000) > DynamicShadowMultiplier(9999),
+          "dynamic precision increases toward the left like the fixed range control");
     for (int precision : {0, 7500, 9999, 5000}) {
         SendMessageW(shadowSlider, TBM_SETPOS, TRUE, precision);
         SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(shadowSlider));

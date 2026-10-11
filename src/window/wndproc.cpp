@@ -346,7 +346,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         const HWND control = reinterpret_cast<HWND>(lParam);
         const int controlId = GetDlgCtrlID(control);
         if (controlId == panel::kCameraRefModelCheckbox ||
-            controlId == panel::kCameraRefBoneCheckbox)
+            controlId == panel::kCameraRefBoneCheckbox ||
+            controlId == panel::kAdaptiveShadowCheckbox)
             return HandleCtlColor(control, reinterpret_cast<HDC>(wParam));
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }

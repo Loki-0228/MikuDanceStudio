@@ -132,6 +132,7 @@ set_target_properties(native_shadow_tests PROPERTIES
     CXX_STANDARD 17 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
 
 add_test(NAME native_shadow_tests COMMAND native_shadow_tests "${CMAKE_CURRENT_SOURCE_DIR}/res/assets/skin_effect_sm3.fx")
+add_test(NAME native_shadow_sm2_coverage COMMAND native_shadow_tests "${CMAKE_CURRENT_SOURCE_DIR}/res/assets/skin_effect_sm2.fx" --coverage-only)
 add_test(NAME animation_curve_tests COMMAND animation_curve_tests)
 add_executable(animation_retime_tests EXCLUDE_FROM_ALL tests/animation_retime_tests.cpp)
 target_link_libraries(animation_retime_tests PRIVATE mikudancestudio_animation_curve)
@@ -911,6 +912,12 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(frame_benchmark PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME native_shadow_cycle
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/native_shadow_cycle.py"
+                "$<TARGET_FILE:frame_benchmark>" "${CMAKE_BINARY_DIR}/tests/shadow-cycle-results")
+        set_tests_properties(native_shadow_cycle PROPERTIES TIMEOUT 240)
+    endif()
     add_executable(frame_benchmark_mme EXCLUDE_FROM_ALL tests/frame_benchmark.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_libraries(frame_benchmark_mme PRIVATE mikudancestudio_core winmm dsound)

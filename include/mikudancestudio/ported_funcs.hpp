@@ -235,7 +235,7 @@ void RefreshMainWindowViewport(MMDApp*);      // was Sub42C810, VA 0x0042C810
 void RefreshSeparateWindowViewport(MMDApp*);  // was Sub4290F0, VA 0x004290F0
 void HandleWindowPaint(MMDApp*);                            // VA 0x0047C0A0
 LRESULT HandleNotify(HWND, UINT, WPARAM, LPARAM);           // VA 0x004398B0
-void InstallWhiteReferenceCheckboxPaint(HWND control);      // MMS view-panel labels
+void InstallPanelCheckboxPaint(HWND control);               // MMS themed-panel labels
 void HandlePaletteChanged(HDC);                             // VA 0x0042CEB0
 void HandlePaletteChanged2(HDC);                            // VA 0x0042C140
 void HandleDropFiles(HDROP);                                // VA 0x00461300

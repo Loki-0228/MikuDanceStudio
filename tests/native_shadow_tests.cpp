@@ -14,15 +14,50 @@
 #include <string>
 #include <vector>
 #include "mikudancestudio/d3dx_effect.hpp"
+#include "mikudancestudio/native_shadow_projection.hpp"
 
 using namespace mikudancestudio::d3dx;
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr unsigned kSize=128;
+void CheckProjection() {
+    const float focus[3] = {2, 10, -3};
+    for (const auto& direction : std::vector<std::array<float, 3>>{
+             {-.5f, -1, .5f}, {0, -1, 0}, {0, 0, 1}, {1, 0, 0}, {0, 0, 0}}) {
+        for (int mode : {1, 2}) {
+            const auto matrix = mikudancestudio::NativeShadowProjection(focus, direction.data(), .01784f, mode);
+            const auto project = [&](const std::array<float, 3>& point) {
+                std::array<float, 3> result{};
+                for (int axis = 0; axis < 3; ++axis)
+                    result[axis] = matrix[12+axis] + point[0]*matrix[axis] +
+                        point[1]*matrix[4+axis] + point[2]*matrix[8+axis];
+                return result;
+            };
+            // The centre and all sides of a small object must be covered,
+            // including lights parallel to either candidate up direction.
+            for (int axis = 0; axis < 3; ++axis) for (float offset : {-4.f, 0.f, 4.f}) {
+                std::array<float, 3> point{focus[0], focus[1], focus[2]}; point[axis] += offset;
+                const auto p = project(point);
+                if (!std::isfinite(p[0]+p[1]+p[2]) || std::abs(p[0]) >= 1 || std::abs(p[1]) >= 1 || p[2] <= 0 || p[2] >= 1)
+                    throw std::runtime_error("shadow projection clips the focused object");
+            }
+            if (direction[0] == 0 && direction[1] == 0 && direction[2] == 0) continue;
+            const auto front = project({focus[0], focus[1], focus[2]});
+            const auto back = project({focus[0]+direction[0], focus[1]+direction[1], focus[2]+direction[2]});
+            if (std::abs(front[0]-back[0]) > 1e-6f || std::abs(front[1]-back[1]) > 1e-6f || front[2] >= back[2])
+                throw std::runtime_error("occluder and receiver disagree along a light ray");
+        }
+    }
+    std::puts("PASS focused coverage and directional occluder/receiver projection");
+}
 void Check(HRESULT hr,const char* operation) {
     if(FAILED(hr)){std::printf("%s: 0x%08lx\n",operation,static_cast<unsigned long>(hr));throw std::runtime_error(operation);}
 }
 struct Vertex {float p[3],n[3],uv[2];};
+struct CoverageProbe {
+    float offset[3];
+    bool specular = false;
+};
 struct Effect {
     void* value=nullptr;
     Effect()=default;
@@ -43,7 +78,7 @@ Effect Load(IDirect3DDevice9* device,const std::filesystem::path& file) {
     if(errors){using Data=void*(WINAPI*)(void*);std::printf("%s\n",static_cast<const char*>(EffectMethod<Data,3>(errors)(errors)));static_cast<IUnknown*>(errors)->Release();}
     Check(hr,"Compile production shader");return fx;
 }
-std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,int mode,float slope,bool split,bool legacy,float depthGap=0,int pattern=0,float phase=0) {
+std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,int mode,float slope,bool split,bool legacy,float depthGap=0,int pattern=0,float phase=0,const CoverageProbe* coverage=nullptr) {
     ComPtr<IDirect3DTexture9> shadow;
     Check(device->CreateTexture(mapSize,mapSize,1,0,D3DFMT_R32F,D3DPOOL_MANAGED,&shadow,nullptr),"Create shadow texture");
     D3DLOCKED_RECT pixels{};Check(shadow->LockRect(0,&pixels,nullptr,0),"Lock shadow texture");
@@ -52,11 +87,13 @@ std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,i
         row[x]=split?(x<mapSize/2?.2f:.8f):.5f+slope*(2.f*x/mapSize-1.f)-depthGap;
         if(pattern==1)row[x]=float(x)<mapSize*.5f+(float(y)-mapSize*.5f)*.35f?.2f:.8f;
         if(pattern==2)row[x]=(x==mapSize/2)?.2f:.8f;
+        if(coverage)row[x]=1; // No occluder: only material lighting may shade this receiver.
     }
     Check(shadow->UnlockRect(0),"Unlock shadow texture");
     D3DXMATRIXF identity{};for(unsigned i=0;i<4;++i)identity.m[i][i]=1;
     Check(FxSetMatrix(effect,"matWorldViewProj",&identity),"Set camera projection");
     auto lightProjection=identity;lightProjection.m[3][0]=2*phase/mapSize;
+    if(coverage)for(unsigned i=0;i<3;++i)lightProjection.m[3][i]+=coverage->offset[i];
     Check(FxSetMatrix(effect,"matLightViewProj",&lightProjection),"Set light projection");
     const float size[4]={float(mapSize),float(mapSize),0,0};
     if(!legacy)Check(FxSetFloatArray(effect,"MdsShadowMapSize",size,4),"Set actual shadow resolution");
@@ -66,6 +103,11 @@ std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,i
     Check(FxSetFloatArray(effect,"LightDir",light,4),"Set light");
     Check(FxSetFloatArray(effect,"SpcColor",zero,4),"Set specular");
     Check(FxSetFloatArray(effect,"Place",eye,4),"Set eye");
+    if(coverage){
+        const float backlight[4]={0,.9797959f,.2f,1},gloss[4]={.3f,.3f,.3f,1};
+        Check(FxSetFloatArray(effect,"LightDir",backlight,4),"Set backlit material");
+        if(coverage->specular)Check(FxSetFloatArray(effect,"SpcColor",gloss,4),"Set authored specular");
+    }
     Check(FxSetInt(effect,"parthf",mode==2),"Set shadow mode");
     Check(FxSetInt(effect,"transp",0),"Set material opacity");
     Check(FxSetTechnique(effect,"BufferShadowTec"),"Select native receiver");
@@ -111,12 +153,14 @@ void Save(const std::filesystem::path& path,const std::vector<DWORD>& pixels) {
 }
 }
 int wmain(int argc,wchar_t** argv) {
-    if(argc<2||argc>4){std::fputs("usage: native_shadow_tests <production SM3 shader> [--legacy] [output-directory]\n",stderr);return 2;}
+    if(argc<2||argc>4){std::fputs("usage: native_shadow_tests <production shader> [--legacy|--coverage-only] [output-directory]\n",stderr);return 2;}
     const bool legacy=argc>=3&&!wcscmp(argv[2],L"--legacy");
-    const std::filesystem::path output=argc>(legacy?3:2)?argv[legacy?3:2]:L"";
+    const bool coverageOnly=argc>=3&&!wcscmp(argv[2],L"--coverage-only");
+    const std::filesystem::path output=argc>((legacy||coverageOnly)?3:2)?argv[(legacy||coverageOnly)?3:2]:L"";
     if(!output.empty())std::filesystem::create_directories(output);
     HWND window=CreateWindowExW(0,L"STATIC",L"native shadow test",WS_OVERLAPPED,0,0,kSize,kSize,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     try {
+        CheckProjection();
         ComPtr<IDirect3D9> d3d;d3d.Attach(Direct3DCreate9(D3D_SDK_VERSION));
         if(!d3d)throw std::runtime_error("D3D9 unavailable");
         D3DPRESENT_PARAMETERS pp{};pp.Windowed=TRUE;pp.SwapEffect=D3DSWAPEFFECT_DISCARD;pp.hDeviceWindow=window;
@@ -124,6 +168,24 @@ int wmain(int argc,wchar_t** argv) {
         ComPtr<IDirect3DDevice9> device;
         Check(d3d->CreateDevice(0,D3DDEVTYPE_HAL,window,D3DCREATE_HARDWARE_VERTEXPROCESSING,&pp,&device),"Create hidden HAL device");
         auto effect=Load(device.Get(),argv[1]);unsigned failures=0;
+        for(int mode:{1,2})for(bool specular:{false,true}){
+            // Camera-dependent shadow coverage must not toggle toon lighting
+            // or uncover specular on a backlit surface. Cross all six bounds.
+            for(auto offset:std::vector<CoverageProbe>{{{0,0,0},specular},{{-3,0,0},specular},
+                    {{3,0,0},specular},{{0,-3,0},specular},{{0,3,0},specular},
+                    {{0,0,-1},specular},{{0,0,1},specular}}){
+                const auto image=Draw(device.Get(),effect.value,32,mode,0,false,legacy||coverageOnly,0,0,0,&offset);
+                unsigned wrong=0;
+                for(unsigned y=16;y<112;++y)for(unsigned x=16;x<112;++x){
+                    const auto pixel=image[y*kSize+x];
+                    wrong+=std::abs(int((pixel>>16)&255)-51)>1||std::abs(int(pixel>>24)-94)>1;
+                }
+                std::printf("material_coverage mode=%d specular=%d offset=%.0f,%.0f,%.0f wrong=%u\n",
+                    mode,specular,offset.offset[0],offset.offset[1],offset.offset[2],wrong);
+                failures+=wrong!=0;
+            }
+        }
+        if(coverageOnly){DestroyWindow(window);std::printf("material_coverage failures=%u\n",failures);return failures?1:0;}
         for(unsigned resolution:{32u,64u})for(int mode:{1,2}){
             for(float slope:{-.15f,0.f,.15f}){
                 const auto image=Draw(device.Get(),effect.value,resolution,mode,slope,false,legacy);

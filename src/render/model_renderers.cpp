@@ -37,6 +37,7 @@
 #include "mikudancestudio/texture_lookup.hpp"
 #include "mikudancestudio/draw_order.hpp"
 #include "mikudancestudio/adaptive_shadow.hpp"
+#include "mikudancestudio/native_shadow_projection.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -1178,8 +1179,7 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
             draw = solidFirst || ModelMaterialMatchesPass(alphaPass, usesAlpha);
         }
         if (shadowOnly) {
-            if (mdl::Mdl(model)->physicsMode == 2 && record.edgeSize <= 0.0f)
-                draw = false;
+            // PMX outline size is independent of shadow casting (flag bit 2).
             if (record.diffuse[3] == 0.9800000190734863f)
                 draw = false;
             // 0x492925: PMX shadow-cast disable bit (bit 2 of material+2240)
@@ -1274,14 +1274,14 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                     device->SetRenderState(D3DRS_ALPHAREF, savedAlphaRef);
             } else {
                 if (shadowOnly) {
-                    // 0x492938..0x492952: per-material CULLMODE - the
-                    // doubleSided flag (material+0x4A9) selects CCW(3) when
-                    // clear, NONE(1) when set.  No SetMaterial here: the
-                    // original shadow loop does not set one.
+                    // For PMX, the legacy byte named doubleSided actually
+                    // stores the outline-enable flag. Use the real two-sided
+                    // flag, just as the visible material pass does.
+                    const bool twoSided = state.physicsMode == 2
+                        ? (record.flags & 1) != 0 : record.doubleSided != 0;
                     device->SetRenderState(
                         D3DRS_CULLMODE,
-                        record.doubleSided == 0 ? D3DCULL_CCW
-                                                : D3DCULL_NONE);
+                        twoSided ? D3DCULL_NONE : D3DCULL_CCW);
                     // 0x492954: BeginPass(effect, 0) per material; the
                     // enclosing FxBegin was issued by RenderShadowMap
                     // before the model loop (its FxEnd closes it).
@@ -2730,91 +2730,17 @@ void RenderShadowMap(MMDApp* app, const float frameMatrix[16]) {   // 0x426CD0
     D3DVIEWPORT9 shadowViewport{0, 0, width, height, 0.0f, 1.0f};
     device->SetViewport(&shadowViewport);
 
-    // The shadow focus is the orbit target, not the camera eye. Including the
-    // dolly distance moves a fine map away from the model when zooming out.
-    float target[3] = {app->ViewOffsetX(), app->ViewOffsetY(), 0.0f};
-    const D3DVECTOR& lightDirection = app->SceneLight().Direction;
-    float eye[3] = {
-        target[0] - lightDirection.x * 50.0f,
-        target[1] - lightDirection.y * 50.0f,
-        target[2] - lightDirection.z * 50.0f};
-    const float up[3] = {0.0f, 0.0f, 1.0f};
-    Matrix lightView;
-    api.lookAtLH(&lightView, eye, target, up);
-
-    float direction[3] = {lightDirection.x, lightDirection.y,
-                          lightDirection.z};
-    api.vec3Normalize(direction, direction);
-    const float slope = -direction[2];
-    const float edge = 1.0f - std::fabs(slope);
-    const float base = app->ShadowDistance();
-    const bool modeOne = app->ShadowMode() == 1;
-    float scale;
-    int part;
-    if (modeOne) {
-        part = 0;
-        if (slope < -0.9f || slope > 0.9f)
-            scale = base;
-        else if (slope < -0.8f)
-            scale = ((slope - 0.1f) * 10.0f + 10.0f) * base + base;
-        else if (slope > 0.8f)
-            scale = (10.0f - (slope + 0.1f) * 10.0f) * base + base;
-        else
-            scale = base + base;
-    } else {
-        part = 1;
-        if (slope < -0.9f || slope > 0.9f)
-            scale = base;
-        else if (slope < -0.8f)
-            scale = (slope * 20.0f + 19.0f) * base;
-        else if (slope > 0.8f)
-            scale = (19.0f - slope * 20.0f) * base;
-        else
-            scale = base * 3.0f;
+    float focus[3]{};
+    const auto focusSource = ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focus);
+    if (focusSource == FrameFocusSource::FreeView) {
+        focus[0] = app->ViewOffsetX();
+        focus[1] = app->ViewOffsetY();
     }
-    FxSetInt(effect, "parthf", part);
-
-    Matrix shadowProjection{};
-    shadowProjection.m[0][0] = scale;
-    shadowProjection.m[1][1] = scale;
-    shadowProjection.m[2][2] = base * 0.1500000059604645f;
-    shadowProjection.m[3][3] = 1.0f;
+    const auto lightProjection = NativeShadowProjection(
+        focus, app->LightDirection(), app->ShadowDistance(), app->ShadowMode());
     Matrix shadowMatrix;
-    Matrix temp;
-    Multiply(&temp, reinterpret_cast<const Matrix*>(frameMatrix), &lightView);
-    Multiply(&shadowMatrix, &temp, &shadowProjection);
-    Matrix transform;
-    api.scaling(&transform, 1.0f, 1.0f, 2.0f);
-    Multiply(&shadowMatrix, &shadowMatrix, &transform);
-    api.translation(&transform, 0.0f, 0.0f, -1.0f);
-    Multiply(&shadowMatrix, &shadowMatrix, &transform);
-
-    Matrix orientation;
-    Identity(&orientation);
-    float positive;
-    float negative;
-    if (slope < -0.9f || slope > 0.9f) {
-        positive = edge;
-        negative = -edge;
-    } else if (slope < -0.8f) {
-        positive = modeOne ? 4.0f * slope + 3.7f
-                           : 9.0f * slope + 8.2f;
-        negative = -9.0f * slope - 8.2f;
-    } else if (slope > 0.8f) {
-        positive = modeOne ? 3.7f - 4.0f * slope
-                           : 8.2f - 9.0f * slope;
-        negative = 9.0f * slope - 8.2f;
-    } else {
-        positive = modeOne ? 0.5f : 1.0f;
-        negative = -1.0f;
-    }
-    orientation.m[1][3] = positive;
-    orientation.m[3][1] = negative;
-    Multiply(&shadowMatrix, &shadowMatrix, &orientation);
-    api.translation(&transform, 0.0f, 0.0f, 1.0f);
-    Multiply(&shadowMatrix, &shadowMatrix, &transform);
-    api.scaling(&transform, 1.0f, 1.0f, 0.5f);
-    Multiply(&shadowMatrix, &shadowMatrix, &transform);
+    std::memcpy(&shadowMatrix, lightProjection.data(), sizeof(shadowMatrix));
+    FxSetInt(effect, "parthf", app->ShadowMode() == 1 ? 0 : 1);
     std::memcpy(&app->LightViewProjection(), &shadowMatrix,
                 sizeof(shadowMatrix));
 

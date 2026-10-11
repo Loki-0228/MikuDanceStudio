@@ -169,9 +169,14 @@ float MdsReconstructShadow(float2 uv, float depth, float2 gradient, float bias)
 
 float MdsShadowVisibility(float3 projected, float2 uv, float3 normal)
 {
-    // Derivatives must be evaluated before the caller's per-pixel bounds test.
+    // Derivatives must be evaluated before the per-pixel coverage test.
     float2 dx = ddx(uv), dy = ddy(uv);
     float dzdx = ddx(projected.z), dzdy = ddy(projected.z);
+    // Leaving the map removes occlusion only. Keep material toon lighting
+    // and its specular mask independent of camera-dependent map coverage.
+    if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1 ||
+        projected.z < 0 || projected.z > 1)
+        return 1;
     float det = dx.x * dy.y - dx.y * dy.x;
     float2 gradient = 0;
     if (abs(det) > 1e-12)
@@ -244,8 +249,7 @@ float4 BufferShadow_PS(float4 ZCalcTex : TEXCOORD0,float3 N : TEXCOORD1,float3 E
 	TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
     float shadowVisibility = MdsShadowVisibility(ZCalcTex.xyz, TransTexCoord, N);
    
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return EgColor + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
@@ -326,11 +330,7 @@ float4 BShadowTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,floa
     float shadowVisibility = MdsShadowVisibility(ZCalcTex.xyz, TransTexCoord, N);
    float alpha = TexCMul.w + TexCAdd.w;
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f){
-		float4 ans = EgColor * ((tex2D(s1,Tex) * TexCMul + TexCAdd) * alpha + (1-alpha)) + Specula;
-		ans.w = EgColor.w * tex2D(s1,Tex).w;
-		return ans;
-	}else{
+	{
 		float comp = shadowVisibility;
 		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
@@ -411,8 +411,7 @@ float4 BShadowSphia_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float3
 	else	  ans = EgColor * ((tex2D(s1,Tex) * SphCMul + SphCAdd)*alpha + (1-alpha));
 	ans.w = EgColor.w * tex2D(s1,Tex).w;
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return ans + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
@@ -509,8 +508,7 @@ float4 BShadowSphiaTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1
 	else	  ans = EgColor * texColor * ((tex2D(s2,SpTex) * SphCMul + SphCAdd) * sphalp + (1-sphalp));
 	ans.w = EgColor.w * tex2D(s1,Tex).w * tex2D(s2,SpTex).w;
 	
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f)  return ans + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
@@ -580,11 +578,7 @@ float4 BShadowTexCd2_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float
     float shadowVisibility = MdsShadowVisibility(ZCalcTex.xyz, TransTexCoord, N);
    float alpha = SphCMul.w + SphCAdd.w;
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f){
-		float4 ans = EgColor * ((tex2D(s1,Tex) * SphCMul + SphCAdd)*alpha + (1-alpha)) + Specula;
-		ans.w = EgColor.w * tex2D(s1,Tex).w;
-		return ans;
-	}else{
+	{
 		float comp = shadowVisibility;
 		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
@@ -665,8 +659,7 @@ float4 BShadowTextureTexCd2Tec_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCO
 	else	  ans = EgColor * texColor * ((tex2D(s2,SpTex) * SphCMul + SphCAdd)*sphalp + (1-sphalp));
 	ans.w = EgColor.w * tex2D(s1,Tex).w * tex2D(s2,SpTex).w;
 	
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return ans + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// •ªŽUŒõ
 		if(comp==1.0f){
@@ -747,8 +740,7 @@ float4 DiffuseBufferShadow_PS(float4 ZCalcTex : TEXCOORD0,float3 N : TEXCOORD1,f
    TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
     float shadowVisibility = MdsShadowVisibility(ZCalcTex.xyz, TransTexCoord, N);
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return Color + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		if(comp==1.0f){
 			return Color + Specula;
@@ -829,8 +821,7 @@ float4 DiffuseBSTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,fl
    TransTexCoord.y = (1.0f - ZCalcTex.y)*0.5f;
     float shadowVisibility = MdsShadowVisibility(ZCalcTex.xyz, TransTexCoord, N);
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return Color * tex2D(s1,Tex) + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		if(comp==1.0f){
 			return Color * tex2D(s1,Tex) + Specula;
@@ -909,8 +900,7 @@ float4 DiffuseBSSphia_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,floa
 	if(spadd) ans = Color + texUV;
 	else	  ans = Color * texUV;
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return ans + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		if(comp==1.0f){
 			return ans + Specula;
@@ -1011,8 +1001,7 @@ float4 DiffuseBSSphiaTex_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,f
 	else	  ans = Color * tex1UV * tex2UV;
 	float answ = Color.a * tex1UV.a;
 
-	if(TransTexCoord.x<0.0f || TransTexCoord.x>1.0f || TransTexCoord.y<0.0f || TransTexCoord.y>1.0f || ZCalcTex.z<0.0f || ZCalcTex.z>1.0f) return ans + Specula;
-	else{
+	{
 		float comp = shadowVisibility;
 		if(comp==1.0f){
 			return ans + Specula;

@@ -10,7 +10,8 @@ void UpdateAdaptiveShadowMap(MMDApp* app, const float frame[16]);
 int ShadowSliderPosition(MMDApp* app);
 void SetShadowSliderPosition(MMDApp* app, int position);
 inline float DynamicShadowMultiplier(int position) {
-    return std::exp2(((std::clamp)(position, 0, 9999) - 5000) / 2500.f);
+    // Match the fixed range control: moving left increases shadow precision.
+    return std::exp2((5000 - (std::clamp)(position, 0, 9999)) / 2500.f);
 }
 // Choose power-of-two maps from the projected density of visible geometry.
 // Different grow/shrink thresholds prevent reallocating around a boundary.

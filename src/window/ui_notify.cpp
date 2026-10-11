@@ -87,11 +87,11 @@ void DrawControlText(MMDApp* app, HWND hwnd, HDC hdc, RECT rc);
 
 namespace {
 
-// Match the view panel's vertical gradient in HandlePaletteChanged without
+// Match each checkbox's panel gradient in HandlePaletteChanged without
 // repainting the parent or triggering a GPU frame. Clear the control before
 // painting so the XOR focus rectangle cannot leave stale pixels. The panel
 // border lies outside the control's clip; its x span does not affect the colour.
-void PaintViewPanelBackground(HWND hwnd, HDC hdc) {
+void PaintCheckboxPanelBackground(HWND hwnd, HDC hdc) {
     MMDApp* app = g_Block;
     if (app == nullptr)
         return;
@@ -111,17 +111,19 @@ void PaintViewPanelBackground(HWND hwnd, HDC hdc) {
     OffsetViewportOrgEx(hdc, -origin.x, -origin.y, nullptr);
     IntersectClipRect(hdc, origin.x + own.left, origin.y + own.top,
                       origin.x + own.right, origin.y + own.bottom);
+    const bool shadow = GetDlgCtrlID(hwnd) == panel::kAdaptiveShadowCheckbox;
     FillPanelBottom(hdc, origin.x + own.left - 1, mainRc.bottom - 157,
-                    origin.x + own.right + 1, mainRc.bottom - 0x52,
-                    app->ThemeColorAt(16), app->ThemeColorAt(17), 1);
+                    origin.x + own.right + 1, mainRc.bottom - (shadow ? 3 : 0x52),
+                    app->ThemeColorAt(shadow ? 20 : 16),
+                    app->ThemeColorAt(shadow ? 11 : 17), 1);
     RestoreDC(hdc, saved);
 }
 
-// MMS: the view panel's model / bone checkboxes sit on the dark panel, where
-// the theme's dark caption is unreadable.  Draw the unchecked box ourselves
+// These checkboxes sit on colored panels, where the theme's dark caption
+// is unreadable. Draw the checkbox ourselves
 // (themed glyph, classic fallback) and put the caption beside it in white.
 void DrawWhiteCheckbox(HWND hwnd, HDC hdc, RECT rc) {
-    PaintViewPanelBackground(hwnd, hdc);
+    PaintCheckboxPanelBackground(hwnd, hdc);
     int box = 13;
     RECT glyph = rc;
     const bool enabled = IsWindowEnabled(hwnd) != FALSE;
@@ -366,12 +368,13 @@ LRESULT HandleNotify(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcA(h, m, w, l);
 }
 
-void InstallWhiteReferenceCheckboxPaint(HWND control) {
+void InstallPanelCheckboxPaint(HWND control) {
     if (control == nullptr)
         return;
     const int id = GetDlgCtrlID(control);
     if (id != panel::kCameraRefModelCheckbox &&
-        id != panel::kCameraRefBoneCheckbox)
+        id != panel::kCameraRefBoneCheckbox &&
+        id != panel::kAdaptiveShadowCheckbox)
         return;
     SetWindowSubclass(control, WhiteReferenceCheckboxProc,
                       static_cast<UINT_PTR>(id), 0);
