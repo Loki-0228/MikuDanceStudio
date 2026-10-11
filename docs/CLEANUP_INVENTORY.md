@@ -19,7 +19,7 @@ rg -n 'CLEANUP\(|MAINTENANCE:' src include tests scripts tools
 | C05 | `MMDApp::BoneFrameScratch()` 及其 x64 镜像 | 当前源码没有调用；相邻 `CameraFrameScratch()` 仍被地面阴影颜色访问使用。 | **已删除** accessor 和 x64 末尾的 140 字节镜像；保留 `MMDAppState` 中全部占位及布局断言，Win32/x64 布局编译通过。 |
 | C06 | `src/unported/stubs.cpp`、`src/window/wndproc_stubs.cpp` 的历史命名/重复沿革注释 | 前者包含录像收尾等正式实现，后者含控件回调。 | **保留**。只有重新归类并更新 CMake、声明、引用后才能移动；不能按名称删除。 |
 | C07 | `tools/strcheck2_result.json`、`docs/*PERFORMANCE*.json`、`docs/PMX_LOADING_2026-09-20.json` | 某一版本/设备/素材上的结果快照，不能当最新结果；相邻报告依赖这些证据。 | **保留**。已确认性能及 PMX 报告引用对应 JSON；报告归档或重测后再处理。 |
-| C08 | `build/`、`build-*/`、`out/` 中的日志、探针、测试可执行文件等 | 本地构建/验证产物，已由 `.gitignore` 排除；`build/Release` 同时包含用户运行的程序。 | **部分清理**：双 ABI 检查后删除 `build/layout-probe/` 及下列 5 份旧日志；保留正式程序、测试程序、符号和其他构建目录。 |
+| C08 | `build/`、`build-*/`、`out/` 中的日志、探针、测试可执行文件等 | 本地构建/验证产物，当时由 `.gitignore` 排除；2026-10-11 移除该文件后，本机改用 `.git/info/exclude` 保留忽略规则。`build/Release` 同时包含用户运行的程序。 | **部分清理**：双 ABI 检查后删除 `build/layout-probe/` 及下列 5 份旧日志；保留正式程序、测试程序、符号和其他构建目录。 |
 | C09 | `src/io/vsq_load.cpp` 的 `if (j == 0xae) {}` | 仅保留原反编译的自赋值说明，无实际语句。 | **已删除**空分支及其标记。 |
 
 C08 本次删除的旧日志：`asan-followup-tests-build.log`、`build-asan-offset-followup.log`、`build-offset-followup.log`、`followup-tests-build.log`、`offset-followup-build.log`，均原位于 `build/`。

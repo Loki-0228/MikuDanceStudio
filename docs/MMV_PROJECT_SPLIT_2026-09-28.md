@@ -8,7 +8,8 @@
 | MMV-Bullet3 | `D:/MMD-Next/MMV-Bullet3` | `D:/MMD-Next/MMV-Bullet3/build` |
 | MMS-MME | `D:/MMD-Next/MikuDanceStudio-MME` | `D:/MMD-Next/MikuDanceStudio-MME/build` |
 
-三个项目的 `.gitignore` 均忽略 `build/`。MMV 和 Bullet3 各有独立
+拆分时，三个项目的 `.gitignore` 均忽略 `build/`。2026-10-11 清理后，MMS 本机改用
+`.git/info/exclude` 保留忽略规则。MMV 和 Bullet3 各有独立
 `scripts/build.ps1` 与 CMake preset；本宿主不再提供 `mmv_all` 等本体构建目标。
 宿主默认从 `../MMV/include` 读取公开头，可通过 `MMV_INCLUDE_DIR` 指定 SDK 位置。
 生成运行包时，选择独立 MMV 构建的一版 DLL 及资源复制到宿主 EXE 旁。

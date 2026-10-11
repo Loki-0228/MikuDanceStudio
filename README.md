@@ -6,6 +6,10 @@
 
 ## English
 
+AI coding tools were used in this project's development. Despite testing over
+a period of time, the code may still contain low-quality or redundant
+AI-generated implementations (slop) and undiscovered bugs.
+
 MikuDanceStudio is a Windows desktop 3D dance animation studio written in C++:
 load PMD/PMX models and VMD/VPD motion data, edit bones / morphs / camera /
 lighting / accessories in a DirectX 9 viewport, with built-in Bullet 2.75 rigid
@@ -211,6 +215,9 @@ Bullet Physics (zlib), Alembic and Imath (BSD-3-Clause), MinHook (BSD-2-Clause),
 
 ## 中文
 
+本项目开发过程中使用了 AI 编程工具。虽然已经进行了一段时间的测试，代码中仍可能存在
+AI 生成的低质量或冗余实现（slop），以及尚未发现的 bug。
+
 MikuDanceStudio 是一个用 C++ 编写的 Windows 桌面 3D 舞蹈动画工作室：加载 PMD/PMX 模型、
 VMD/VPD 动作数据，在 DirectX 9 视口中编辑骨骼/形态/相机/照明/附件，内建 Bullet 2.75
 刚体物理、AVI 视频录制与 VSQ 音频对齐，并可导出动画数据。
@@ -387,6 +394,10 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 ---
 
 ## 日本語
+
+本プロジェクトの開発には AI コーディングツールを使用しています。一定期間のテストを
+行っていますが、AI が生成した低品質または冗長な実装（slop）や、未発見のバグが
+コードに残っている可能性があります。
 
 MikuDanceStudio は C++ で書かれた Windows デスクトップ向け 3D ダンスアニメーション
 スタジオです。PMD/PMX モデルと VMD/VPD モーションデータを読み込み、DirectX 9
