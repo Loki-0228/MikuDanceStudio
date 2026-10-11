@@ -1119,6 +1119,14 @@ if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/symbols/$<CONFIG>"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/$<CONFIG>")
+    add_executable(mme_reassign_tests EXCLUDE_FROM_ALL tests/mme_reassign_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(mme_reassign_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(mme_reassign_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(mme_reassign_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-reassign/lib/$<CONFIG>"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-reassign/symbols/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-reassign/$<CONFIG>")
     target_sources(display_compatibility_tests PRIVATE res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_options(display_compatibility_tests PRIVATE "/MANIFEST:NO" "${CMAKE_CURRENT_SOURCE_DIR}/${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(display_compatibility_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
