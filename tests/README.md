@@ -8,6 +8,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
+| `pmd_selection_render_tests.cpp`、`pmd_selection_fixtures.py` | 真实 PMD 加载与「选择」、模型、相机模式切换的贴图回读。生成器覆盖共享 toon 文件表重排、缺失 toon 回退、自定义与无 toon、背光面，并比较等价文件表的采样颜色。需 D3D9，显式运行；可放入隔离的 MME 或 MMV 插件。命令见下方「PMD 贴图选择模式回归」。 |
 | `optional_graphics_imports.py` | 检查正式 EXE 的普通与延迟导入表，防止可选 DX12、DXGI、编译器 DLL 再次成为启动依赖。只用 Python 标准库，注册 CTest。 |
 | `graphics_runtime_tests.cpp` | 隐藏 DX9 设备上注入可选 DLL 或入口缺失，验证 CPU 蒙皮回退、描边、Present 和像素回读。标记为 hardware-manual，需 DX9、DX12 硬件，逐场景注册 CTest。 |
 | `native_shadow_tests.cpp` | 隐藏 D3D9 设备上的原生 SM3 阴影回读，覆盖两种模式、接收面修正、斜边平滑、贴图边界与缩小采样。 |
@@ -43,7 +44,7 @@
 | `affine_skinning_tests.cpp` | 非均匀缩放和斜切的独立数值参考；BDEF、PMD、SDEF 的位置和法线、极分解及单位缩放旧路径一致性。 |
 | `physics_bake_tests.cpp` | 烧录事务、撤销重做与三语隐藏对话框。另传 PMM 和输出目录时验证离线模拟、取消隔离、参数生效、范围、选择、回放与 PMM/VMD 往返；不修改输入素材。 |
 | `physics_bake_settings_tests.cpp` | Bullet 默认值、严格 UTF-8 JSON、数值边界、Unicode、格式错误、原子保存及失败保护。 |
-| `bone_registration_tests.cpp` | 骨骼选择、登记、首帧保护、移动、撤销/重做和跳帧。 |
+| `bone_registration_tests.cpp` | 骨骼选择、重叠骨骼点击轮选、登记、首帧保护、移动、撤销/重做和跳帧。`--pick-cycle` 单独运行 PMD、PMX 在主视口与独立视口中的轮选回归。 |
 | `window_interaction_tests.cpp` | 窗口消息、鼠标/选择行为。 |
 | `pmm_reload_tests.cpp` | PMM 重载与状态恢复。 |
 | `pmm_extension_tests.cpp` | PMM v2 尾部扩展的独立字节布局、CRC32、长度边界、重复键、未知记录与文件位置恢复；纯文件测试。 |
@@ -156,6 +157,16 @@ MikuMikuDance.exe <另一个新输出前缀> 1 --emm-save-on [素材PMM绝对路
 在 Windows 11 和已安装 Windows SDK 的环境中，运行 `python tests/windows_locale_runner.py <ui_language_tests.exe> <新输出目录>`，为测试副本设置日区、中文、西文和 UTF-8 进程编码。脚本核对实际代码页并保存哈希与结果；不改变系统设置或正式程序清单。若系统不支持指定代码页，检查失败，不记为通过。保留这组回归，移除旧式名称兼容时再评估删除。记录见[日区名称边界修复](../docs/JAPANESE_NAME_GAPS_20261011.md)。
 
 在命令末尾加 `selectors` 可单独运行模型选择框测试。使用 `python tests/windows_locale_runner.py <menu_language_tests.exe> <新输出目录> menu` 验证真实菜单资源，检查翻译项从灰色恢复可用且不改变勾选值。
+
+## PMD 贴图选择模式回归
+
+构建 `pmd_selection_render_tests` 目标。测试程序位于 `<build>/tests/pmd-selection/Release/MikuMikuDance.exe`，支持完整包与最小包。通过 `python tests/pmd_selection_fixtures.py <样例目录>` 生成原创 PMD。
+
+参数依次为 PMD 的绝对路径、已存在的输出目录，以及可选的 `--hidden-default`、`--fixture`。`--fixture` 对生成器提供的模型启用双色像素断言；测试第三方素材时不传此参数。默认要求 `MMS_REPAIR_*` 私有桌面；`--hidden-default` 显式允许在默认桌面创建隐藏、不激活窗口。每次运行使用独立输出目录，程序保存 8 张 PNG 并输出 `SAMPLES` 行。
+
+将输出保存为日志后，运行 `python tests/pmd_selection_fixtures.py --compare <参考日志> <重映射日志>`，可检查 8 个状态下的采样颜色完全一致。等价组为 `ordered` 与 `remapped`、`fallback-reference` 与 `missing` 或 `last`、`reverse-reference` 与 `reverse`、`shadow-ordered` 与 `shadow-remapped`。
+
+MME 测试需在独立目录放入三个 MME DLL，日志必须显示 `PLUGINS mme=1 mmhack=1`。MMV 测试使用另一独立目录，日志必须显示 `mmv=1`。相关复现、验收及尚未确认的原报告范围见 [PMD toon 修复记录](../docs/PMD_TOON_SELECTION_FIX_20261012.md)。
 
 ## 阴影、录制预览和 MME 分配显示
 

@@ -60,7 +60,12 @@ int Render(MMDApp* app,const float world[16]) {
         std::vector<MmvRenderMaterialChannels> channels;
         for(auto& item:owned){if(item->object.kind==MMV_MODEL){auto* source=reinterpret_cast<unsigned char*>(uintptr_t(item->object.id));const auto& model=*mdl::Mdl(source);
             for(unsigned m=0;m<item->mesh.materials.size()&&m<model.materialCount;++m){const auto& material=mdl::Materials(source)[m];const int toon=static_cast<int8_t>(material.toonReference);IDirect3DTexture9* shared=nullptr;
-                if(toon==-1)shared=app->ToonTexture(0);else if(toon>=0&&toon<10){char standard[16]{};std::snprintf(standard,sizeof(standard),"toon%02d.bmp",toon+1);if(std::strcmp(mdl::PmdToonFileNames(source)[toon],standard)==0)shared=app->ToonTexture(toon+1);else if(model.physicsMode!=2){wchar_t name[256]{};MultiByteToWideChar(CP_ACP,0,mdl::PmdToonFileNames(source)[toon],-1,name,256);item->mesh.materials[m].toon.path=(std::filesystem::path(model.path).parent_path()/name).wstring();}}
+                if(toon==-1)shared=app->ToonTexture(0);
+                else if(toon>=0&&toon<10){
+                    const int slot=SharedToonSlot(mdl::PmdToonFileNames(source)[toon]);
+                    if(slot)shared=app->ToonTexture(slot);
+                    else if(model.physicsMode!=2){wchar_t name[256]{};MultiByteToWideChar(CP_ACP,0,mdl::PmdToonFileNames(source)[toon],-1,name,256);item->mesh.materials[m].toon.path=(std::filesystem::path(model.path).parent_path()/name).wstring();}
+                }
                 ReadRenderToon(shared,item->mesh.materials[m].toon);
                 if(model.physicsMode==2&&model.materialMorphPools.additive&&model.materialMorphPools.multiplicative){const auto& add=model.materialMorphPools.additive[m].channels;const auto& mul=model.materialMorphPools.multiplicative[m].channels;MmvRenderMaterialChannels c{};c.objectIndex=uint32_t(objects.size());c.materialIndex=m;memcpy(c.textureMultiply,mul.textureTint,16);memcpy(c.textureAdd,add.textureTint,16);memcpy(c.sphereMultiply,mul.sphereTint,16);memcpy(c.sphereAdd,add.sphereTint,16);memcpy(c.toonMultiply,mul.toonTint,16);memcpy(c.toonAdd,add.toonTint,16);channels.push_back(c);}
             }}objects.push_back(item->View());renderData.push_back(item->renderData);opacity.push_back(item->object.kind==MMV_ACCESSORY?reinterpret_cast<const mdl::AccessoryRecord*>(uintptr_t(item->object.id))->opacity:1.f);}

@@ -538,6 +538,10 @@ void SelectedBoneMovement() {
     HandleViewportBonePress(app.get(), true);
     Check(!f.selection[3] && f.selection[2] && f.model->selectedBone == 2,
           "Shift deselection keeps the remaining highlighted bone as the edit target");
+    // The direct press above starts a Shift box gesture. End it before the
+    // following movement and name-list clicks, as a real mouse-up would.
+    SendMessageW(window, WM_LBUTTONUP, MK_SHIFT,
+                 MAKELPARAM(app->MouseX(), app->MouseY()));
 
     // Both drag paths use the same selection, without touching other bones.
     f.bones[2].trans[0] = 0;
@@ -892,7 +896,7 @@ void ViewportClickSelectionPhysicsLock() {
         const int x = f.bones[bone].selState;
         const int y = f.bones[bone].selState2;
         SendMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON | modifiers, MAKELPARAM(x, y));
-        SendMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+        SendMessageW(window, WM_LBUTTONUP, modifiers, MAKELPARAM(x, y));
     };
     const auto picked = [&](int bone) {
         return f.selection[bone] != 0 && f.model->selectedBone == bone;
@@ -963,6 +967,115 @@ void ViewportClickSelectionPhysicsLock() {
 
     DestroyWindow(window);
     g_Block = previousApp;
+}
+
+LRESULT CALLBACK PickCycleWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
+    case WM_CAPTURECHANGED:
+        return g_Block->FloatingWindow() == hwnd ? MicWndProc(hwnd, msg, wp, lp)
+                                                 : MainWndProc(hwnd, msg, wp, lp);
+    default:
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+}
+
+void ViewportOverlappingBoneCycle() {
+    for (const bool pmx : {false, true}) for (const bool floating : {false, true}) {
+        std::printf("overlapping bone cycle: %s %s viewport\n", pmx ? "PMX" : "PMD",
+                    floating ? "floating" : "main");
+        PickFixture f;
+        f.model->physicsMode = pmx ? 2 : 0;
+        auto renderer = std::make_unique<D3DRenderer>();
+        std::memset(renderer.get(), 0, sizeof(*renderer));
+        renderer->screenWidth = renderer->screenHeight = 800;
+        renderer->viewScale = 1.f;
+        auto app = std::make_unique<MMDApp>();
+        app->state = MMDAppState{};
+        app->Renderer() = renderer.get();
+        app->ModelSlot(0) = f.Raw();
+        app->SetSelectedModelSlot(0);
+        app->SidebarWidth() = 604;
+        app->ViewportRect() = RECT{604, 30, 800, 550};
+        app->RenderWidth() = app->RenderHeight() = 800;
+        app->EditMode() = ViewportEditMode::Bone;
+        app->PlaybackPhysicsMode() = 2;
+        for (auto& bone : f.bones) { bone.selState = 750; bone.selState2 = 200; }
+        f.bones[0].selState = f.bones[1].selState = 650;
+        f.bones[0].selState2 = f.bones[1].selState2 = 100;
+        // The PMX loader maps flag 0x04 (translation enabled) to type 1;
+        // type 0 supplies the overlapping rotation marker from the report.
+        f.bones[0].flags = mdl::kBoneFlagVisible | 0x02;
+        f.bones[1].flags = mdl::kBoneFlagVisible | 0x06;
+        auto* previousApp = g_Block;
+        g_Block = app.get();
+        HWND window = CreateWindowExW(WS_EX_NOACTIVATE, L"STATIC", L"overlap pick regression",
+            WS_OVERLAPPED, 0, 0, 800, 800, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        Check(window != nullptr, "create hidden overlap pick window");
+        app->Hwnd() = f.model->hwnd = window;
+        if (floating) app->FloatingWindow() = window;
+        SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(PickCycleWndProc));
+        const auto click = [&](UINT message = WM_LBUTTONDOWN, WPARAM modifiers = 0, int x = 650) {
+            SendMessageW(window, message, MK_LBUTTON | modifiers, MAKELPARAM(x, 100));
+            SendMessageW(window, WM_LBUTTONUP, modifiers, MAKELPARAM(x, 100));
+        };
+        const auto expectOne = [&](int bone, const char* reason) {
+            bool matches = f.model->selectedBone == bone;
+            for (int i = 0; i < PickFixture::kBones; ++i)
+                matches &= (f.selection[i] != 0) == (i == bone);
+            if (!matches)
+                std::fprintf(stderr, "expected bone %d, active %d; mouse %d,%d; selection %d,%d,%d; mode %d; box %d\n",
+                    bone, f.model->selectedBone, app->MouseX(), app->MouseY(),
+                    f.selection[0], f.selection[1], f.selection[2],
+                    static_cast<int>(app->EditMode()), app->BoneBoxSelectionActive());
+            Check(matches, reason);
+        };
+        click(); expectOne(0, "first overlap click selects the first bone in model order");
+        click(); expectOne(1, "second click reaches the overlapping translate/rotate bone");
+        click(); expectOne(0, "next click wraps to the rotation bone");
+        click(WM_LBUTTONDBLCLK); expectOne(1, "rapid second click advances once through WM_LBUTTONDBLCLK");
+        click(); expectOne(0, "click after double-click wraps once");
+
+        f.bones[2].selState = 650; f.bones[2].selState2 = 100;
+        click(); expectOne(1, "three-bone overlap reaches the middle bone");
+        click(); expectOne(2, "three-bone overlap reaches its final bone");
+        click(); expectOne(0, "three-bone overlap wraps to its first bone");
+        f.bones[1].flags = 0;
+        click(); expectOne(2, "cycle skips hidden markers");
+        f.bones[2].hasRigidBody = 1;
+        click(); expectOne(0, "cycle skips bones locked by physics");
+        f.bones[1].flags = mdl::kBoneFlagVisible | 0x06;
+        f.bones[2].physicsDisabled = 1;
+        click(); expectOne(1, "cycle keeps ordinary bones under physics on/off");
+        click(); expectOne(2, "disabled physics lets the rigid-body bone rejoin the cycle");
+
+        f.bones[0].selState = 700;
+        f.bones[2].selState = 700;
+        click(); expectOne(1, "single remaining hit is selected after wrap");
+        click(); expectOne(1, "repeated clicks keep a single hit selected");
+        click(WM_LBUTTONDOWN, 0, 680); expectOne(1, "empty click preserves selection");
+        f.bones[0].selState = 658;
+        click(); expectOne(1, "eight-pixel hit boundary remains exclusive");
+        f.bones[0].selState = 657;
+        click(); expectOne(0, "seven-pixel neighbour participates in wraparound");
+        f.bones[0].selState = 650;
+        f.model->selectedBone = PickFixture::kBones + 5;
+        click(); expectOne(0, "stale active index wraps without indexing the bone array");
+
+        // Shift retains the original toggle-all-hits behavior, independent of
+        // ordinary-click cycling, including a still-selected active edit target.
+        click(WM_LBUTTONDOWN, MK_SHIFT);
+        expectOne(1, "Shift toggles both overlapping hits and retains the selected target");
+        click(WM_LBUTTONDOWN, MK_SHIFT);
+        expectOne(0, "second Shift click restores the prior selection");
+        app->PlaybackActive() = 1;
+        click(); expectOne(0, "playback still disables picking");
+        app->PlaybackActive() = 0;
+        Check(!IsWindowVisible(window), "overlap regression window remains hidden");
+        app->FloatingWindow() = nullptr;
+        DestroyWindow(window);
+        g_Block = previousApp;
+    }
 }
 
 void ViewportBoxSelectionStillCoversOrdinaryBones() {
@@ -1119,6 +1232,11 @@ int RunDisplayFramePaste() {
 
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (argc > 1 && std::strcmp(argv[1], "--pick-cycle") == 0) {
+        ViewportOverlappingBoneCycle();
+        std::puts("Overlapping bone pick regressions passed");
+        return 0;
+    }
     if (argc > 1 && std::strcmp(argv[1], "display-paste") == 0)
         return RunDisplayFramePaste();
     if (RunDisplayFramePaste() != 0) return 1;
@@ -1138,6 +1256,8 @@ int main(int argc, char** argv) {
     SelectedBoneMovement();
     std::puts("bone_registration_tests: viewport click pick physics lock");
     ViewportClickSelectionPhysicsLock();
+    std::puts("bone_registration_tests: overlapping bone click cycle");
+    ViewportOverlappingBoneCycle();
     std::puts("bone_registration_tests: viewport box select still covers ordinary bones");
     ViewportBoxSelectionStillCoversOrdinaryBones();
     std::puts("Bone registration regressions passed");

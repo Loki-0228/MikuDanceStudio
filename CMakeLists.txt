@@ -1062,6 +1062,15 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(scene_lifecycle_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_executable(pmd_selection_render_tests EXCLUDE_FROM_ALL tests/pmd_selection_render_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_libraries(pmd_selection_render_tests PRIVATE mikudancestudio_core winmm dsound)
+    target_link_options(pmd_selection_render_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(pmd_selection_render_tests PROPERTIES
+        OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/pmd-selection/lib/$<CONFIG>"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/pmd-selection/symbols/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/pmd-selection/$<CONFIG>")
     # Explicit opt-in host for locally installed MME. MMHack imports the host
     # by filename and ordinal, so a normal test executable cannot exercise it.
     add_executable(scene_lifecycle_mme_tests EXCLUDE_FROM_ALL tests/scene_lifecycle_tests.cpp

@@ -491,6 +491,8 @@ void PickBoneAtCursor(MMDApp* app, bool additive) {
 
     const int x = app->MouseX();
     const int y = app->MouseY();
+    const int active = mikudancestudio::mdl::Mdl(model)->selectedBone;
+    int firstHit = -1;
     int candidate = -1;
     bool changed = false;
     for (int i = 0; i < count; ++i) {
@@ -509,9 +511,18 @@ void PickBoneAtCursor(MMDApp* app, bool additive) {
                 mikudancestudio::mdl::Mdl(model)->selectedBone = -1;
             changed = true;
         } else {
-            candidate = std::max(candidate, i);
+            // MMD 9.32 (0x140031C81): advance past the active bone in
+            // model order, then wrap to the first hit if none follows it.
+            if (firstHit < 0)
+                firstHit = i;
+            if (i > active) {
+                candidate = i;
+                break;
+            }
         }
     }
+    if (!additive && candidate < 0)
+        candidate = firstHit;
     if (!additive && candidate >= 0) {
         std::memset(selected, 0, static_cast<std::size_t>(count));
         selected[candidate] = 1;

@@ -38,6 +38,7 @@
 #include "mikudancestudio/ported_funcs.hpp"
 
 #include "mikudancestudio/texture_lookup.hpp"
+#include "mikudancestudio/shared_toon.hpp"
 #include "mikudancestudio/draw_order.hpp"
 #include "mikudancestudio/adaptive_shadow.hpp"
 #include "mikudancestudio/build_profile.hpp"
@@ -533,7 +534,7 @@ IDirect3DTexture9* ToonTexture(MMDApp* app, D3DRenderer* sub,
                                unsigned char* model,
                                unsigned char* material) {
     // 0x491E8B..0x492163: toonReference == -1 -> shared table slot 0; a
-    // model whose indexed toon file name IS "toonNN.bmp" -> slot N+1; any
+    // model whose indexed toon file name IS "toonNN.bmp" -> shared slot NN; any
     // other name resolves the texture itself (PMX: the material toon path
     // at +0x4C0; PMD: modelDirectory + converted file name).
     const int index = static_cast<std::int8_t>(
@@ -541,13 +542,9 @@ IDirect3DTexture9* ToonTexture(MMDApp* app, D3DRenderer* sub,
     if (index == -1)
         return app->ToonTexture(0);
     if (index >= 0 && index < 10) {
-        static const char* names[10] = {
-            "toon01.bmp", "toon02.bmp", "toon03.bmp", "toon04.bmp",
-            "toon05.bmp", "toon06.bmp", "toon07.bmp", "toon08.bmp",
-            "toon09.bmp", "toon10.bmp"};
-        if (strcmp(mdl::PmdToonFileNames(model)[index],
-                   names[index]) == 0)
-            return app->ToonTexture(index + 1);
+        const int shared = SharedToonSlot(mdl::PmdToonFileNames(model)[index]);
+        if (shared != 0)
+            return app->ToonTexture(shared);
     }
     if (mdl::Mdl(model)->physicsMode == 2) {
         // PMX custom toon (0x4920D7): cached texture for material+0x4C0.
@@ -1010,17 +1007,13 @@ void ConfigureEffectMaterial(MMDApp* app, D3DRenderer* sub,
     if (toonIndex != -1) {
         bool standard = false;
         if (toonIndex >= 0 && toonIndex < 10) {
-            static const char* names[10] = {
-                "toon01.bmp", "toon02.bmp", "toon03.bmp", "toon04.bmp",
-                "toon05.bmp", "toon06.bmp", "toon07.bmp", "toon08.bmp",
-                "toon09.bmp", "toon10.bmp"};
-            standard = strcmp(mdl::PmdToonFileNames(model)[toonIndex],
-                              names[toonIndex]) == 0;
+            const int shared = SharedToonSlot(mdl::PmdToonFileNames(model)[toonIndex]);
+            standard = shared != 0;
             if (standard) {
                 const float* table = app->state.toonEdgeTable;
-                toon[0] = table[3 * toonIndex + 0];
-                toon[1] = table[3 * toonIndex + 1];
-                toon[2] = table[3 * toonIndex + 2];
+                toon[0] = table[3 * (shared - 1) + 0];
+                toon[1] = table[3 * (shared - 1) + 1];
+                toon[2] = table[3 * (shared - 1) + 2];
             }
         }
         if (!standard) {

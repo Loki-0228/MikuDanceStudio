@@ -2,6 +2,28 @@
 
 [English](#english) | [中文](#中文) | [日本語](#日本語)
 
+[v2026.10.12.1 release notes / 发布日志 / リリースノート](docs/RELEASE_NOTES_20261012.md)
+
+## Downloads and package differences
+
+[GitHub Releases](https://github.com/Loki-0228/MikuDanceStudio/releases/latest) provides Windows x64 packages with `full` or `minimal` in the filename. Both builds come from the same source branch and receive shared bug fixes. The feature lists later in this README describe the full build. The minimal build uses the `mmd932` build profile:
+
+| Area | Full `full` | Minimal `minimal` |
+| --- | --- | --- |
+| PMD and PMX loading, original animation tools, rigid-body physics, language fixes, MME interface | Included | Included |
+| New transparency sorting | Optional, disabled by default | Omitted; original single-pass material order |
+| Shadow reconstruction, dynamic precision, filtering | Included | Original projection and SM2/SM3 shaders |
+| Bone scaling, new curve editor, morph curves | Included | Omitted; original Bezier interpolation retained |
+| DX12, MMV host, mesh capture, Alembic, additional baking | Included | Omitted |
+| Media | Modern imports and MP4/MOV export through Windows media components | WAV audio, AVI backgrounds and AVI export |
+| PMM, VMD, VPD saving | Can include MMS extensions | Standard data only; imported MMS extensions are ignored |
+
+Both ZIPs contain only `MikuMikuDance.exe` and the license files in `licenses/`. Neither includes models, user settings, MME, or `MMV4MMS.dll`. MMV remains under separate testing. In `v2026.10.12.1`, the full executable is 4,755,456 bytes and the minimal executable is 2,089,472 bytes, about 56% smaller. This is not a playback speed comparison.
+
+The minimal build checks CP932 encoding and field lengths for names and references stored in files, and rejects values it cannot represent. Model editing saves PMD only and rejects lossy PMX-to-PMD conversion. Save extended full-build projects as separate copies when using the minimal build, because scale, curve, and mesh-cache extensions are discarded. Round-trip loading and saving with the actual MMD 9.32 executable has not yet been validated. See [minimal build limits](docs/ORIGINAL_PROFILE.md).
+
+Extract the two builds into separate directories and run the executable in each directory. Keep your existing installation if it contains settings or plugins.
+
 ## 下载与版本区别
 
 [GitHub Releases](https://github.com/Loki-0228/MikuDanceStudio/releases/latest) 同时提供 Windows x64 完整包和最小包。需要 MMS 新增功能时选择文件名含 `full` 的 ZIP；主要使用 MMD 原有功能时选择含 `minimal` 的 ZIP。两档来自同一份源码，均保留 `MikuMikuDance.exe` 文件名。下文新增功能列表描述完整包，最小包以此表为准。
@@ -17,7 +39,7 @@
 | 音视频 | 保留现代音视频导入与 MP4/MOV 输出，依赖 Windows 媒体组件 | WAV 音频、AVI 背景与 AVI 输出 |
 | PMM、VMD、VPD 保存 | 可写 MMS 扩展数据 | 仅写标准内容，忽略读取到的 MMS 扩展 |
 | MME | 保留原生 DX9 接口，插件需另行安装 | 保留原生 DX9 接口，插件需另行安装 |
-| 程序体积（本次 x64 产物） | 4,754,944 字节，约 4.75 MB | 2,089,984 字节，约 2.09 MB |
+| 程序体积（v2026.10.12.1 x64 产物） | 4,755,456 字节，约 4.75 MB | 2,089,472 字节，约 2.09 MB |
 
 两个 ZIP 均仅包含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，不附带用户配置、模型、MME 或 MMV 插件。完整包包含 MMV 宿主接口；`MMV4MMS.dll` 仍处于单独测试阶段，不在此次公开附件中。最小包体积比完整包约小 56%，这不是运行速度的对比结果。
 
@@ -27,11 +49,43 @@
 
 两档解压到不同目录，分别运行各自的 `MikuMikuDance.exe`。有旧版配置和插件时，先保留旧目录；不要把两个 ZIP 解压到同一目录后相互覆盖。
 
+## ダウンロードとパッケージの違い
+
+[GitHub Releases](https://github.com/Loki-0228/MikuDanceStudio/releases/latest) では、ファイル名に `full` または `minimal` を含む Windows x64 パッケージを配布しています。両方とも同じソースブランチからビルドし、共通の不具合を修正します。後半の機能一覧は完全版の説明です。最小版は `mmd932` ビルドプロファイルを使用します。
+
+| 項目 | 完全版 `full` | 最小版 `minimal` |
+| --- | --- | --- |
+| PMD・PMX 読み込み、従来のアニメーション編集、剛体物理、言語関連の修正、MME インターフェース | 含む | 含む |
+| 新しい透明ソート | 任意で有効化、初期設定は無効 | 含まない。従来の単一パスの材質順序を使用 |
+| シャドウ処理の再構成、動的精度、フィルタリング | 含む | 従来の投影と SM2/SM3 シェーダーを使用 |
+| ボーンスケール、新しい曲線エディタ、モーフ曲線 | 含む | 含まない。従来の Bezier 補間を維持 |
+| DX12、MMV ホスト、メッシュ取得、Alembic、追加のベイク機能 | 含む | 含まない |
+| 音声・動画 | Windows メディアコンポーネントによる各種形式の読み込みと MP4・MOV 出力 | WAV 音声、AVI 背景、AVI 出力 |
+| PMM・VMD・VPD 保存 | MMS 拡張を保存可能 | 標準データのみ保存。読み込んだ MMS 拡張は無視 |
+
+どちらの ZIP も `MikuMikuDance.exe` と `licenses/` 内のライセンスファイルのみを含みます。モデル、ユーザー設定、MME、`MMV4MMS.dll` は含まれません。MMV は別途テスト中です。`v2026.10.12.1` の実行ファイルは完全版が 4,755,456 バイト、最小版が 2,089,472 バイトで、最小版は約 56% 小さくなっています。これは再生速度の比較ではありません。
+
+最小版は、ファイル内に保存する名前と参照先の CP932 表現およびフィールド長を確認し、表現できない内容の保存を拒否します。モデル編集の保存形式は PMD のみで、情報が失われる PMX から PMD への変換も拒否します。完全版の拡張を含むプロジェクトを最小版で保存すると、スケール、曲線、メッシュキャッシュの拡張が失われるため、別名で保存してください。実際の MMD 9.32 を使った双方向の読み込みと再保存は、まだ検証できていません。[最小版の制限](docs/ORIGINAL_PROFILE.md)も参照してください。
+
+両方を使う場合は別々のフォルダーに展開し、それぞれの実行ファイルを起動してください。設定やプラグインが入った既存のフォルダーは残してください。
+
 ---
 
 ## English
 
-MikuDanceStudio (MMS) is a Windows desktop application for creating and editing MMD dance animations. [v2026.10.11.7](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.11.7) provides Windows x64 full and minimal packages, with MMS additions in the full package and original MMD features plus related fixes in the minimal package. Both ZIPs contain only `MikuMikuDance.exe` and the license files in `licenses/`, so if you use both versions, extract them into separate directories and run each directory's executable.
+MikuDanceStudio (MMS) is a Windows desktop application for creating and editing MMD dance animations. [v2026.10.12.1](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.12.1) provides Windows x64 full and minimal packages, with MMS additions in the full package and original MMD features plus related fixes in the minimal package. Both ZIPs contain only `MikuMikuDance.exe` and the license files in `licenses/`, so if you use both versions, extract them into separate directories and run each directory's executable.
+
+### Changes in v2026.10.12.1
+
+This release includes three fixes shared by the full and minimal builds:
+
+- The vertical bone rotation handle now follows MMD's axis direction when viewed from the side. This builds on the rotation-growth fix already included in `.7`.
+- PMD models with a reordered shared Toon file table now retain their textured appearance when bone selection is enabled. The fix also covers fallback to shared Toon textures. Other reported PMD white-scene cases still need confirmation.
+- Repeated clicks on overlapping rotation-only and translation-enabled bones now cycle through the eligible bones in model order. Rapid clicks work in both the main and floating viewports.
+
+See the [release notes](docs/RELEASE_NOTES_20261012.md#english) for the changes and package comparison.
+
+For package scope and save limits, see [Downloads and package differences](#downloads-and-package-differences). The following feature list describes the full build.
 
 ### Features
 
@@ -226,7 +280,19 @@ Bullet Physics (zlib), Alembic and Imath (BSD-3-Clause), MinHook (BSD-2-Clause),
 
 ## 中文
 
-MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌面应用。[v2026.10.11.7](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.11.7) 提供 Windows x64 完整包与最小包，完整包保留 MMS 新增功能，最小包保留 MMD 原有功能及相关缺陷修复。两个 ZIP 均仅含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，同时使用两版时须分别解压到不同目录，并运行各自目录中的主程序。
+MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌面应用。[v2026.10.12.1](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.12.1) 提供 Windows x64 完整包与最小包，完整包保留 MMS 新增功能，最小包保留 MMD 原有功能及相关缺陷修复。两个 ZIP 均仅含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，同时使用两版时须分别解压到不同目录，并运行各自目录中的主程序。
+
+### v2026.10.12.1 更新
+
+本版包含三项完整包与最小包共用的修复：
+
+- 修正骨骼竖向旋转柄从模型侧面操作时的轴向，使其与原版 MMD 一致。此项是在 `.7` 已有的旋转放大修复基础上纠正方向。
+- 修复共享 Toon 文件表顺序不同的 PMD 在开启骨骼「选择」后丢失贴图颜色、呈灰白色的问题，也覆盖回退到共享 Toon 的情况。其他 PMD 全白报告仍待确认。
+- 旋转骨骼与可移动骨骼重叠时，重复点击按模型内顺序循环选择。主视口和独立视口均支持快速连续点击。
+
+更新内容与包的区别见[三语发布日志](docs/RELEASE_NOTES_20261012.md#中文)。
+
+完整包与最小包在同一分支维护，共同缺陷同步修复并分别验收。两档功能与保存限制见[下载与版本区别](#下载与版本区别)，下列新增功能以完整包为准。
 
 ### 功能
 
@@ -397,7 +463,19 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 
 ## 日本語
 
-MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・編集する Windows デスクトップアプリです。[v2026.10.11.7](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.11.7) では Windows x64 向けに、MMS の追加機能を含む完全版と、MMD 本来の機能および関連する不具合修正を含む最小版を配布しています。どちらの ZIP も `MikuMikuDance.exe` と `licenses/` 内のライセンスファイルのみを含むため、両方を使う場合は別々のフォルダーに展開し、それぞれの実行ファイルを起動してください。
+MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・編集する Windows デスクトップアプリです。[v2026.10.12.1](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.12.1) では Windows x64 向けに、MMS の追加機能を含む完全版と、MMD 本来の機能および関連する不具合修正を含む最小版を配布しています。どちらの ZIP も `MikuMikuDance.exe` と `licenses/` 内のライセンスファイルのみを含むため、両方を使う場合は別々のフォルダーに展開し、それぞれの実行ファイルを起動してください。
+
+### v2026.10.12.1 の変更
+
+このリリースには、完全版と最小版で共通の修正が含まれています。
+
+- モデルを横から見たときのボーン縦回転ハンドルの回転軸を、オリジナル MMD と一致させました。`.7` の回転操作による拡大の修正に加え、今回は回転方向を修正しています。
+- 共有トゥーンのファイル表が通常と異なる順序の PMD で、ボーンの「選択」を有効にするとテクスチャの色が失われ、灰白色になる問題を修正しました。共有トゥーンへのフォールバックも対象です。ほかの PMD 白化報告については、引き続き確認が必要です。
+- 回転のみ可能なボーンと移動可能なボーンが重なっている場合、繰り返しクリックするとモデル内の順序で選択が切り替わります。メイン画面と別ウィンドウのどちらでも素早い連続クリックに対応します。
+
+変更内容とパッケージの違いは[リリースノート](docs/RELEASE_NOTES_20261012.md#日本語)を参照してください。
+
+パッケージの機能と保存の制限は[ダウンロードとパッケージの違い](#ダウンロードとパッケージの違い)を参照してください。以下の機能一覧は完全版の説明です。
 
 ### 機能
 
