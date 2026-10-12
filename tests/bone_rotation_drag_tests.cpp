@@ -1,4 +1,4 @@
-// MAINTENANCE: regression-keep - rapid bone rotations must not accumulate scale.
+// MAINTENANCE: regression-keep - bone drags preserve MMD axes and cannot accumulate scale.
 // CPU-only regression through the production drag and bone-transform entries.
 // No window, device, model loader or user configuration is created or used.
 #define WIN32_LEAN_AND_MEAN
@@ -149,6 +149,76 @@ void Stress(bool pmx, int mode, int coordinates = 0, bool direct = false) {
           "paired drags return to the starting orientation");
 }
 
+void VerticalHandleParity(bool pmx) {
+    // MMD 9.32 x64, 0x14003319A..0x1400332BD: the vertical handle
+    // uses the positive yaw's yaw-only right axis, independent of pitch/roll
+    // and the Local/Global/View selector. Explicit directions also catch a
+    // yaw-sign regression that a unit-length/round-trip test cannot detect.
+    constexpr float pi = 3.14159265358979323846f;
+    const struct {
+        const char* name;
+        float pitch, yaw, roll, world[3];
+    } cases[] = {
+        {"front", 0, 0, 0, {1, 0, 0}},
+        {"side-positive", 0, pi / 2, 0, {0, 0, 1}},
+        {"side-negative", 0, -pi / 2, 0, {0, 0, -1}},
+        {"rear", 0, pi, 0, {-1, 0, 0}},
+        {"front-pitched", pi / 2, 0, 0, {1, 0, 0}},
+        {"side-pitched", .73f, pi / 2, -.23f, {0, 0, 1}},
+        {"oblique-positive", .41f, .643501109f, -.23f, {.8f, 0, .6f}},
+        {"oblique-negative", -.9f, -.643501109f, .6f, {.8f, 0, -.6f}},
+    };
+    auto& api = d3dx::Get();
+    for (const auto& c : cases) {
+        double maxError = 0;
+        bool matches = true, returns = true;
+        unsigned samples = 0;
+        for (int coordinates = 0; coordinates != 3; ++coordinates)
+        for (bool rotatedParent : {false, true})
+        for (int speed = 0; speed != 3; ++speed)
+        for (int pixels : {-80, 80}) {
+            Fixture f(pmx);
+            f.app->CameraPitch() = c.pitch;
+            f.app->CameraYaw() = c.yaw;
+            f.app->CameraRoll() = c.roll;
+            f.app->state.coordinateSystem = coordinates;
+            f.app->state.shiftModifierState = speed == 1 ? 3 : 0;
+            f.app->state.ctrlModifierState = speed == 2 ? 3 : 0;
+            d3dx::D3DXMATRIXF parent{}, inverse{};
+            Identity(&parent.m[0][0]);
+            if (rotatedParent) {
+                d3dx::D3DXMATRIXF rx{}, rz{};
+                api.rotX(&rx, .61f); api.rotZ(&rz, -.37f);
+                api.multiply(&parent, &rx, &rz);
+                // A non-identity starting pose also checks composition order.
+                f.bone.rotQuat[2] = .6f; f.bone.rotQuat[3] = .8f;
+            }
+            std::memcpy(f.bone.matWorld, &parent, sizeof(parent));
+            api.inverse(&inverse, nullptr, &parent);
+            float local[4]{}, before[4], expected[4];
+            api.vec3Transform(local, c.world, &inverse);
+            std::memcpy(before, f.bone.rotQuat, sizeof(before));
+            // MMD uses 0.01 radians per pixel (0.005 in the quaternion).
+            const double halfAngle = pixels * .005 * (speed == 1 ? 5 : speed == 2 ? .1 : 1);
+            const float delta[] = {float(local[0] * std::sin(halfAngle)),
+                float(local[1] * std::sin(halfAngle)), float(local[2] * std::sin(halfAngle)),
+                float(std::cos(halfAngle))};
+            api.quatMultiply(expected, before, delta);
+            f.Drag(pixels);
+            matches &= Near(f.bone.rotQuat, expected, 4, .000002) && f.dirty[0] == 1;
+            for (unsigned i = 0; i != 4; ++i)
+                maxError = std::max(maxError, std::abs(double(f.bone.rotQuat[i]) - expected[i]));
+            f.Drag(-pixels);
+            returns &= Near(f.bone.rotQuat, before, 4, .000002);
+            ++samples;
+        }
+        std::printf("VERTICAL_PARITY format=%s view=%s samples=%u max_quaternion_error=%.9g\n",
+                    pmx ? "PMX" : "PMD", c.name, samples, maxError);
+        Check(matches, "vertical handle matches the MMD axis, sign and angular speed");
+        Check(returns, "opposite vertical drag restores the starting orientation");
+    }
+}
+
 double Distance(const mdl::BoneRecord& a, const mdl::BoneRecord& b) {
     float pa[4]{}, pb[4]{};
     auto& api = d3dx::Get();
@@ -258,6 +328,7 @@ int main() {
     Check(api.Load() && api.matrixRotationQuaternion && api.vec3Transform, "load CPU transform dependencies");
     if (failures) return 1;
     for (bool pmx : {false, true}) {
+        VerticalHandleParity(pmx);
         for (int mode = 1; mode <= 3; ++mode) Stress(pmx, mode);
         for (int mode = 4; mode <= 6; ++mode) {
             for (int coordinates = 0; coordinates != 3; ++coordinates) Stress(pmx, mode, coordinates);

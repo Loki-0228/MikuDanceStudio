@@ -4,8 +4,8 @@
 // When a drag is active and a model/bone is selected, modes 1..6 of the
 // SECOND-stage mode field (app+844; the first-stage dispatch at 0x46B121
 // reads app+836) are reinterpreted as bone rotation:
-//   mode 1 : rotate around the camera-space X axis
-//   mode 2 : around the camera-space Y axis
+//   mode 1 : horizontal handle, rotate around the view's vertical axis
+//   mode 2 : vertical handle, rotate around the yaw-only horizontal axis
 //   mode 3 : view-plane rotation - the delta of atan2(dx,dy) between the
 //            drag origin->previous and origin->current mouse vectors,
 //            wrapped to +-6.28 rad
@@ -582,10 +582,12 @@ void BoneEditModes(MMDApp* app) {
             static_cast<double>(app->state.previousMouseY -
                                 app->state.mouseY) * kAngBase);
         ang = scaleOf(base);
-        const double aX = -static_cast<double>(app->CameraRotation()[0]);
-        const double aY = -static_cast<double>(app->CameraRotation()[1]);
-        const float ax = static_cast<float>(std::cos(aX));
-        const float az = static_cast<float>(std::sin(aY));
+        // MMD 9.32 x64 0x14003319A..0x1400332BD uses positive yaw for
+        // both components. Mixing cos(pitch) with sin(-yaw) tilts this
+        // axis and reverses its Z component, even after normalization.
+        const double yaw = static_cast<double>(app->CameraYaw());
+        const float ax = static_cast<float>(std::cos(yaw));
+        const float az = static_cast<float>(std::sin(yaw));
         axis[0] = matWorld[0] * ax + matWorld[2] * az;
         axis[1] = matWorld[4] * ax + matWorld[6] * az;
         axis[2] = matWorld[8] * ax + matWorld[10] * az;
