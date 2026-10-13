@@ -14,7 +14,7 @@ const wchar_t* Text(MMDApp* app, const wchar_t* zh, const wchar_t* en, const wch
     return app->EnglishUI() == 2 ? zh : app->EnglishUI() == 0 ? ja : en;
 }
 const wchar_t* Title(MMDApp* app) {
-    return Text(app, L"视口渲染比例", L"Viewport render scale", L"ビューポートの描画倍率");
+    return Text(app, L"视口渲染比例", L"Viewport resolution scale", L"描画解像度の倍率");
 }
 void WritePercent(HWND dialog, double percent) {
     wchar_t text[64]{};
@@ -90,7 +90,8 @@ INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wp, LPARAM lp) {
         SetDlgItemTextW(dialog, Automatic, Text(app, L"自动：匹配当前窗口尺寸",
             L"Automatic: match window size", L"自動：ウィンドウサイズに合わせる"));
         SetDlgItemTextW(dialog, Apply, Text(app, L"应用", L"Apply", L"適用"));
-        SetDlgItemTextW(dialog, IDCANCEL, Text(app, L"取消", L"Cancel", L"キャンセル"));
+        // The slider and Apply button commit immediately; this button only closes.
+        SetDlgItemTextW(dialog, IDCANCEL, Text(app, L"关闭", L"Close", L"閉じる"));
         SendDlgItemMessageW(dialog, Slider, TBM_SETRANGE, TRUE, MAKELPARAM(25, 100));
         SendDlgItemMessageW(dialog, Slider, TBM_SETPAGESIZE, 0, 5);
         SendDlgItemMessageW(dialog, Percent, EM_SETLIMITTEXT, 120, 0);
@@ -136,17 +137,18 @@ INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wp, LPARAM lp) {
 void RefreshMenu(MMDApp* app) {
     if (build_profile::original || !app || !IsWindow(app->MainWindow())) return;
     const HMENU bar = GetMenu(app->MainWindow());
+    const std::wstring caption = std::wstring(Title(app)) + L"…";
     for (int i = 0; i < GetMenuItemCount(bar); ++i) {
         HMENU view = GetSubMenu(bar, i);
         if (!view || GetMenuState(view, 212, MF_BYCOMMAND) == UINT(-1)) continue;
         if (GetMenuState(view, kCommand, MF_BYCOMMAND) == UINT(-1)) {
             for (int pos = 0; pos < GetMenuItemCount(view); ++pos) {
                 if (GetMenuItemID(view, pos) == 212) {
-                    InsertMenuW(view, pos + 1, MF_BYPOSITION | MF_STRING, kCommand, Title(app)); break;
+                    InsertMenuW(view, pos + 1, MF_BYPOSITION | MF_STRING, kCommand, caption.c_str()); break;
                 }
             }
         }
-        ModifyMenuW(view, kCommand, MF_BYCOMMAND | MF_STRING, kCommand, Title(app));
+        ModifyMenuW(view, kCommand, MF_BYCOMMAND | MF_STRING, kCommand, caption.c_str());
         break;
     }
 }

@@ -115,7 +115,7 @@ INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wp, LPARAM lp) {
         label(SizeLabel, L"图片尺寸", L"Image size", L"画像サイズ");
         label(FpsLabel, L"帧率", L"Frame rate", L"フレームレート");
         label(RangeLabel, L"输出帧范围", L"Frame range", L"出力フレーム範囲");
-        label(panel::kAviCloseAfterExportCheckbox, L"导出成功后关闭 MMS", L"Close MMS after successful export", L"出力成功後にMMSを終了");
+        label(panel::kAviCloseAfterExportCheckbox, L"导出成功后关闭 MMS", L"Close MMS after successful export", L"出力完了後に MMS を終了");
         label(IDOK, L"开始输出", L"Export", L"出力開始");
         label(IDCANCEL, L"取消", L"Cancel", L"キャンセル");
         c->updating = true;

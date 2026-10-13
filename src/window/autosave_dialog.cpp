@@ -58,13 +58,13 @@ INT_PTR CALLBACK DialogProc(HWND dialog, UINT msg, WPARAM wp, LPARAM lp) {
         };
         label(FolderLabel, L"自动保存文件夹", L"Backup folder", L"自動保存フォルダー");
         label(Enabled, L"启用定时自动保存", L"Enable periodic autosave", L"定期的な自動保存を有効にする");
-        label(Browse, L"选择…", L"Browse…", L"選択…");
+        label(Browse, L"选择…", L"Browse…", L"参照…");
         label(IntervalLabel, L"保存间隔（分钟）", L"Interval (minutes)", L"保存間隔（分）");
-        label(LimitLabel, L"备份数量上限（份）", L"Maximum backups", L"バックアップ上限（件）");
+        label(LimitLabel, L"备份数量上限（份）", L"Maximum backups", L"バックアップの上限（件）");
         label(Overwrite, L"达到上限时覆盖最旧的备份", L"Replace oldest backups when the limit is reached", L"上限に達したら最も古いバックアップを置き換える");
         label(Explanation, L"崩溃备份始终启用，保存到上述文件夹。\r\n备份使用原工程名和时间戳，不影响手动保存。\r\n上限按 PMM 备份份数计算，其他文件不会被删除。",
             L"Crash backups are always on and use this folder.\r\nBackups use the project name and timestamp; manual saves stay separate.\r\nThe limit counts PMM backups. Other files are kept.",
-            L"クラッシュ時のバックアップは常に有効で、このフォルダーに保存します。\r\n元の名前と日時で別の PMM を保存し、手動保存には影響しません。\r\n上限は PMM の件数です。他のファイルは削除しません。");
+            L"クラッシュ時のバックアップは常に有効で、このフォルダーを使用します。\r\n元のファイル名に日時を付けて保存します。手動保存したファイルは上書きしません。\r\n上限は PMM バックアップの件数です。他のファイルは削除しません。");
         label(IDOK, L"确定", L"OK", L"OK"); label(IDCANCEL, L"取消", L"Cancel", L"キャンセル");
         SetDlgItemTextW(dialog, Folder, c->value.directory.c_str());
         SetDlgItemInt(dialog, Interval, c->value.intervalMinutes, FALSE);
