@@ -541,7 +541,10 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
             SendMessageA(edit, EM_REPLACESEL, 0,
                          reinterpret_cast<LPARAM>(empty));
         }
-        EnableMenuItem(GetMenu(hwnd), 0xF9, 1);
+        if (oldSel < app->AccessoryRenderSplitOrder())
+            --app->AccessoryRenderSplitOrder();
+        EnableMenuItem(GetMenu(hwnd), 0xF9, MF_BYCOMMAND |
+            (firstFree == 0x100 ? MF_GRAYED : MF_ENABLED));
         RebuildCameraModePanel(app);
         SendMessageA(GetDlgItem(hwnd, panel::kInterpCurveCombo), CB_DELETESTRING, 5, 0);
         SendMessageA(GetDlgItem(hwnd, panel::kInterpCurveCombo), CB_DELETESTRING, 4, 0);

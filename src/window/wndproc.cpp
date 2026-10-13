@@ -129,6 +129,13 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         // availability from the current selection whenever a popup opens.
         SetModelExtensionMenuEnabled(app,
             app->CameraMode() == 0 && app->SelectedModel() != nullptr);
+        // Accessory ordering is independent of transparent material sorting.
+        // Recompute after loads, deletion and menu recreation/language changes.
+        bool hasAccessory = false;
+        for (int slot = 0; slot < 255; ++slot)
+            if (app->AccessorySlot(slot) != nullptr) { hasAccessory = true; break; }
+        EnableMenuItem(GetMenu(hwnd), 249, MF_BYCOMMAND |
+            (hasAccessory ? MF_ENABLED : MF_GRAYED));
         RefreshSkinningMenu(app); bake::RefreshMenu(app);
         frame_rate_correction::RefreshMenu(app);
         // Keep the Help menu's current dock-corner label and UI language fresh.

@@ -978,6 +978,8 @@ INT_PTR __stdcall AccessorySettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
             app->state.accessoryRenderSplitOrder =
                 ReadIntFromEdit(hDlg, panel::kAccessoryOrderEdit, 256);
             ApplyAccessorySettingsDialog(app, g_accOrderCount, hDlg);
+            app->SceneModified() = 1;
+            InvalidateRect(MainHwnd(app), nullptr, FALSE);
             const HWND main = MainHwnd(app);
             SendMessageW(GetDlgItem(main, panel::kAccessoryCombo), CB_RESETCONTENT, 0, 0);
             for (int j = 0; j < g_accOrderCount; ++j) {
