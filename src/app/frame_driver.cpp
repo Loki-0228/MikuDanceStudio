@@ -1,5 +1,4 @@
 #include "mikudancestudio/perf_timing.hpp"
-#include "mikudancestudio/default_effect.hpp"
 // ===========================================================================
 // VA 0x0046B090 - FrameDriver  (original: sub_46B090, 0xED01 = 60KB)
 // ===========================================================================
@@ -875,8 +874,6 @@ void FrameDriver(MMDApp* app) {
             }
         }
     }
-    if (presented && SUCCEEDED(hr))
-        StartDefaultEffectCompilation(s.Renderer());
 #ifdef MIKUDANCESTUDIO_DIAG
     if (presented && SUCCEEDED(hr)) {
         if (requireLineEnabled && lineModeRequested != 0)

@@ -632,6 +632,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
         EnableMenuItem(menu, 0x115, MF_BYCOMMAND | MF_GRAYED);
     else
         CheckMenuItem(menu, 0x115, MF_BYCOMMAND | MF_CHECKED);
+    antialias::Initialize(app);
 
     if (w->postProcessEnabled == 0) {
         EnableMenuItem(menu, 0x117, MF_BYCOMMAND | MF_GRAYED);

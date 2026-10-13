@@ -38,6 +38,7 @@
 
 #include "mikudancestudio/texture_lookup.hpp"
 #include "mikudancestudio/draw_order.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 
 namespace mikudancestudio {
 void RefreshRequest(int area);
@@ -1196,7 +1197,7 @@ void RenderAccessoriesEffectRange(MMDApp* app, int firstOrder,
             mdl::Accessory(accessory)->order,
             static_cast<void*>(sub->hdrTexture));
         app->ActiveRenderPass() = AccessoryRenderPass::Effect;
-        device->SetTexture(0, sub->hdrTexture);
+        device->SetTexture(0, shadow_filter::VisibleTexture(app));
         device->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
         Matrix world;
         Matrix value;

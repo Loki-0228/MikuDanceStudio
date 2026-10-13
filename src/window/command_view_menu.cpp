@@ -2364,6 +2364,11 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
     // 8, scene vtable+0xE4(scene, 0xA1, on/off).
     // ------------------------------------------------------------------
     case 277: {
+#if !MMD_ORIGINAL_PROFILE
+        std::wstring error;
+        if (!antialias::Toggle(app, error))
+            MessageBoxW(hwnd, error.c_str(), L"Anti-aliasing", MB_OK | MB_ICONERROR);
+#else
         app->state.dialogFlags[10] = 1;
         if ((GetMenuState(GetMenu(hwnd), 0x115, 0) & 8) == 0) {
             CheckMenuItem(GetMenu(hwnd), 0x115, MF_CHECKED);
@@ -2372,6 +2377,7 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
             CheckMenuItem(GetMenu(hwnd), 0x115, MF_UNCHECKED);
             SetMultisampleAntialias(app, false);
         }
+#endif
         return;
     }
 

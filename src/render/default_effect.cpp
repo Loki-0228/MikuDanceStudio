@@ -3,6 +3,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/runtime_log.hpp"
 #include <atomic>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <thread>
@@ -134,6 +135,15 @@ bool QueueDefaultEffect(D3DRenderer* renderer, int resource) {
         const auto* bytes = data ? static_cast<const char*>(LockResource(data)) : nullptr;
         if (!bytes || !size) return false;
         work->source.assign(bytes, bytes + size);
+        // Full builds embed D3DX bytecode. Retain the asynchronous source path
+        // for legacy resources and builds without the resource generator.
+        const unsigned char compiledHeader[] = {0x01, 0x09, 0xff, 0xfe};
+        if (size >= sizeof compiledHeader && !std::memcmp(bytes, compiledHeader, sizeof compiledHeader)) {
+            work->binary = std::move(work->source);
+            work->result = S_OK;
+            work->done.store(true, std::memory_order_release);
+            SetEvent(work->completed);
+        }
         pending.emplace(renderer, std::move(work));
         runtime_log::Write("DEFAULT_EFFECT queued resource=%d", resource);
         return true;
@@ -144,7 +154,7 @@ bool QueueDefaultEffect(D3DRenderer* renderer, int resource) {
 
 void StartDefaultEffectCompilation(D3DRenderer* renderer) {
     const auto found = pending.find(renderer);
-    if (found == pending.end() || found->second->started) return;
+    if (found == pending.end() || found->second->started || found->second->done.load(std::memory_order_acquire)) return;
     const auto work = found->second;
     work->started = true;
     runtime_log::Write("DEFAULT_EFFECT compile begin resource=%d", work->resource);
@@ -162,15 +172,13 @@ void UpdateDefaultEffect(MMDApp* app) {
     const auto found = pending.find(renderer);
     if (found == pending.end()) return;
     const auto work = found->second;
-    // A command-line project or a fast import may arrive before the first
-    // empty frame. Wait before drawing objects so their shading never changes.
-    if (HasSceneObjects(app)) {
-        StartDefaultEffectCompilation(renderer);
-        if (!work->done.load(std::memory_order_acquire)) {
-            runtime_log::Write("DEFAULT_EFFECT waiting for scene objects");
-            WaitForSingleObject(work->completed, INFINITE);
-        }
-    }
+    // Empty scenes and disabled self-shadow need no effect. While source-only
+    // resources compile, interactive previews use the existing fixed renderer.
+    if (!HasSceneObjects(app) || !app->state.selfShadowEnabled || app->SelfShadowMode() <= 0) return;
+    StartDefaultEffectCompilation(renderer);
+    // An export must not write temporary fallback shading into its first frame.
+    if (app->RecordingWindow() && !work->done.load(std::memory_order_acquire))
+        WaitForSingleObject(work->completed, INFINITE);
     if (!work->done.load(std::memory_order_acquire)) return;
     // Resizing while compilation runs is safe: the worker owns no device
     // resources. Delay publication if the UI thread is recovering the device.

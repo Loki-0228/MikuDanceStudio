@@ -9,6 +9,7 @@
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/window_dpi_scope.hpp"
 
 namespace mikudancestudio {
 namespace { thread_local bool nativeBakePreview=false; }
@@ -40,13 +41,15 @@ void BakePreview::RenderNative(){
 RECT FramePresentationRect(MMDApp* app) {
     RECT result = app->ViewportRect();
     if (app->RecordingWindow() != nullptr) return result;
+    const HWND window = app->FullscreenMode() != 0 || !app->FloatingWindow()
+        ? app->MainWindow() : app->FloatingWindow();
+    const WindowDpiScope dpi(window);
     if (app->FullscreenMode() != 0) {
         GetClientRect(app->MainWindow(), &result);
         return result;
     }
 
     const bool floating = app->FloatingWindow() != nullptr;
-    const HWND window = floating ? app->FloatingWindow() : app->MainWindow();
     RECT client{};
     if (!GetClientRect(window, &client))
         return result;

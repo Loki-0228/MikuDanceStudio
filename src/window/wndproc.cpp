@@ -127,6 +127,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             (msg == WM_SYSCOMMAND && (wParam & 0xfff0) == SC_CLOSE)) return 0;
     }
     if (recent_projects::HandleMessage(app, msg, wParam, lParam)) return 0;
+    if (antialias::HandleMessage(app, msg, wParam, lParam)) return 0;
     if (HandleBottomPanelResize(app, msg, wParam, lParam)) return msg == WM_SETCURSOR ? TRUE : 0;
     if (msg == WM_INITMENU) plugin_menu::Refresh(app);
     if (msg == WM_INITMENUPOPUP) {

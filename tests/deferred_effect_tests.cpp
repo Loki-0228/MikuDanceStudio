@@ -24,6 +24,17 @@ HANDLE entered = nullptr, proceed = nullptr;
 DWORD uiThread = 0;
 std::atomic<unsigned> compilerCalls{0};
 std::atomic<bool> wrongThread{false}, failCompiler{false};
+HRSRC sourceResource = nullptr;
+HGLOBAL sourceHandle = nullptr;
+std::vector<char> effectSource;
+decltype(&SizeofResource) originalResourceSize = nullptr;
+decltype(&LockResource) originalResourceLock = nullptr;
+DWORD WINAPI SourceSize(HMODULE module, HRSRC resource) {
+    return resource == sourceResource ? DWORD(effectSource.size()) : originalResourceSize(module,resource);
+}
+LPVOID WINAPI SourceBytes(HGLOBAL resource) {
+    return resource == sourceHandle ? effectSource.data() : originalResourceLock(resource);
+}
 void Check(bool ok, const char* why) {
     if (!ok) { std::fprintf(stderr, "FAIL %s\n", why); std::exit(1); }
     std::printf("PASS %s\n", why);
@@ -130,7 +141,7 @@ std::vector<DWORD> DrawReceiver(IDirect3DDevice9* device, void* effect) {
 }
 }
 int wmain(int argc, wchar_t** argv) {
-    if(argc!=2) return 2;
+    if(argc<2 || argc>3) return 2;
     std::setvbuf(stdout,nullptr,_IONBF,0);
     const fs::path directory=fs::absolute(argv[1]); fs::create_directories(directory);
     entered=CreateEventW(nullptr,TRUE,FALSE,nullptr); proceed=CreateEventW(nullptr,TRUE,FALSE,nullptr);
@@ -153,29 +164,30 @@ int wmain(int argc, wchar_t** argv) {
     Check(!renderer->effect && compilerCalls==0,"window initialized before shader compilation starts");
     Check(renderer->postProcessEnabled && app->SelfShadowMode()==1,"deferred effect preserves shadow capability and preference");
     Frame(app);
-    Check(WaitForSingleObject(entered,3000)==WAIT_OBJECT_0,"first presentation starts compilation");
-    const auto start=GetTickCount64(); for(int i=0;i<3;++i) Frame(app);
-    Check(GetTickCount64()-start<1000 && !renderer->effect,"empty frames continue while compiler is held");
-    Check(!wrongThread,"compiler runs off the UI thread");
-    Check(PostDeviceReset(app),"reset device while CPU compiler is held");
-    Frame(app);
+    Check(!renderer->effect && compilerCalls==0,"empty scene does not initialize the default shader");
 #endif
     // Import an actual accessory while the compiler is still paused.
     const auto mesh=directory/L"triangle.x";
     std::ofstream(mesh) << "xof 0303txt 0032\nMesh tri {3;-5;5;0;,0;15;0;,5;5;0;;1;3;0,1,2;;MeshMaterialList {1;1;0;;Material {0.8;0.3;0.1;1.0;;1.0;0;0;0;;0;0;0;;}}}";
     LoadAccessoryFile(mesh.c_str());
     Check(app->ObjectSlot(0)!=nullptr,"import accessory");
-    std::thread release([] { Sleep(100); SetEvent(proceed); });
-    Frame(app); release.join();
-    Check(renderer->effect!=nullptr,"first object frame waits for complete material");
+    Frame(app);
+    Check(renderer->effect!=nullptr,"first object frame attaches embedded bytecode");
 #ifndef REQUIRE_MME
-    Check(compilerCalls==1,"compile exactly once");
+    Check(compilerCalls==0,"embedded default effect needs no runtime compilation");
 #endif
     for(int i=0;i<3;++i)Frame(app);
 #ifndef REQUIRE_MME
     Effect reference;
     void* errors=nullptr; auto& api=d3dx::Get();api.Load();
-    Hr(api.createEffectFromResA(renderer->device,nullptr,MAKEINTRESOURCEA(118),nullptr,nullptr,0,nullptr,&reference.value,&errors),"create synchronous reference");
+    Check(argc==3,"original shader source supplied for bytecode comparison");
+    std::ifstream source(argv[2],std::ios::binary);
+    effectSource.assign(std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>());
+    Check(!effectSource.empty(),"read original shader source");
+    const auto compilerEntry=reinterpret_cast<void*>(GetProcAddress(module,"D3DXCreateEffectCompiler"));
+    Check(MH_DisableHook(compilerEntry)==MH_OK,"exclude synchronous reference from worker gate");
+    Hr(api.createEffect(renderer->device,effectSource.data(),UINT(effectSource.size()),nullptr,nullptr,0,nullptr,&reference.value,&errors),"compile independent source reference");
+    Check(MH_EnableHook(compilerEntry)==MH_OK,"restore worker gate");
     if(errors)static_cast<IUnknown*>(errors)->Release();
     CompareShaders(reference.value,renderer->effect);
     const auto expected=DrawReceiver(renderer->device,reference.value);
@@ -184,11 +196,37 @@ int wmain(int argc, wchar_t** argv) {
     Check(actual[16*128+16]!=actual[110*128+110],"comparison includes lit and shadowed pixels");
     std::ofstream pixels(directory/L"receiver.rgba",std::ios::binary);pixels.write(reinterpret_cast<const char*>(actual.data()),actual.size()*4);
     reinterpret_cast<IUnknown*>(renderer->effect)->Release(); renderer->effect=nullptr;
+    // Emulate old source-only resources, preserving the real asynchronous path.
+    sourceResource=FindResourceW(nullptr,MAKEINTRESOURCEW(118),MAKEINTRESOURCEW(10));
+    sourceHandle=LoadResource(nullptr,sourceResource);
+    Hook(reinterpret_cast<void*>(&SizeofResource),reinterpret_cast<void*>(&SourceSize),reinterpret_cast<void**>(&originalResourceSize));
+    Hook(reinterpret_cast<void*>(&LockResource),reinterpret_cast<void*>(&SourceBytes),reinterpret_cast<void**>(&originalResourceLock));
+    Check(QueueDefaultEffect(renderer,118),"queue legacy source resource");
+    app->SelfShadowMode()=0;
+    Frame(app);
+    Check(compilerCalls==0,"disabled self-shadow does not start legacy shader compilation");
+    app->SelfShadowMode()=1;
+    Frame(app);
+    Check(WaitForSingleObject(entered,3000)==WAIT_OBJECT_0,"enabled scene starts legacy compiler");
+    const auto start=GetTickCount64();for(int i=0;i<3;++i)Frame(app);
+    Check(GetTickCount64()-start<1000 && !renderer->effect,"loaded scene keeps drawing while compiler is held");
+    Check(!wrongThread,"compiler runs off the UI thread");
+    Hr(FxOnLostDevice(reference.value),"release independent reference device state");
+    Check(PostDeviceReset(app),"reset device while CPU compiler is held");
+    Hr(FxOnResetDevice(reference.value),"restore independent reference device state");
+    SetEvent(proceed);
+    auto until=GetTickCount64()+30000;
+    while(!renderer->effect && GetTickCount64()<until){Frame(app);Sleep(16);}
+    Check(renderer->effect && compilerCalls==1,"completed legacy shader attaches automatically once");
+    CompareShaders(reference.value,renderer->effect);
+    reinterpret_cast<IUnknown*>(renderer->effect)->Release();renderer->effect=nullptr;
     ResetEvent(entered); ResetEvent(proceed); failCompiler=true;
     Check(QueueDefaultEffect(renderer,118),"queue compiler failure case");
     StartDefaultEffectCompilation(renderer);
     Check(WaitForSingleObject(entered,3000)==WAIT_OBJECT_0,"failure case reaches worker");
-    SetEvent(proceed); Frame(app);
+    SetEvent(proceed);
+    until=GetTickCount64()+3000;
+    while(renderer->postProcessEnabled && GetTickCount64()<until){Frame(app);Sleep(16);}
     Check(!renderer->effect && !renderer->postProcessEnabled && !app->SelfShadowMode(),
           "compiler failure disables unavailable self-shadow safely");
     Frame(app);

@@ -1397,6 +1397,7 @@ void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0
     }
 
     RefreshEffectMenuLanguage(app);
+    antialias::RefreshMenu(app);
     image_sequence::RefreshMenu(app);
     mmv4mms::RefreshLanguage(app);
     plugin_menu::Refresh(app);

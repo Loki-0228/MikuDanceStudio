@@ -29,6 +29,7 @@
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/window_dpi_scope.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "ui_control_layout.hpp"
 
@@ -91,6 +92,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     auto& s = *app;
 
     HWND separate = s.FloatingWindow();                           // 658744
+    const WindowDpiScope dpi(separate ? separate : s.MainWindow());
     HWND base;
     int inset;
     RECT rc;

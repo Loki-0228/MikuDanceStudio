@@ -34,6 +34,7 @@
 #include "mikudancestudio/effect_api.hpp"
 #include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/runtime_log.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -406,6 +407,7 @@ void DrawFrameOverlayBatches(MMDApp* app) {
 
 void RenderFrameScene(MMDApp* app) {
     MMD_PERF_SCOPE(Scene);
+    shadow_filter::Invalidate(app);
     D3DRenderer* sub = app->Renderer();
     if (sub == nullptr)
         return;
@@ -414,6 +416,7 @@ void RenderFrameScene(MMDApp* app) {
     if (device == nullptr)
         return;
 
+    antialias::PrepareFrame(app);
     UpdateDefaultEffect(app);
 
     for (int slot=0; slot<kModelSlotCount; ++slot)
@@ -461,6 +464,8 @@ void RenderFrameScene(MMDApp* app) {
 
     viewport_render_scale::FrameScope previewScale(app);
     if (!previewScale.Ready()) return;
+    antialias::FrameScope antialiasFrame(app);
+    if (!antialiasFrame.Ready()) return;
 
     DWORD clearFlags = D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER;
     if (sub->d3dInitialized != 0)
@@ -546,6 +551,11 @@ void RenderFrameScene(MMDApp* app) {
     // draws debug geometry or the dynamic overlay batches.
     if (app->RecordingWindow() != nullptr) {
         device->EndScene();
+        if (antialiasFrame.Complete()) {
+            if (!transparent && sub->multisampleAvailable == 0 && EnsureCaptureRenderTarget(app))
+                DownsampleCaptureSurface(app);
+            CaptureAccessoryScreenTexture(app, sub, device);
+        }
 
         DumpAccessoryScreenTexture(app, device);
         return;
@@ -578,7 +588,10 @@ void RenderFrameScene(MMDApp* app) {
         DrawFrameOverlayBatches(app);
         FillFramePresentationMargins(app, device);
     }
-    { MMD_PERF_SCOPE(EndScene); if (SUCCEEDED(device->EndScene())) previewScale.Complete(); }
+    { MMD_PERF_SCOPE(EndScene); if (SUCCEEDED(device->EndScene())) {
+        antialiasFrame.Complete();
+        previewScale.Complete();
+    } }
 
     DumpAccessoryScreenTexture(app, device);
 }

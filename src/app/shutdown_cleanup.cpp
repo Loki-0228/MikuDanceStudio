@@ -1,4 +1,5 @@
 #include "mikudancestudio/autosave.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/default_effect.hpp"
@@ -305,6 +306,7 @@ int NvapiStereoDestroyHandle(void* stereoHandle) {
 //     destroy the NVAPI stereo handle stored at +120020 (0x4CB4F0).
 // =========================================================================//
 void DisposeRenderSubsystem(D3DRenderer* sub) {
+    shadow_filter::ReleaseRenderer(sub, true);
     CancelDefaultEffectCompilation(sub);
     InvalidateTextureLookup();
 #if !MMD_ORIGINAL_PROFILE
@@ -439,6 +441,7 @@ void TeardownDShowGraphCoUninit(DShowRecorder* rec) {
 // =========================================================================//
 void ShutdownCleanup(MMDApp* app) {
     viewport_render_scale::Release(app);
+    antialias::Release(app);
     autosave::Shutdown();
     device_lost_wait::Forget(app);
     AbortPngMovRecording(app->Recorder());

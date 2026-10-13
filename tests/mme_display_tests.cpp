@@ -13,6 +13,9 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/skinning_backend.hpp"
+#include "mikudancestudio/runtime_log.hpp"
+#include "mikudancestudio/graphics_runtime.hpp"
+#include <atomic>
 #include <MinHook.h>
 #include <commctrl.h>
 #include <cstdio>
@@ -469,6 +472,14 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
     if (tick > 10) { std::puts("FAIL mapping dialog not found"); std::exit(2); }
 }
 #include "viewport_render_scale_scene_checks.hpp"
+#include "antialias_scene_checks.hpp"
+#include "antialias_startup_checks.hpp"
+ULONGLONG startupClock = 0;
+void StartupLog(const char* format, ...) noexcept {
+    std::printf("STARTUP %llu ", GetTickCount64() - startupClock);
+    va_list args; va_start(args, format); std::vprintf(format, args); va_end(args);
+    std::putchar('\n');
+}
 }
 int wmain(int argc, wchar_t** argv) {
     Check(argc >= 2 && argc <= 4, "model path supplied");
@@ -476,6 +487,12 @@ int wmain(int argc, wchar_t** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Check(MH_Initialize() == MH_OK, "initialize hidden-window hook");
+    const bool shaderStartup = argc == 3 && std::wcscmp(argv[2], L"--shader-startup") == 0;
+    if(shaderStartup)InstallAntialiasCompilerGate();
+    const bool startupProbe = argc == 3 && std::wcscmp(argv[2], L"--startup-probe") == 0;
+    startupClock = GetTickCount64();
+    if (startupProbe) Check(MH_CreateHook(&runtime_log::Write, &StartupLog, nullptr) == MH_OK,
+        "observe startup stages");
     Check(MH_CreateHook(&ShowWindow, &Hide, reinterpret_cast<void**>(&originalShow)) == MH_OK, "hook ShowWindow");
     Check(MH_CreateHook(&MessageBoxW, &Unexpected, nullptr) == MH_OK, "guard unexpected dialogs");
     Check(MH_CreateHook(&MessageBoxA, &UnexpectedAnsi, nullptr) == MH_OK, "guard legacy dialogs");
@@ -486,9 +503,34 @@ int wmain(int argc, wchar_t** argv) {
     auto* app = new MMDApp; g_Block = app;
     app->state = MMDAppState{}; app->InitDefaults();
     Check(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "start production host");
+    if(shaderStartup) {
+        CheckAntialiasStartup(app);
+        ShutdownCleanup(app);delete app;g_Block=nullptr;UnhookWindowsHookEx(guard);return 0;
+    }
+    if (startupProbe) {
+        StartupLog("UI ready");
+        app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app);
+        StartupLog("First empty frame");
+        LoadModelFile(app, argv[1], false);
+        StartupLog("Model loaded");
+        for (int i = 0; i < 20; ++i) {
+            const auto begin = GetTickCount64();
+            app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app);
+            StartupLog("Frame %d took %llu ms", i, GetTickCount64() - begin);
+            MSG msg{}; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&msg);
+            Sleep(16);
+        }
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (argc == 3 && std::wcscmp(argv[2], L"--antialias-preference") == 0) {
+        Check(app->antialiasing.algorithm == antialias::Algorithm::Fxaa && app->antialiasing.enabled,
+            "restart restores selected algorithm and enable state");
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
     const bool emdAutoload = argc == 3 && std::wcscmp(argv[2], L"--emd-autoload") == 0;
     const bool emmLoad = argc == 4 && std::wcscmp(argv[2], L"--emm-load") == 0;
-    if (emdAutoload || emmLoad || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
+    const bool aaScene = argc == 4 && std::wcscmp(argv[2], L"--antialias-scene") == 0;
+    if (emdAutoload || emmLoad || aaScene || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
         auto* compile = reinterpret_cast<void*>(GetProcAddress(d3dx::Get().module, "D3DXCreateEffectFromFileW"));
         Check(compile && MH_CreateHook(compile, &ObserveCompile, reinterpret_cast<void**>(&originalCompile)) == MH_OK &&
               MH_EnableHook(compile) == MH_OK, "observe actual MME effect compilation");
@@ -502,10 +544,18 @@ int wmain(int argc, wchar_t** argv) {
         const auto& adapters=skinning::AvailableAdapters();Check(!adapters.empty(),"GPU skinning adapter available");
         skinning::SetPreference({skinning::Mode::Adapter,adapters.front().id,adapters.front().name});
     }
-    LoadModelFile(app, argv[1], false);
+    if (aaScene) {
+        wcscpy_s(app->EnvFileName(), kPathFieldCapacity, argv[1]);
+        LoadSceneFile();
+        app->SelectedModel() = app->ModelSlot(0);
+        if (const wchar_t* effects = _wgetenv(L"MMS_AA_EMM")) NotifyEffectFileOpen(effects);
+    } else LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
     for (int i = 0; i < 3; ++i) { app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app); }
-
+    if (aaScene) {
+        CheckAntialiasScene(app, argv[3]);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
     if (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0) {
         CheckViewportRenderScale(app, argv[3]);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;

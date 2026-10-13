@@ -145,13 +145,15 @@ float MdsCubicWeight(float coordinate)
     return x<1.0f ? (4.0f-6.0f*x*x+3.0f*x*x*x)/6.0f : t*t*t/6.0f;
 }
 
-float MdsAdaptiveSplineDepth(float2 uv, float2 uvDx, float2 uvDy)
+float MdsBaseSplineDepth(float2 uv, float2 uvDx, float2 uvDy)
 {
     float2 size=MdsShadowMapSize.xy;
     // Define the reconstruction footprint in UV, then integrate the real
     // allocated texels. Increasing map density increases contributing taps,
     // rather than separating four sparse lobes or enlarging the UV footprint.
-    float2 scale=max(1.240967365f*size/4096.0f,1.0f);
+    float2 footprintSize=MdsShadowMapSize.z>0.0f ? MdsShadowMapSize.zw : size;
+    float2 scale=max(1.240967365f*footprintSize/4096.0f,1.0f)*size/footprintSize;
+    if(MdsShadowMapSize.z>0.0f) scale*=0.75f;
     float2 dx=uvDx*size,dy=uvDy*size;
     float pixelLimit=2.0f*min(size.x,size.y)/4096.0f;
     dx*=min(1.0f,pixelLimit/max(length(dx),0.00001f));
@@ -184,6 +186,63 @@ float MdsAdaptiveSplineDepth(float2 uv, float2 uvDx, float2 uvDy)
         }
     }
     return sum/max(normalization,0.00000001f);
+}
+
+
+float3 MdsContourDirection(float2 uv, float2 footprint)
+{
+    // Same physical +/- one-coarse-texel window, sampled as a 7x7 grid.
+    // Welford's online centered covariance removes a common affine slope
+    // without subtracting two large squared-gradient sums.
+    float2 mean=float2(0,0);
+    float xx=0.0f,yy=0.0f,xy=0.0f,count=0.0f;
+    float2 stride=footprint/3.0f;
+    [loop] for(int y=0;y<6;++y) {
+        [loop] for(int x=0;x<6;++x) {
+            float2 origin=uv-footprint+float2(x,y)*stride;
+            float a=tex2Dlod(DefSampler,float4(origin,0,0)).r;
+            float b=tex2Dlod(DefSampler,float4(origin+float2(stride.x,0),0,0)).r;
+            float c=tex2Dlod(DefSampler,float4(origin+float2(0,stride.y),0,0)).r;
+            float d=tex2Dlod(DefSampler,float4(origin+stride,0,0)).r;
+            float2 g=0.5f*float2(b-a+d-c,c-a+d-b);
+            count+=1.0f;
+            float2 delta=g-mean;
+            mean+=delta/count;
+            float2 centered=g-mean;
+            xx+=delta.x*centered.x;
+            yy+=delta.y*centered.y;
+            xy+=delta.x*centered.y;
+        }
+    }
+    xx=max(xx,0.0f);yy=max(yy,0.0f);
+    float energy=xx+yy;
+    float gap=sqrt((xx-yy)*(xx-yy)+4.0f*xy*xy);
+    float coherence=gap/max(energy,1.0e-18f);
+    float confidence=saturate((coherence-0.35f)/0.45f)*saturate((energy-1.0e-12f)/1.0e-10f);
+    float2 normal=float2(2.0f*xy,yy-xx+gap);
+    if(dot(normal,normal)<1.0e-24f) normal=float2(1,0);
+    normal*=rsqrt(max(dot(normal,normal),1.0e-24f));
+    return float3(normal,confidence);
+}
+
+float MdsAdaptiveSplineDepth(float2 uv, float2 uvDx, float2 uvDy)
+{
+    if(MdsShadowMapSize.z<=0.0f) return MdsBaseSplineDepth(uv,uvDx,uvDy);
+    float2 size=MdsShadowMapSize.xy,coarse=MdsShadowMapSize.zw;
+    float3 direction=MdsContourDirection(uv,1.0f/coarse);
+    if(direction.z<0.05f) return MdsBaseSplineDepth(uv,uvDx,uvDy);
+    float2 tangent=float2(-direction.y,direction.x);
+    float base=max(1.240967365f*coarse.x/4096.0f,1.0f)*size.x/coarse.x;
+    // Cubic B-spline variance is scale^2/3. The five-point binomial
+    // [1,4,6,4,1]/16 has variance step^2. Add only the missing tangent
+    // variance between the 0.75-scale v6 kernel and the full-scale v5 kernel.
+    float step=base*sqrt((1.0f-0.75f*0.75f)*direction.z/3.0f);
+    float sum=0.0f;
+    [loop] for(int k=-2;k<=2;++k) {
+        float weight=abs(k)==2?1.0f:(k==0?6.0f:4.0f);
+        sum+=weight*MdsBaseSplineDepth(uv+tangent*(step*k)/size,uvDx,uvDy);
+    }
+    return sum/16.0f;
 }
 
 float MdsShadowVisibility(float3 projected, float2 uv, float3 normal)

@@ -14,6 +14,7 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/window_dpi_scope.hpp"
 
 namespace mikudancestudio {
 void PicBgOverlayRefresh(MMDApp* app);  // VA 0x00417130
@@ -182,6 +183,7 @@ void RefreshMainWindowViewport(MMDApp* app) {  // was Sub42C810
     if (hwnd == nullptr)
         return;
 
+    const WindowDpiScope dpi(hwnd);
     GetClientRect(hwnd, &view);                         // 0x42C82D/85F
 
     // Fullscreen uses the whole main-window client area. Do not reserve the
@@ -302,6 +304,7 @@ void RefreshSeparateWindowViewport(MMDApp* app) {  // was Sub4290F0, 0x4290F0..0
     HWND target = fullScreen
         ? app->MainWindow()
         : s.FloatingWindow();
+    const WindowDpiScope dpi(target);
     if (target == nullptr || !GetClientRect(target, &view))
         return;
 

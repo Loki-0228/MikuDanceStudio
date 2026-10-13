@@ -292,6 +292,7 @@ add_library(mikudancestudio_core STATIC
     src/render/accessory.cpp
     src/render/model_renderers.cpp
     src/render/adaptive_shadow.cpp
+    src/render/shadow_filter.cpp
     src/exports/effect_display.cpp
     src/render/transparent_geometry.cpp
     src/render/transparent_peeling.cpp
@@ -324,6 +325,8 @@ add_library(mikudancestudio_core STATIC
     src/window/autosave_dialog.cpp
     src/window/viewport_render_scale_dialog.cpp
     src/render/viewport_render_scale.cpp
+    src/render/antialias.cpp
+    src/window/antialias_menu.cpp
     src/app/viewport_corner_settings.cpp
     src/window/viewport_corner_menu.cpp
     src/window/physics_bake_dialog.cpp
@@ -749,9 +752,17 @@ endif()
 # exactly like the original export table at RVA 0x00141328.
 # ---------------------------------------------------------------------------
 # Keep compiled dialog resources in sync with their editable templates.
+option(MIKUDANCESTUDIO_PRECOMPILE_EFFECTS
+    "Precompile full-profile default effects using the installed D3DX9 runtime" ON)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     set(MIKUDANCESTUDIO_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/resources")
+    set(MIKUDANCESTUDIO_EFFECT_RESOURCE_FLAGS)
+    if(MIKUDANCESTUDIO_PROFILE STREQUAL "full" AND MIKUDANCESTUDIO_PRECOMPILE_EFFECTS)
+        # Keep the MME resource entry point, but remove HLSL compilation from
+        # application startup. The original-compatible profile stays verbatim.
+        list(APPEND MIKUDANCESTUDIO_EFFECT_RESOURCE_FLAGS --compile-effects)
+    endif()
     file(GLOB_RECURSE MIKUDANCESTUDIO_RESOURCE_INPUTS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/res/templates/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/res/assets/*")
@@ -760,8 +771,12 @@ if(Python3_Interpreter_FOUND)
                "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources_x64.res"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_resources.py" gen
                 --output-dir "${MIKUDANCESTUDIO_RESOURCE_DIR}" --profile "${MIKUDANCESTUDIO_PROFILE}"
+                ${MIKUDANCESTUDIO_EFFECT_RESOURCE_FLAGS}
+        COMMAND "${CMAKE_COMMAND}" -E touch
+                "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources.res"
+                "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources_x64.res"
         DEPENDS ${MIKUDANCESTUDIO_RESOURCE_INPUTS}
-                scripts/gen_resources.py scripts/dialog_rc.py
+                scripts/gen_resources.py scripts/dialog_rc.py scripts/compile_effect.py
                 res/mmd_manifest.xml res/mmd_manifest_x64.xml
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Regenerate embedded dialog and menu resources"
@@ -1306,6 +1321,14 @@ if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-shadow-filter/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-shadow-filter/symbols/$<CONFIG>"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-shadow-filter/$<CONFIG>")
+    add_executable(shadow_filter_tests EXCLUDE_FROM_ALL tests/shadow_filter_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(shadow_filter_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(shadow_filter_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(shadow_filter_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/shadow-filter/lib/$<CONFIG>"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/shadow-filter/symbols/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/shadow-filter/$<CONFIG>")
     add_executable(mme_reassign_tests EXCLUDE_FROM_ALL tests/mme_reassign_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_options(mme_reassign_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
@@ -1345,4 +1368,19 @@ if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932" AND MIKUDANCESTUDIO_BUILD_UI_TESTS)
     set_tests_properties(original_profile_ui PROPERTIES TIMEOUT 45
         WORKING_DIRECTORY "${MMD_ORIGINAL_UI_RUNTIME}"
         ENVIRONMENT "LOCALAPPDATA=${MMD_ORIGINAL_UI_RUNTIME}/Local;APPDATA=${MMD_ORIGINAL_UI_RUNTIME}/Roaming")
+endif()
+
+if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(export_viewport_tests EXCLUDE_FROM_ALL tests/export_viewport_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(export_viewport_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(export_viewport_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(export_viewport_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/export-viewport/$<CONFIG>")
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME export_viewport_regressions
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/export_viewport_runner.py"
+                "$<TARGET_FILE:export_viewport_tests>" "${CMAKE_BINARY_DIR}/tests/export-viewport-results")
+        set_tests_properties(export_viewport_regressions PROPERTIES TIMEOUT 330 RUN_SERIAL TRUE)
+    endif()
 endif()

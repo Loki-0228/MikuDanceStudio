@@ -18,6 +18,7 @@
 // ===========================================================================
 #pragma once
 #include "mikudancestudio/build_profile.hpp"
+#include "mikudancestudio/antialias.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -1519,6 +1520,7 @@ public:
 
 
     // Preview preferences never change PMM or export dimensions.
+    antialias::Settings antialiasing;
     struct ViewportRenderSettings {
         bool automatic = true;
         double percent = 100.0;

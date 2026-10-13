@@ -46,6 +46,7 @@
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "mikudancestudio/window_dpi_scope.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/recording_preview.hpp"
 
@@ -449,6 +450,7 @@ void ApplyFullscreenWindowState(MMDApp* app, bool exclusive) {
     const HWND main = static_cast<HWND>(s.state.hwnd);
     if (main == nullptr)
         return;
+    const WindowDpiScope dpi(main);
 
     if (s.FullscreenMode() != 0) {
         if (saved.window == main)

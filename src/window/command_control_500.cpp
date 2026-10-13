@@ -160,6 +160,7 @@
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/adaptive_shadow.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/build_profile.hpp"
 
 namespace mikudancestudio {
@@ -757,6 +758,7 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
     case panel::kShadowFilterCheckbox: {
         app->ShadowFilterEnhanced() = SendMessageW(GetDlgItem(hwnd, panel::kShadowFilterCheckbox),
             BM_GETCHECK, 0, 0) == BST_CHECKED;
+        shadow_filter::Invalidate(app);
         SaveShadowResolutionPreference(app);
         InvalidateRect(hwnd, nullptr, FALSE);
         PostViewRefresh(app);

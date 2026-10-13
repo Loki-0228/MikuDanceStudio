@@ -1,4 +1,5 @@
 #include "mikudancestudio/mmv4mms.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
@@ -54,6 +55,7 @@ void ReleaseSubSlot(ComPtr& slot) {
 bool PostDeviceReset(MMDApp* app) {
     device_lost_wait::ResetScope recovery(app);
     viewport_render_scale::Release(app);
+    antialias::Release(app);
     ReleaseTransparentCapture(app);
     mmv4mms::DeviceLost();
     native_mesh::DeviceLost();
@@ -64,6 +66,7 @@ bool PostDeviceReset(MMDApp* app) {
     ReleaseSubSlot(app->CaptureSystemSurface());                  // 0x440E28
 
     D3DRenderer* r = app->Renderer();
+    shadow_filter::ReleaseRenderer(r);
     if (r == nullptr)
         return false;
     // The capture render target is not rebuilt here; recording consumers
@@ -110,6 +113,7 @@ bool PostDeviceReset(MMDApp* app) {
     device->SetRenderState(                                       // 0x440FAD
         static_cast<D3DRENDERSTATETYPE>(0xA1),
         (menuState & 8) != 0 ? 1 : 0);
+    antialias::ApplyRenderState(app);
 
     if (r->effect != nullptr) {
         const HRESULT effectReset = d3dx::FxOnResetDevice(r->effect);

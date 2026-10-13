@@ -1,4 +1,5 @@
 #include "mikudancestudio/transparent_capture.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/deformed_mesh_capture.hpp"
 #include "mikudancestudio/perf_timing.hpp"
@@ -1325,7 +1326,7 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
                     device->SetTexture(0,
                         mdl::Mdl(model)->physicsMode == 2 && (record.flags & 8) == 0
                             ? sub->spriteTexture
-                            : sub->hdrTexture);
+                            : shadow_filter::VisibleTexture(app));
                     FxBeginPass(effect, 0);
                     // Raise the reference after the pass installed its state
                     // block, so the built-in effect path drops the soft edge
@@ -1727,7 +1728,7 @@ bool RenderNativeOrderedAlpha(MMDApp* app, bool effectFrame) {
         if (draw.selection.indexCount) draw.selection.buffer = scratch.buffer;
         app->ActiveRenderObject() = draw.model;
         app->ActiveRenderPass() = draw.effect ? AccessoryRenderPass::Effect : AccessoryRenderPass::FixedFunction;
-        if (draw.effect) sub->device->SetTexture(0, sub->hdrTexture);
+        if (draw.effect) sub->device->SetTexture(0, shadow_filter::VisibleTexture(app));
         DrawModelMaterials(app, draw.model, draw.effect, false, ModelAlphaPass::Translucent, &draw.selection);
     }
     timing.drawMs += timing.Elapsed(drawStart);
@@ -2063,7 +2064,7 @@ bool RenderSplitOrderedAlphaImpl(MMDApp* app, bool effectFrame) {
         command.selection.vertexStride = 96;
         app->ActiveRenderObject() = command.model;
         app->ActiveRenderPass() = command.effect ? AccessoryRenderPass::Effect : AccessoryRenderPass::FixedFunction;
-        if (command.effect) device->SetTexture(0, sub->hdrTexture);
+        if (command.effect) device->SetTexture(0, shadow_filter::VisibleTexture(app));
         DrawModelMaterials(app, command.model, command.effect, false, ModelAlphaPass::Translucent, &command.selection);
         first = end;
     }
@@ -2557,16 +2558,7 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
 #if !MMD_ORIGINAL_PROFILE
     // Spline reconstruction needs the actual allocation, including adaptive
     // resizing. The default branch retains the native linear-depth ramp.
-    FxSetInt(effect, "MdsShadowFilterEnhanced", app->ShadowFilterEnhanced() ? 1 : 0);
-    if (sub->hdrTexture != nullptr) {
-        D3DSURFACE_DESC shadowDesc{};
-        if (SUCCEEDED(sub->hdrTexture->GetLevelDesc(0, &shadowDesc))) {
-            const float shadowSize[4] = {
-                static_cast<float>(shadowDesc.Width),
-                static_cast<float>(shadowDesc.Height), 0.0f, 0.0f};
-            FxSetFloatArray(effect, "MdsShadowMapSize", shadowSize, 4);
-        }
-    }
+    shadow_filter::ConfigureEffect(app, effect);
 #endif
     FxSetMatrix(effect, "matWorldViewProj",
                 reinterpret_cast<const Matrix*>(&app->WorldViewProjection()));
@@ -2602,7 +2594,7 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
         app->WireframeRenderingEnabled() == 0 ? D3DFILL_SOLID
                                               : D3DFILL_WIREFRAME);
     device->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
-    device->SetTexture(0, sub->hdrTexture);
+    device->SetTexture(0, shadow_filter::VisibleTexture(app));
     FxSetMatrix(effect, "matWorldViewProj",
                 reinterpret_cast<const Matrix*>(&app->WorldViewProjection()));
     FxSetMatrix(effect, "matLightViewProj",
@@ -2651,7 +2643,7 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
                     alphaPass == ModelAlphaPass::Opaque;
                 if (drawThisPass && mdl::Mdl(model)->toonFlag != 0) {
                     app->ActiveRenderPass() = AccessoryRenderPass::Effect;
-                    device->SetTexture(0, sub->hdrTexture);
+                    device->SetTexture(0, shadow_filter::VisibleTexture(app));
                     DrawModelMaterials(app, model, true, false, drawPass);
                 } else if (drawThisPass) {
                     app->ActiveRenderPass() = AccessoryRenderPass::FixedFunction;
@@ -2710,6 +2702,7 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
 }
 
 static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool checked) {   // 0x426CD0
+    shadow_filter::Invalidate(app);
     MMD_PERF_SCOPE(ShadowMap);
     D3DRenderer* sub = app->Renderer();
     auto* device = sub->device;
@@ -2899,6 +2892,44 @@ static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool c
         }
         if(FAILED(FxEnd(effect)))succeeded=false;
     }
+#if !MMD_ORIGINAL_PROFILE
+    // Preserve the native map for external effects. The optional finer map
+    // uses the same projection and casters, only for the built-in filter.
+    if (auto* fine = shadow_filter::Prepare(app, succeeded)) {
+        shadow_filter::TargetScope scope;
+        bool auxiliary = SUCCEEDED(scope.Begin(device, *fine));
+        const auto objectBefore = app->ActiveRenderObject();
+        const auto passBefore = app->ActiveRenderPass();
+        UINT finePasses = 0;
+        if (auxiliary) {
+            auxiliary = SUCCEEDED(FxSetTechnique(effect, "ZValuePlotTec"));
+            auxiliary = auxiliary && SUCCEEDED(FxBegin(effect, &finePasses));
+            if (auxiliary) {
+                app->ActiveRenderPass() = AccessoryRenderPass::ModelEffect;
+                if (!RenderAccessoriesShadowChecked(app)) auxiliary = false;
+                if (FAILED(FxSetMatrix(effect, "matLightViewProj", &shadowMatrix))) auxiliary = false;
+                Matrix fineWvp;
+                Multiply(&worldView, reinterpret_cast<const Matrix*>(frameMatrix), &view);
+                Multiply(&fineWvp, &worldView, &projection);
+                if (FAILED(FxSetMatrix(effect, "matWorldViewProj", &fineWvp))) auxiliary = false;
+                for (int slot = 0; slot < kModelSlotCount; ++slot) {
+                    auto* model = native_mesh::RenderModel(app->ModelSlot(slot));
+                    if (!model || mdl::Mdl(model)->toonFlag == 0) continue;
+                    app->ActiveRenderObject() = model;
+                    DrawModelMaterials(app, model, true, true, ModelAlphaPass::Original, nullptr, &auxiliary);
+                }
+                if (FAILED(FxEnd(effect))) auxiliary = false;
+            }
+        }
+        app->ActiveRenderObject() = objectBefore;
+        app->ActiveRenderPass() = passBefore;
+        if (FAILED(scope.Restore())) auxiliary = false;
+        if (FAILED(FxSetMatrix(effect, "matLightViewProj", &shadowMatrix))) auxiliary = false;
+        if (FAILED(FxSetMatrix(effect, "matWorldViewProj",
+            reinterpret_cast<const Matrix*>(&app->WorldViewProjection())))) auxiliary = false;
+        shadow_filter::MarkRendered(app, auxiliary && succeeded);
+    }
+#endif
     app->ActiveRenderPass() = AccessoryRenderPass::None;
     device->SetVertexShader(nullptr);
     device->SetPixelShader(nullptr);

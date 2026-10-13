@@ -191,7 +191,7 @@ def render_res(records):
     return bytes(out)
 
 
-def build_records(manifest, profile="full"):
+def build_records(manifest, profile="full", compile_effects=False):
     ico_images, ico_group = load_ico_images(os.path.join(RES, APP_ICON))
     images = {rid: blob for rid, blob in ico_images}
     tmpl = templates()
@@ -209,6 +209,9 @@ def build_records(manifest, profile="full"):
                 blob = ico_group
             else:
                 blob = open(path, "rb").read()
+        if compile_effects and t == RT_RCDATA and n in (117, 118):
+            from compile_effect import compile_effect
+            blob = compile_effect(blob)
         records.append((t, n, lang, blob))
     return records
 
@@ -280,14 +283,14 @@ def cmd_init():
     print(f"init: wrote res/assets/, res/mmd_manifest_x64.xml")
 
 
-def run_gen(verify_only=False, output_dir=None, profile="full"):
+def run_gen(verify_only=False, output_dir=None, profile="full", compile_effects=False):
     output_dir = output_dir or RES
     if not verify_only:
         os.makedirs(output_dir, exist_ok=True)
     ok = True
     for manifest, out in (("mmd_manifest.xml", "gen_resources.res"),
                           ("mmd_manifest_x64.xml", "gen_resources_x64.res")):
-        want = render_res(build_records(manifest, profile))
+        want = render_res(build_records(manifest, profile, compile_effects))
         out_path = os.path.join(output_dir, out)
         try:
             with open(out_path, "rb") as existing:
@@ -316,12 +319,14 @@ def main():
     ap.add_argument("cmd", choices=["init", "gen", "verify"])
     ap.add_argument("--output-dir", help="Generated resource directory; defaults to res/")
     ap.add_argument("--profile", choices=["full", "mmd932"], default="full")
+    ap.add_argument("--compile-effects", action="store_true", help="Embed precompiled D3DX9 effects")
     args = ap.parse_args()
     if args.cmd == "init":
         cmd_init()
         return 0
     return 0 if run_gen(verify_only=(args.cmd == "verify"),
-                       output_dir=args.output_dir, profile=args.profile) else 1
+                       output_dir=args.output_dir, profile=args.profile,
+                       compile_effects=args.compile_effects) else 1
 
 
 if __name__ == "__main__":
