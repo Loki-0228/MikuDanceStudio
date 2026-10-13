@@ -25,7 +25,8 @@ void CheckAntialiasStability(MMDApp* app, const wchar_t* directory) {
         app->CameraPositionX()=app->ViewOffsetX()=0;app->CameraPositionY()=app->ViewOffsetY()=10;app->CameraPositionZ()=0;
         app->CameraDistance()=-42;app->CameraPitch()=0;app->CameraYaw()=0;app->CameraRoll()=0;
         app->CurrentFrame()=300;SeekSelectedModelToCurrentFrame(app);
-        app->state.optflag[0]=1; // Hide editing bone markers in the dance preview.
+        app->CameraMode()=1; // Hide editing markers in the camera preview.
+        app->ViewOffsetY()=0; // Camera focus already supplies the vertical offset.
         const auto scene=captureDirectory/L"miku-dance.pmm";
         wcscpy_s(app->EnvFileName(),256,scene.c_str());SaveSceneFile(app);
         std::printf("DANCE fixture model=%s motion=%ls frozen_frame=300\n",mdl::Mdl(app->SelectedModel())->name,motionPath);
