@@ -9,16 +9,26 @@
 namespace mikudancestudio {
 class MMDApp;
 namespace antialias {
-enum class Algorithm : unsigned { MmdOriginal, Msaa2, Msaa4, Msaa8, Fxaa, Taa, Count };
+// Value 6 was the original HIGH-preset SMAA 1x preference; keep it stable.
+enum class Algorithm : unsigned {
+    MmdOriginal, Msaa2, Msaa4, Msaa8, Fxaa, Taa, Smaa,
+    SmaaStandard, SmaaT2xStandard, SmaaT2xEnhanced, Count
+};
 inline constexpr unsigned kFirstCommand = 34900;
+inline constexpr unsigned kSmaaCommand = 34932;
 struct Settings {
     Algorithm algorithm = Algorithm::MmdOriginal;
+    Algorithm lastSmaaAlgorithm = Algorithm::Smaa;
     bool enabled = true;
     bool initialized = false;
+    bool projectOverride = false; // Retain loaded preferences until device creation.
     unsigned originalSamples = 0, originalQuality = 0;
 };
 void Initialize(MMDApp* app);
+void ApplyProjectSettings(MMDApp* app, bool enabled, Algorithm algorithm, Algorithm lastSmaa);
+void ReloadUserSettings(MMDApp* app);
 void RefreshMenu(MMDApp* app);
+const wchar_t* DialogTitle(MMDApp* app);
 bool Supported(MMDApp* app, Algorithm algorithm);
 bool Select(MMDApp* app, Algorithm algorithm, std::wstring& error);
 bool Toggle(MMDApp* app, std::wstring& error);
@@ -27,6 +37,10 @@ void PrepareFrame(MMDApp* app);
 // True while an enabled post-process algorithm is preparing its first frame.
 bool Initializing(MMDApp* app);
 unsigned AccumulatedSamples(MMDApp* app);
+// Number of actual scene submissions needed for the selected temporal mode.
+// A failed motion pass reduces this to one until a later submission succeeds.
+unsigned RequiredSamples(MMDApp* app);
+void ResetHistory(MMDApp* app);
 void Release(MMDApp* app);
 bool HandleMessage(MMDApp* app, UINT message, WPARAM wp, LPARAM lp);
 LRESULT CALLBACK MenuFilter(int code, WPARAM wp, LPARAM lp);

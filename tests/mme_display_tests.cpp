@@ -15,6 +15,8 @@
 #include "mikudancestudio/skinning_backend.hpp"
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/graphics_runtime.hpp"
+#include "mikudancestudio/antialias_motion.hpp"
+#include "../src/render/antialias_shader.hpp"
 #include <atomic>
 #include <MinHook.h>
 #include <commctrl.h>

@@ -10,6 +10,10 @@
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
+#include "mikudancestudio/antialias.hpp"
+#include "mikudancestudio/antialias_motion.hpp"
+#include "mikudancestudio/global_key_layout.hpp"
+#include "mikudancestudio/runtime_log.hpp"
 #include "../src/window/image_sequence_dialog.hpp"
 #include <MinHook.h>
 #include <filesystem>
@@ -17,6 +21,8 @@
 #include <limits>
 #include <vector>
 #include <cstdio>
+#include <cmath>
+#include <cstring>
 
 using namespace mikudancestudio;
 namespace seq = mikudancestudio::image_sequence;
@@ -183,6 +189,7 @@ void RunExport(MMDApp* app, seq::Options o, bool cancel = false) {
     std::printf("PASS format=%ls fps=%.3f range=%d..%d images=%llu cancel=%d\n",
         seq::kFormats[o.format].name, o.fps, o.start, o.end, static_cast<unsigned long long>(files), cancel);
 }
+#include "antialias_image_sequence_checks.hpp"
 }
 int wmain(int argc, wchar_t** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -237,6 +244,7 @@ int wmain(int argc, wchar_t** argv) {
     seq::Abort(app);
     o.prefix = L"incomplete_"; Check(seq::Prepare(app, o, error), "prepare incomplete sequence");
     Check(!seq::Finish(app, true, error) && !error.empty() && !seq::Active(app), "incomplete sequence cannot report success");
+    CheckTemporalImageSequence(app);
     for (const auto& entry : fs::directory_iterator(output)) Check(entry.path().extension() != L".tmp", "no temporary frames remain");
     ShutdownCleanup(app); g_Block = nullptr; delete app; UnhookWindowsHookEx(hide);
     std::printf("PASS image-sequence checks=%u\n", checks);

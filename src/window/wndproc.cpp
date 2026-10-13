@@ -1,5 +1,6 @@
 #include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
+#include "mikudancestudio/nvidia_antialias_menu.hpp"
 // ===========================================================================
 // VA 0x004C3A10 - MainWndProc  (original: sub_4C3A10, 0x8A6 bytes)
 // ===========================================================================
@@ -128,6 +129,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     }
     if (recent_projects::HandleMessage(app, msg, wParam, lParam)) return 0;
     if (antialias::HandleMessage(app, msg, wParam, lParam)) return 0;
+    if (nvidia_antialias_menu::HandleMessage(app, msg, wParam, lParam)) return 0;
     if (HandleBottomPanelResize(app, msg, wParam, lParam)) return msg == WM_SETCURSOR ? TRUE : 0;
     if (msg == WM_INITMENU) plugin_menu::Refresh(app);
     if (msg == WM_INITMENUPOPUP) {

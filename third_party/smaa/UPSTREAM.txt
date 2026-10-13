@@ -1,0 +1,3 @@
+https://github.com/iryoku/smaa
+Commit: 71c806a838bdd7d517df19192a20f0c61b3ca29d
+Files are unmodified upstream files. SMAA.hlsl is embedded at build time.

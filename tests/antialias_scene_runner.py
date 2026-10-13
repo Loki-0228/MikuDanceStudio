@@ -38,7 +38,8 @@ def main():
     env = os.environ.copy()
     env.update(LOCALAPPDATA=str(output / "Local"), APPDATA=str(output / "Roaming"),
                MIKUDANCESTUDIO_AUTOSAVE_CONFIG=str(output / "autosave.ini"),
-               MMS_ANTIALIAS_CONFIG=str(output / "antialias.ini"), MMS_AA_EMM=str(mapping))
+               MMS_ANTIALIAS_CONFIG=str(output / "antialias.ini"), MMS_AA_EMM=str(mapping),
+               MMS_NVIDIA_AA_FIX="0")
     if args.missing_dx12:
         env["MMS_SURFACE_MISSING_DX12"] = "1"
     with (output / "result.log").open("wb") as log:

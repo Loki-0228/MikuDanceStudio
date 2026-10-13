@@ -1519,7 +1519,8 @@ public:
     }
 
 
-    // Preview preferences never change PMM or export dimensions.
+    // Anti-aliasing is saved in the PMM extension; preview scale leaves export
+    // dimensions unchanged.
     antialias::Settings antialiasing;
     struct ViewportRenderSettings {
         bool automatic = true;

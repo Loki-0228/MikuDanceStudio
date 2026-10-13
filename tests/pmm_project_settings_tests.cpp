@@ -151,6 +151,61 @@ ext::Document FixtureRecords(const std::vector<std::uint8_t>* toggle,
     if (toggle != nullptr) ext::Set(document, kRetiredToggleKey, *toggle);
     return document;
 }
+
+void AntialiasRoundtrip(MMDApp& app, const std::filesystem::path& directory) {
+    using A = antialias::Algorithm;
+    const auto source = directory / L"antialias-source.pmm";
+    const auto fixture = directory / L"antialias-future.pmm";
+    const auto saved = directory / L"antialias-saved.pmm";
+    for (unsigned mode = 0; mode < static_cast<unsigned>(A::Count); ++mode) {
+        settings::Reset(app);
+        const auto last = mode >= unsigned(A::Smaa) ? static_cast<A>(mode) : A::SmaaT2xEnhanced;
+        antialias::ApplyProjectSettings(&app, false, static_cast<A>(mode), last);
+        settings::AntialiasChanged(app);
+        Save(app, source);
+        const auto document = Read(source);
+        Check(ext::Find(document, settings::kAntialiasKey)->value ==
+            std::vector<std::uint8_t>{0, std::uint8_t(mode), std::uint8_t(last)},
+            "PMM stores enabled, algorithm and remembered SMAA in three stable bytes");
+        antialias::ApplyProjectSettings(&app, false, A::MmdOriginal, A::Smaa);
+        Load(app, source);
+        Check(!app.antialiasing.enabled && app.antialiasing.algorithm == static_cast<A>(mode) &&
+            app.antialiasing.lastSmaaAlgorithm == last, "all AA choices survive real PMM save/load");
+    }
+    antialias::ApplyProjectSettings(&app, true, A::Fxaa, A::Smaa);
+    settings::AntialiasChanged(app); Save(app, source); Load(app, source);
+    Check(app.antialiasing.enabled && app.antialiasing.algorithm == A::Fxaa,
+        "PMM restores the enabled AA state");
+    wchar_t preference[32768]{};
+    GetEnvironmentVariableW(L"MMS_ANTIALIAS_CONFIG", preference, 32768);
+    Check(GetPrivateProfileIntW(L"Antialias", L"Algorithm", 999, preference) == 4 &&
+        GetPrivateProfileIntW(L"Antialias", L"Enabled", 999, preference) == 0,
+        "loading and saving project AA does not overwrite machine defaults");
+
+    // Hardware fallback is runtime state and must not rewrite the saved request.
+    antialias::ApplyProjectSettings(&app, false, A::SmaaT2xEnhanced, A::SmaaT2xEnhanced);
+    settings::AntialiasChanged(app); Save(app, source); Load(app, source);
+    antialias::ApplyProjectSettings(&app, false, A::Fxaa, A::Smaa);
+    Save(app, saved);
+    Check(ext::Find(Read(saved), settings::kAntialiasKey)->value ==
+        std::vector<std::uint8_t>{0, 9, 9}, "temporary fallback retains the project's requested mode");
+
+    std::uint64_t boundary = 0; auto document = Read(source, &boundary);
+    for (const std::vector<std::uint8_t>& future : {
+        std::vector<std::uint8_t>{1,250,9}, {1,9,99}, {1,9}, {2,9,9}}) {
+        ext::Set(document, settings::kAntialiasKey, future);
+        WriteFixture(source, fixture, boundary, document);
+        Load(app, fixture); Save(app, saved);
+        Check(ext::Find(Read(saved), settings::kAntialiasKey)->value == future,
+            "unknown AA values and lengths pass through unchanged");
+    }
+    std::wstring error;
+    Check(antialias::Select(&app, A::SmaaStandard, error), "explicit user AA selection succeeds");
+    Save(app, saved);
+    Check(ext::Find(Read(saved), settings::kAntialiasKey)->value ==
+        std::vector<std::uint8_t>{0,7,7}, "explicit selection replaces only the unknown AA record");
+    std::puts("PASS PMM anti-aliasing choices, local defaults, unknown data and fallback preservation");
+}
 }
 
 int wmain(int argc, wchar_t** argv) {
@@ -160,6 +215,12 @@ int wmain(int argc, wchar_t** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     const auto directory = std::filesystem::absolute(argv[1]);
     std::filesystem::create_directories(directory);
+    const auto aaPreference = directory / L"antialias-user.ini";
+    SetEnvironmentVariableW(L"MMS_ANTIALIAS_CONFIG", aaPreference.c_str());
+    SetEnvironmentVariableW(L"MMS_NVIDIA_AA_FIX", L"0");
+    WritePrivateProfileStringW(L"Antialias", L"Algorithm", L"4", aaPreference.c_str());
+    WritePrivateProfileStringW(L"Antialias", L"Enabled", L"0", aaPreference.c_str());
+    WritePrivateProfileStringW(L"Antialias", L"LastSmaaAlgorithm", L"6", aaPreference.c_str());
     MatchTypes();
     auto* app = new MMDApp(); g_Block = app;
     app->state = MMDAppState{}; app->InitDefaults();
@@ -682,6 +743,7 @@ int wmain(int argc, wchar_t** argv) {
     Check(skinning::GetPreference().mode == skinning::Mode::Cpu,
           "a corrupt extension does not change the per-user processor settings");
     std::puts("PASS corrupt extension keeps the standard project readable");
+    AntialiasRoundtrip(*app, directory);
     ShutdownCleanup(app); delete app; g_Block = nullptr;
     std::puts("PASS PMM v2 project settings integration");
     return 0;

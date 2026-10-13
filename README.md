@@ -118,6 +118,31 @@ For package scope and save limits, see [Downloads and package differences](#down
 - **UI and compatibility**: English/Chinese/Japanese interface, Unicode file
   paths, timeline, accessory editing, undo/redo
 
+#### Anti-aliasing and project settings (current source)
+
+The full build offers original MMD anti-aliasing, MSAA, FXAA, motion-vector TAA,
+and SMAA. Click **SMAA** to apply the last SMAA choice. The initial choice is
+**SMAA 1x (diagonal and corner enhancement)**. Hover over SMAA and move right
+to choose 1x or T2x, with standard edges or diagonal and corner enhancement.
+T2x combines two jittered frames using motion vectors.
+TAA and T2x capture deformed geometry for reprojection, which can be costly with
+complex MME effects. SMAA 1x avoids that capture. Unsupported motion passes use
+spatial AA for that frame.
+
+Temporal image export fills missing samples at the same scene time, including
+projects containing only frame zero. A continuous image sequence retains its
+history: T2x needs two scene renders for the first image and one for each next
+image. Sampling does not advance animation or physics and does not add files.
+PMM v2 extensions store the AA switch, algorithm, and last SMAA choice. Loading
+a project does not overwrite local defaults. See [PMM settings](docs/PMM_V2_EXTENSIONS.md).
+
+On an NVIDIA renderer, startup checks the effective driver fix. **Help** offers
+installation only when the fix is absent. Installation explains the one-time
+administrator authorization, then runs the accompanying `MMSNvidiaAAFix.exe`.
+The verified result is recorded in `Data/nvidia_antialias_fix.ini`; driver state
+determines whether the menu item appears. AMD and Intel use the standard rendering
+path. Keep the helper beside `MikuMikuDance.exe` in full builds from this source.
+
 #### MMV plug-in (under testing; not released)
 
 MMV is an optional plug-in that uses an MME-style effect assignment workflow. It can take over or extend parts of the original bone and morph deformation, skinning, physics, and rendering pipeline. Effects run in layers and produce meshes for MMS to draw in the final scene. MMV is still under testing and has not been released because mesh modification is currently too slow.
@@ -305,6 +330,36 @@ MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌
 - **多媒体**：通过 Windows Media Foundation 导入多种音频格式和 MP4/MOV 视频，具体格式取决于系统媒体组件。支持 Wave 音频播放、DirectShow AVI（使用已安装的传统编码器）、Media Foundation MP4/H.264 录制，以及透明 MOV 录制。导出页列出系统已注册的 H.264 编码器并支持等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
 - **UI 与兼容**：英中日三语界面、Unicode 文件路径、时间轴、附件编辑、撤销/重做
 
+#### 抗锯齿与工程设置（当前源码）
+
+完整版本提供 MMD 原始抗锯齿、MSAA、FXAA、带运动矢量的 TAA 和 SMAA。
+直接点击「SMAA」应用上次所选，首次默认为「SMAA 1x（斜线与拐角增强）」。
+悬停在「SMAA」后向右移动，可选择以下档位：
+
+| 菜单选项 | 处理方式 |
+| --- | --- |
+| SMAA 1x（标准） | 当前帧的边缘检测与混合。 |
+| SMAA 1x（斜线与拐角增强） | 扩大搜索范围，增加斜线和拐角处理。 |
+| SMAA T2x（标准） | 标准边缘处理，结合运动矢量对齐两帧采样。 |
+| SMAA T2x（斜线与拐角增强） | 两帧采样，增加斜线和拐角处理。 |
+
+TAA 和 T2x 需要捕获变形后的几何来生成运动矢量，复杂 MME 场景的额外开销较高。
+SMAA 1x 不需要这一步。
+
+只有第 0 帧的工程也能输出时间抗锯齿图片。程序在同一场景时间补足缺少的采样，
+不推进动作或物理，不增加输出图片。连续图片序列保留历史：T2x 首张需要两次场景渲染，
+后续每张一次。硬件或效果不支持运动矢量时，回退到单帧处理。
+
+抗锯齿开关、当前算法和上次选择的 SMAA 档位随 PMM v2 扩展保存。加载工程不会改写
+本机默认设置。临时硬件回退和未知档位不会覆盖工程原记录，用户重新选择后才更新。
+具体格式见 [PMM v2 项目扩展](docs/PMM_V2_EXTENSIONS.md)。
+
+使用 NVIDIA 渲染时，启动检测驱动中的双面绘制修复。尚未启用时，「帮助」菜单显示
+「安装 NVIDIA 修复双面绘制补丁」。点击后提示一次管理员授权要求，安装程序只设置当前程序的驱动配置。
+成功后重新读取驱动，并记录到 `Data/nvidia_antialias_fix.ini`。删除记录后会重新检测，
+菜单始终以驱动实际状态为准。AMD、Intel 使用通用渲染路径。
+当前源码构建的完整版本须保留同目录的 `MMSNvidiaAAFix.exe`。
+
 #### MMV 插件（测试中，尚未发布）
 
 MMV 是采用类似 MME 的效果分配工作流的可选插件，可接管或扩展原版骨骼与形态变形、蒙皮、物理计算及渲染流程。效果按层运行并生成网格，再交由 MMS 绘制最终场景。由于当前网格修改性能过差，MMV 暂未发布，仍在测试阶段。
@@ -490,6 +545,26 @@ MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・�
 - **マルチメディア**：Windows Media Foundation を使って多くの音声形式と MP4/MOV 動画を読み込みます。利用可能な形式は Windows のメディアコンポーネントに依存します。Wave 再生、インストール済みコーデックを使う DirectShow AVI、Media Foundation による MP4/H.264、透過 MOV の録画にも対応します。出力画面で登録済み H.264 エンコーダーを確認でき、縦横比を保った解像度変更も可能です。VSQ と Kinect 入力も利用できます。
 - **UI**：英語・中国語・日本語 UI、タイムライン、
   Unicode ファイルパス、アクセサリ編集、元に戻す／やり直し
+
+#### アンチエイリアスとプロジェクト設定（現在のソース）
+
+完全版は MMD オリジナル、MSAA、FXAA、モーションベクトルを使う TAA、SMAA に対応します。
+「SMAA」を直接クリックすると前回の選択を適用します。初期値は「SMAA 1x（斜線・コーナー強化）」です。
+項目にカーソルを合わせて右へ移動すると、1x と T2x、それぞれの標準・斜線とコーナーの強化を選べます。
+T2x はモーションベクトルで位置を合わせた 2 フレームのサンプルを合成します。
+TAA と T2x は変形後の頂点を取得するため、複雑な MME エフェクトでは負荷が高くなります。
+SMAA 1x はこの処理を必要としません。モーション取得に対応しない描画は空間 AA に切り替えます。
+
+フレーム 0 だけの画像出力でも、時刻と姿勢を保ったまま不足するサンプルを描画します。
+アニメーションや物理を進めず、画像数も増やしません。連続画像では履歴を保つため、
+T2x の最初の画像は 2 回、以後は画像ごとに 1 回だけシーンを描画します。
+AA の有効状態、方式、前回の SMAA 選択は PMM v2 拡張に保存されます。
+読み込み時にローカルの既定設定を書き換えません。
+
+NVIDIA では起動時にドライバーの両面描画修正を検出し、未適用の場合だけヘルプに
+インストール項目を表示します。クリック後に管理者権限の説明を表示し、同梱の
+`MMSNvidiaAAFix.exe` を起動します。結果は `Data/nvidia_antialias_fix.ini` に記録しますが、
+メニューの表示はドライバーの実際の設定で決まります。AMD と Intel は共通の描画経路を使います。
 
 #### MMV プラグイン（テスト中・未公開）
 

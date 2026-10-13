@@ -50,6 +50,7 @@
 #include "mikudancestudio/bone_scale.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/frame_sampling.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/mmd_app.hpp"
@@ -502,6 +503,7 @@ void FrameDriver(MMDApp* app) {
     // (fild + 2^32 fixup on negative, i.e. unsigned load) divided by the
     // constant 30.0 (dbl_52BA68); EnableWindow pushes 0 (0x479D58).
     if (s.state.recordPlaybackStartPending != 0) {       // 0x9EDD8
+        antialias::ResetHistory(app);
         s.CurrentFrame() =
             s.AviRecordStartFrame();
         s.state.frameStepPlayback = 1;          // 0x9ED90
@@ -715,7 +717,8 @@ void FrameDriver(MMDApp* app) {
         (s.PlaybackActive() != 0 || s.AviBackgroundTexture() == nullptr ||
          device_lost_wait::BackgroundRefreshPending(app)))
         AviBgOverlayRefresh(app);
-    RenderFrameScene(app);
+    if (s.state.timelineAdvanceRequested != 0) antialias::ResetHistory(app);
+    RenderFrameSceneForOutput(app);
 
     // ida_capture_original_vb.py samples operation state at 0x46FF07: the
     // current overlay has been produced, while 0x4757C3 has not yet reset

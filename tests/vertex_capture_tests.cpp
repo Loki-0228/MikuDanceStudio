@@ -20,6 +20,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "mikudancestudio/vertex_capture.hpp"
+#include "../src/render/antialias_motion_cache.hpp"
 
 #include <Windows.h>
 #include <d3d9.h>
@@ -442,6 +443,64 @@ void TestBasicCaptures(Fixture& fixture) {
 
     // Repeated captures must not drift.
     CheckCaptureMatches("vs_3_0 all 8 vertices (repeat)", fixture, 0, 8);
+}
+
+void TestTemporalVertexCache(Fixture& fixture) {
+    using mikudancestudio::antialias::motion::detail::VertexCache;
+    VertexCache cache;
+    fixture.device->SetVertexShader(fixture.shader3);
+    fixture.device->SetVertexDeclaration(fixture.declaration);
+    fixture.device->SetStreamSource(0,fixture.vertexBuffer,0,sizeof(Vertex));
+    std::vector<std::array<float,4>> first,second,changed;
+    std::string error;
+    const auto capture=[&](unsigned start,unsigned count,std::vector<std::array<float,4>>& out) {
+        Check(cache.Capture(fixture.device,fixture.code3,0,0,8,start,count,out,error),
+              "temporal cache capture: "+error);
+    };
+    capture(0,3,first);capture(3,3,second);
+    Check(cache.captures==1&&cache.hits==1,"two materials reuse one full-range GPU capture");
+    for(unsigned i=0;i<second.size();++i) {
+        float expected[4]{};ExpectedClip(kVertices[i+3].position,expected);
+        for(unsigned c=0;c<4;++c)Check(std::fabs(second[i][c]-expected[c])<2e-3f,
+            "cached subset uses the actual source vertex indices");
+    }
+    float saved[4]{};fixture.device->GetVertexShaderConstantF(0,saved,1);
+    float altered[4];std::memcpy(altered,saved,sizeof(altered));altered[0]+=2;
+    fixture.device->SetVertexShaderConstantF(0,altered,1);capture(0,3,changed);
+    Check(cache.captures==2&&cache.hits==1&&first!=changed,"changed float constants recompute final shader output");
+    fixture.device->SetVertexShaderConstantF(0,saved,1);
+    int oldInteger[4]{};fixture.device->GetVertexShaderConstantI(0,oldInteger,1);
+    const int integer[4]={17,18,19,20};fixture.device->SetVertexShaderConstantI(0,integer,1);
+    capture(0,3,changed);Check(cache.captures==3,"integer constants participate in the cache key");
+    fixture.device->SetVertexShaderConstantI(0,oldInteger,1);
+    BOOL oldBoolean=FALSE;fixture.device->GetVertexShaderConstantB(0,&oldBoolean,1);
+    const BOOL boolean=!oldBoolean;fixture.device->SetVertexShaderConstantB(0,&boolean,1);
+    capture(0,3,changed);Check(cache.captures==4,"boolean constants participate in the cache key");
+    fixture.device->SetVertexShaderConstantB(0,&oldBoolean,1);
+    void* bytes=nullptr;Check(SUCCEEDED(fixture.vertexBuffer->Lock(0,sizeof(kVertices),&bytes,0)),"rewrite cached source buffer");
+    static_cast<Vertex*>(bytes)[0].position[0]+=3;fixture.vertexBuffer->Unlock();
+    capture(0,3,changed);
+    Check(cache.captures==5&&first!=changed,"same buffer with changed vertex contents is not reused");
+    fixture.vertexBuffer->Lock(0,sizeof(kVertices),&bytes,0);std::memcpy(bytes,kVertices,sizeof(kVertices));fixture.vertexBuffer->Unlock();
+    capture(0,3,changed);Check(cache.captures==5&&cache.hits==2&&changed==first,"exact restored input can reuse the earlier result");
+    fixture.device->SetStreamSource(0,fixture.vertexBuffer,sizeof(Vertex),sizeof(Vertex));
+    Check(cache.Capture(fixture.device,fixture.code3,0,0,7,0,3,changed,error),"capture changed stream offset");
+    Check(cache.captures==6&&changed!=first,"stream offset and declared vertex range cannot alias cached input");
+    fixture.device->SetStreamSource(0,fixture.vertexBuffer,0,sizeof(Vertex));
+    fixture.device->SetVertexShader(fixture.shader2);
+    Check(cache.Capture(fixture.device,fixture.code2,0,0,8,0,3,changed,error),"capture different vertex shader");
+    Check(cache.captures==7,"vertex shader bytecode participates in the cache key");
+    fixture.device->SetVertexShader(fixture.shader3);
+    IDirect3DTexture9* texture=nullptr;
+    Check(SUCCEEDED(fixture.device->CreateTexture(1,1,1,0,D3DFMT_A32B32G32R32F,D3DPOOL_MANAGED,&texture,nullptr)),
+          "create vertex-texture cache exclusion fixture");
+    Check(SUCCEEDED(fixture.device->SetTexture(D3DVERTEXTEXTURESAMPLER0,texture)),"bind vertex texture");
+    const auto oldHits=cache.hits;capture(0,3,changed);capture(0,3,changed);
+    Check(cache.captures==9&&cache.hits==oldHits,"vertex textures force fresh shader capture on every draw");
+    fixture.device->SetTexture(D3DVERTEXTEXTURESAMPLER0,nullptr);texture->Release();
+    cache.Clear();capture(0,3,changed);
+    Check(cache.captures==1&&cache.hits==0,"a new frame never reuses the previous frame's deformed positions");
+    Note("temporal vertex cache: exact state/content reuse and all invalidation checks passed");
 }
 
 void TestStateRestored(Fixture& fixture) {
@@ -889,6 +948,7 @@ int main() {
     CreateFixture(fixture);
 
     TestBasicCaptures(fixture);
+    TestTemporalVertexCache(fixture);
     TestStateRestored(fixture);
     TestHandAssembledShaders(fixture);
     TestChunkedCapture(fixture);

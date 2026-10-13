@@ -47,12 +47,25 @@ bool KnownTier(const pmm_extension::Record* record) {
            record->value[0] <= kHighestTransparentSortTier;
 }
 
+bool KnownAntialias(const pmm_extension::Record* record) {
+    return record && record->value.size() == 3 && record->value[0] <= 1 &&
+        record->value[1] < static_cast<unsigned>(antialias::Algorithm::Count) &&
+        record->value[2] >= static_cast<unsigned>(antialias::Algorithm::Smaa) &&
+        record->value[2] < static_cast<unsigned>(antialias::Algorithm::Count);
+}
+std::vector<std::uint8_t> AntialiasBytes(const MMDApp& app) {
+    return {std::uint8_t(app.antialiasing.enabled),
+        std::uint8_t(app.antialiasing.algorithm),
+        std::uint8_t(app.antialiasing.lastSmaaAlgorithm)};
+}
+
 void Refresh(MMDApp& app) {
     if (!app.MainWindow()) return;
     // The single precision submenu owns the sorting state, Off included.  Menu
     // id 303 no longer has an item of its own, so nothing is checked for it.
     RefreshTransparentSortPrecisionMenu(&app);
     RefreshSkinningMenu(&app);
+    antialias::RefreshMenu(&app);
     InvalidateRect(app.MainWindow(), nullptr, FALSE);
 }
 }
@@ -92,6 +105,7 @@ void Reset(MMDApp& app) {
     // Processor settings are per machine user, not per project: creating a new
     // scene never resets them (docs/PROCESSOR_SETTINGS_PROPOSAL.md).
 #if !MMD_ORIGINAL_PROFILE
+    antialias::ReloadUserSettings(&app);
     bone_scale_io::ResetPmm();
 #endif
     Refresh(app);
@@ -123,6 +137,11 @@ void Load(MMDApp& app, int fd) {
     }
     app.PmmProjectSettings().document = std::move(document);
     const auto& loaded = app.PmmProjectSettings().document;
+    if (const auto* aa = pmm_extension::Find(loaded, kAntialiasKey); KnownAntialias(aa)) {
+        antialias::ApplyProjectSettings(&app, aa->value[0] != 0,
+            static_cast<antialias::Algorithm>(aa->value[1]),
+            static_cast<antialias::Algorithm>(aa->value[2]));
+    }
     // The old processor record (kProcessorKey) is never applied: the processor
     // choice lives in the per-user processor.ini and opening a project must
     // not change it.  An old record stays untouched in the document until the
@@ -168,6 +187,11 @@ pmm_extension::Document Capture(const MMDApp& app) {
     // Unchanged known fields also retain their raw representation: a future
     // value and an unavailable GPU type must survive an older reader's save.
     pmm_extension::Erase(document, kProcessorKey);
+    // An unsupported device can temporarily use a spatial fallback. Preserve
+    // the project's requested algorithm (including future values) until the
+    // user explicitly chooses a setting on this machine.
+    if (state.antialiasEdited || !pmm_extension::Find(document, kAntialiasKey))
+        pmm_extension::Set(document, kAntialiasKey, AntialiasBytes(app));
 
     // Only the selected tier byte is written.  The per-frame layer count of that
     // tier is not stored anywhere and Off is stored as the Off byte, so no
@@ -203,6 +227,12 @@ void ProcessorChanged(MMDApp& app) {
 }
 void SortingPrecisionChanged(MMDApp& app) {
     app.PmmProjectSettings().sortingPrecisionEdited = true;
+    app.SceneModified() = 1;
+}
+void AntialiasChanged(MMDApp& app) {
+    const auto* record = pmm_extension::Find(app.PmmProjectSettings().document, kAntialiasKey);
+    if (record && record->value == AntialiasBytes(app)) return;
+    app.PmmProjectSettings().antialiasEdited = true;
     app.SceneModified() = 1;
 }
 }

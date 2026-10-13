@@ -4,6 +4,10 @@
 #include <memory>
 #include <string>
 #include <vector>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <d3d9.h>
 struct IDirect3DDevice9;
 namespace mikudancestudio {
 class MMDApp;
@@ -44,5 +48,16 @@ private:
 };
 bool Active();
 void SetCamera(IDirect3DDevice9* device, const float world[16]);
+// Shared native draw observer. Callbacks run after MME has selected its final
+// shaders. Draws made by a callback are excluded from both observers.
+class DrawObserver {
+public:
+    virtual ~DrawObserver() = default;
+    virtual void Indexed(IDirect3DDevice9*, D3DPRIMITIVETYPE, INT, UINT, UINT,
+                         UINT, UINT, const void*, unsigned) noexcept = 0;
+    virtual void Unsupported(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT) noexcept = 0;
+};
+bool Observe(MMDApp& app, DrawObserver* observer, std::string& error);
+void StopObserving(DrawObserver* observer);
 }
 }

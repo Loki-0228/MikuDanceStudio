@@ -1295,6 +1295,7 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
 #endif
     s->PmmProjectSettings().processorEdited = false;
     s->PmmProjectSettings().sortingPrecisionEdited = false;
+    s->PmmProjectSettings().antialiasEdited = false;
     NotifyEffectFileSave(target);
     mmv4mms::ProjectSaved(s, target);
     pmm_io::SetProjectWindowTitle(main, target);

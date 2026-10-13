@@ -34,17 +34,24 @@ struct State {
     std::vector<Mesh> meshes;
     std::string error;
     d3dx::D3DXMATRIXF inverse{};
-    DrawIndexed original{};
+    State(MMDApp& a,bool selected):app(a),selectedOnly(selected){}
+};
+struct Hooks {
     std::array<void*,4> targets{};
     unsigned installed=0;
     HMODULE library{};
     HWND window{};
     ComPtr<IDirect3D9> factory;
     ComPtr<IDirect3DDevice9> probe;
-    State(MMDApp& a,bool selected):app(a),selectedOnly(selected){}
-    ~State(){probe.Reset();factory.Reset();if(window)DestroyWindow(window);if(library)FreeLibrary(library);}
+    explicit Hooks(MMDApp& app);
+    void Unhook() noexcept;
+    ~Hooks(){Unhook();probe.Reset();factory.Reset();if(window)DestroyWindow(window);if(library)FreeLibrary(library);}
 };
 State* active=nullptr;
+std::unique_ptr<Hooks> hooks;
+DrawObserver* observer=nullptr;
+DWORD observerThread=0;
+thread_local bool observing=false;
 thread_local const void* sourceObject=nullptr;
 thread_local unsigned sourceMaterial=0;
 void Check(HRESULT hr,const char* operation) {if(FAILED(hr))throw std::runtime_error(operation);}
@@ -171,15 +178,24 @@ void Capture(State& s,IDirect3DDevice9* device,D3DPRIMITIVETYPE type,INT base,UI
     mesh.name=prefix+std::to_string(ordinal);s.meshes.push_back(std::move(mesh));
 }
 HRESULT WINAPI Hook(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,INT base,UINT min,UINT count,UINT start,UINT primitives) {
-    auto* s=active;if(!s)return fallbackIndexed(device,type,base,min,count,start,primitives);
-    if(s->collecting&&!s->busy&&s->thread==GetCurrentThreadId()&&sourceObject&&s->error.empty()) {
+    if(observing)return fallbackIndexed(device,type,base,min,count,start,primitives);
+    observing=true;
+    if(observer&&observerThread==GetCurrentThreadId())
+        observer->Indexed(device,type,base,min,count,start,primitives,sourceObject,sourceMaterial);
+    auto* s=active;
+    if(s&&s->collecting&&!s->busy&&s->thread==GetCurrentThreadId()&&sourceObject&&s->error.empty()) {
         s->busy=true;
         try{Capture(*s,device,type,base,start,primitives);}catch(const std::exception& e){s->error=e.what();}catch(...){s->error="Geometry capture failed";}
         s->busy=false;
     }
-    return s->original(device,type,base,min,count,start,primitives);
+    observing=false;
+    return fallbackIndexed(device,type,base,min,count,start,primitives);
 }
 void UnsupportedDraw(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,UINT count) {
+    if(observing)return;
+    if(observer&&observerThread==GetCurrentThreadId()) {
+        observing=true;observer->Unsupported(device,type,count);observing=false;
+    }
     auto* s=active;
     if(!s||!count||type<D3DPT_TRIANGLELIST||!s->collecting||s->busy||s->thread!=GetCurrentThreadId()||!sourceObject||!s->error.empty())return;
     try{if(!ObjectName(*s).empty()&&MeshInput(device))s->error="The effect uses a non-indexed or user-memory draw that cannot be exported";}
@@ -188,10 +204,7 @@ void UnsupportedDraw(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,UINT count) 
 HRESULT WINAPI HookDraw(IDirect3DDevice9* d,D3DPRIMITIVETYPE t,UINT start,UINT count){UnsupportedDraw(d,t,count);return fallbackDraw(d,t,start,count);}
 HRESULT WINAPI HookUp(IDirect3DDevice9* d,D3DPRIMITIVETYPE t,UINT count,const void* p,UINT stride){UnsupportedDraw(d,t,count);return fallbackUp(d,t,count,p,stride);}
 HRESULT WINAPI HookIndexedUp(IDirect3DDevice9* d,D3DPRIMITIVETYPE t,UINT min,UINT vertices,UINT count,const void* indices,D3DFORMAT format,const void* p,UINT stride){UnsupportedDraw(d,t,count);return fallbackIndexedUp(d,t,min,vertices,count,indices,format,p,stride);}
-}
-struct Session::Impl:State {
-    Impl(MMDApp& app,bool selected):State(app,selected) {
-        if(active)throw std::runtime_error("A geometry export is already running");
+Hooks::Hooks(MMDApp& app) {
         // MME also wraps Surface::GetDevice. Resolve native implementation
         // addresses from a private device created by the system runtime.
         wchar_t system[MAX_PATH]{};GetSystemDirectoryW(system,MAX_PATH);
@@ -217,20 +230,33 @@ struct Session::Impl:State {
                 const auto status=MH_CreateHook(targets[installed],hooks[installed],originals[installed]);
                 if(status!=MH_OK)throw std::runtime_error(std::string("Cannot capture native draw: ")+MH_StatusToString(status));
             }
-            original=fallbackIndexed;active=this;
             for(auto target:targets)MH_QueueEnableHook(target);
             if(MH_ApplyQueued()!=MH_OK)throw std::runtime_error("Cannot enable native draw capture");
         }
         catch(...){Unhook();throw;}
-    }
-    void Unhook() noexcept {
-        collecting=false;
-        if(active==this)active=nullptr;
+}
+void Hooks::Unhook() noexcept {
         for(unsigned i=0;i<installed;++i)MH_QueueDisableHook(targets[i]);
         if(MH_ApplyQueued()==MH_OK)for(unsigned i=0;i<installed;++i)MH_RemoveHook(targets[i]);
+        installed=0;
+}
+void DropUnusedHooks(){if(!active&&!observer)hooks.reset();}
+}
+struct Session::Impl:State {
+    Impl(MMDApp& app,bool selected):State(app,selected) {
+        if(active)throw std::runtime_error("A geometry export is already running");
+        if(!hooks)hooks=std::make_unique<Hooks>(app);
+        active=this;
     }
-    ~Impl(){Unhook();}
+    ~Impl(){if(active==this)active=nullptr;DropUnusedHooks();}
 };
+bool Observe(MMDApp& app,DrawObserver* value,std::string& error) {
+    if(observer&&observer!=value){error="A native draw observer is already active";return false;}
+    try{if(!hooks)hooks=std::make_unique<Hooks>(app);}
+    catch(const std::exception& e){error=e.what();return false;}
+    observer=value;observerThread=GetCurrentThreadId();return true;
+}
+void StopObserving(DrawObserver* value){if(observer==value)observer=nullptr;DropUnusedHooks();}
 Session::Session(MMDApp& app,bool selectedOnly):impl_(new Impl(app,selectedOnly)){}
 Session::~Session()=default;
 void Session::BeginFrame(){impl_->meshes.clear();impl_->camera=false;impl_->collecting=true;}

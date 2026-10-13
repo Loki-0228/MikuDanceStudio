@@ -32,6 +32,7 @@
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/processor_settings.hpp"
 #include "mikudancestudio/runtime_log.hpp"
+#include "mikudancestudio/nvidia_antialias_fix.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -161,6 +162,12 @@ bool InitD3D(MMDApp* app, HWND hwnd, bool english, HMODULE hModule) {
     if (processor::ActualRenderer().fellBack)
         runtime_log::Write("D3D9 renderer adapter fallback: %ls",
                            processorError.c_str());
+    D3DADAPTER_IDENTIFIER9 adapterIdentity{};
+    if (SUCCEEDED(d3d->GetAdapterIdentifier(adapterOrdinal, 0, &adapterIdentity))) {
+        std::wstring fixError;
+        if (!nvidia_antialias_fix::EnsureForAdapter(adapterIdentity.VendorId, fixError))
+            runtime_log::Write("AA NVIDIA compatibility unavailable; keep standard D3D9 rendering: %ls", fixError.c_str());
+    }
     r->backbufferFormat = static_cast<D3DFORMAT>(21);
     if (FAILED(d3d->CheckDeviceType(adapterOrdinal, D3DDEVTYPE_HAL,
                                     D3DFMT_X8R8G8B8 /*22*/,

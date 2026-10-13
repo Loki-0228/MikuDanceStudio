@@ -89,6 +89,13 @@ find_package(BULLET275 REQUIRED)
 find_package(Alembic CONFIG REQUIRED)
 find_package(minhook CONFIG REQUIRED)
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/smaa/SMAA.hlsl" MMS_SMAA_REFERENCE)
+string(ASCII 183 MMS_SMAA_LATIN1_DOT)
+string(REPLACE "${MMS_SMAA_LATIN1_DOT}" "·" MMS_SMAA_REFERENCE "${MMS_SMAA_REFERENCE}")
+string(REPLACE "\n" "\n)smaa\"\nR\"smaa(" MMS_SMAA_REFERENCE "${MMS_SMAA_REFERENCE}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS third_party/smaa/SMAA.hlsl)
+configure_file(src/render/smaa_reference.in.hpp generated/smaa_reference.hpp @ONLY)
+
 if (MIKUDANCESTUDIO_ENABLE_DX12)
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/render/d3d12_skinning.hlsl" MMD_D3D12_SKINNING_HLSL)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS src/render/d3d12_skinning.hlsl)
@@ -326,6 +333,10 @@ add_library(mikudancestudio_core STATIC
     src/window/viewport_render_scale_dialog.cpp
     src/render/viewport_render_scale.cpp
     src/render/antialias.cpp
+    src/render/frame_sampling.cpp
+    src/render/antialias_motion.cpp
+    src/render/nvidia_antialias_fix.cpp
+    src/window/nvidia_antialias_menu.cpp
     src/window/antialias_menu.cpp
     src/app/viewport_corner_settings.cpp
     src/window/viewport_corner_menu.cpp
@@ -452,6 +463,7 @@ if (MIKUDANCESTUDIO_PERF)
 endif()
 
 target_include_directories(mikudancestudio_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(mikudancestudio_core PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # Pinned optional plugin ABI; the host does not build or link MMV4MMS.
 target_include_directories(mikudancestudio_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sdk/mmv4mms/include")
 # Bullet 2.75 selects its Windows SIMD alignment with WIN32, not _WIN32.
@@ -596,9 +608,26 @@ target_link_libraries(mmv4mms_physics_input_tests PRIVATE BULLET275::BULLET275)
 set_target_properties(mmv4mms_physics_input_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
 add_test(NAME mmv4mms_physics_input COMMAND mmv4mms_physics_input_tests)
 
+enable_testing()
+add_executable(nvidia_antialias_fix_tests EXCLUDE_FROM_ALL
+    tests/nvidia_antialias_fix_tests.cpp src/render/nvidia_antialias_fix.cpp)
+target_include_directories(nvidia_antialias_fix_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(nvidia_antialias_fix_tests PRIVATE cxx_std_17)
+target_link_libraries(nvidia_antialias_fix_tests PRIVATE mikudancestudio_runtime_log user32 shell32 advapi32)
+set_target_properties(nvidia_antialias_fix_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME nvidia_antialias_fix_tests COMMAND nvidia_antialias_fix_tests)
+set_tests_properties(nvidia_antialias_fix_tests PROPERTIES ENVIRONMENT "MMS_NVIDIA_AA_FIX=0")
 option(MIKUDANCESTUDIO_BUILD_EFFECT_TESTS "Build effect API regression tests" OFF)
 if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     enable_testing()
+    add_executable(smaa_shader_tests EXCLUDE_FROM_ALL tests/smaa_shader_tests.cpp)
+    target_include_directories(smaa_shader_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    target_compile_features(smaa_shader_tests PRIVATE cxx_std_17)
+    target_link_libraries(smaa_shader_tests PRIVATE mikudancestudio_graphics_runtime d3d9 user32)
+    set_target_properties(smaa_shader_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME smaa_shader_checks COMMAND smaa_shader_tests)
+    set_tests_properties(smaa_shader_checks PROPERTIES LABELS "hardware-manual" TIMEOUT 60)
     add_executable(d3d12_interop_tests EXCLUDE_FROM_ALL tests/d3d12_interop_tests.cpp)
     add_executable(sequential_file_reader_tests EXCLUDE_FROM_ALL tests/sequential_file_reader_tests.cpp)
     target_include_directories(sequential_file_reader_tests PRIVATE include)
@@ -1152,6 +1181,20 @@ target_link_libraries(MikuDanceStudio PRIVATE
     user32
 )
 
+# The elevated installer has no application/plugin dependencies, and only loads
+# NVAPI from System32. A static CRT avoids loading app-local runtime DLLs.
+add_executable(MMSNvidiaAAFix WIN32 src/tools/nvidia_antialias_helper.cpp)
+target_include_directories(MMSNvidiaAAFix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(MMSNvidiaAAFix PRIVATE cxx_std_17)
+target_link_libraries(MMSNvidiaAAFix PRIVATE shell32 advapi32)
+set_target_properties(MMSNvidiaAAFix PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>"
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(MSVC)
+    target_link_options(MMSNvidiaAAFix PRIVATE "/MANIFESTUAC:level='asInvoker' uiAccess='false'")
+endif()
+add_dependencies(MikuDanceStudio MMSNvidiaAAFix)
+
 # The core's PUBLIC d3dx9_43 import dependency lands in each consuming
 # executable's IAT, including the host table patched by MME.
 
@@ -1248,7 +1291,7 @@ endif()
 # The runtime assets (Data\toon*.bmp, mmconfig.ini) come from the reference
 # MMD installation and are not part of this source tree.
 # ---------------------------------------------------------------------------
-install(TARGETS MikuDanceStudio RUNTIME DESTINATION .)
+install(TARGETS MikuDanceStudio MMSNvidiaAAFix RUNTIME DESTINATION .)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/licenses/" DESTINATION licenses)
 
 if(Python3_Interpreter_FOUND)
@@ -1309,6 +1352,7 @@ if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_options(mme_display_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_libraries(mme_display_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    target_include_directories(mme_display_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
     set_target_properties(mme_display_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/symbols/$<CONFIG>"

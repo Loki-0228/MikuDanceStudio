@@ -2367,7 +2367,7 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
 #if !MMD_ORIGINAL_PROFILE
         std::wstring error;
         if (!antialias::Toggle(app, error))
-            MessageBoxW(hwnd, error.c_str(), L"Anti-aliasing", MB_OK | MB_ICONERROR);
+            MessageBoxW(hwnd, error.c_str(), antialias::DialogTitle(app), MB_OK | MB_ICONERROR);
 #else
         app->state.dialogFlags[10] = 1;
         if ((GetMenuState(GetMenu(hwnd), 0x115, 0) & 8) == 0) {
