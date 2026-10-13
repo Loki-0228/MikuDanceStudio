@@ -389,12 +389,8 @@ void CaptureAccessoryScreenTexture(MMDApp* app, D3DRenderer* sub,
         textureSurface->Release();
 }
 
-}  // namespace
-
-void DrawFrameOverlayBatches(MMDApp* app) {
+void DrawOverlayBatches(MMDApp* app, IDirect3DDevice9* device) {
     auto* sub = app->Renderer();
-    if (!sub || !sub->device) return;
-    auto* device = sub->device;
     device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
@@ -403,6 +399,80 @@ void DrawFrameOverlayBatches(MMDApp* app) {
     DrawSpriteOverlay(app, device);
     DrawLineOverlay(app, sub, device);
     DrawTextOverlay(app, device);
+}
+
+#if !MMD_ORIGINAL_PROFILE
+void DrawPresentationOverlays(MMDApp* app) {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IDirect3DSurface9> back, previous, depth;
+    ComPtr<IDirect3DDevice9> native;
+    if (FAILED(app->Renderer()->device->GetBackBuffer(0, 0,
+            D3DBACKBUFFER_TYPE_MONO, &back)) || FAILED(back->GetDevice(&native))) return;
+    // This pass belongs to the completed display frame. Calling BeginScene on
+    // the MME proxy would run another effect frame and overwrite its result.
+    auto* device = native.Get();
+    ComPtr<IDirect3DStateBlock9> saved;
+    if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved)) ||
+        FAILED(device->GetRenderTarget(0, &previous))) return;
+    device->GetDepthStencilSurface(&depth);
+    device->SetDepthStencilSurface(nullptr);
+    HRESULT hr = device->SetRenderTarget(0, back.Get());
+    const RECT rect = app->ViewportRect();
+    const D3DVIEWPORT9 viewport{DWORD(rect.left), DWORD(rect.top),
+        DWORD(rect.right - rect.left), DWORD(rect.bottom - rect.top), 0, 1};
+    if (SUCCEEDED(hr)) hr = device->SetViewport(&viewport);
+    if (SUCCEEDED(hr)) hr = device->BeginScene();
+    if (SUCCEEDED(hr)) {
+        device->SetVertexShader(nullptr);
+        device->SetPixelShader(nullptr);
+        device->SetRenderState(D3DRS_ZENABLE, FALSE);
+        device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+        device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+        device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
+        device->SetRenderState(D3DRS_FOGENABLE, FALSE);
+        device->SetRenderState(D3DRS_LIGHTING, FALSE);
+        device->SetRenderState(D3DRS_CLIPPLANEENABLE, 0);
+        device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        device->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
+        device->SetRenderState(D3DRS_COLORWRITEENABLE, 15);
+        device->SetRenderState(D3DRS_SRGBWRITEENABLE, FALSE);
+        device->SetRenderState(D3DRS_MULTISAMPLEMASK, 0xFFFFFFFFu);
+        device->SetRenderState(D3DRS_MULTISAMPLEANTIALIAS, TRUE);
+        device->SetScissorRect(&rect);
+        device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+        device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+        device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+        device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+        device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+        device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+        device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+        device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+        device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+        device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+        device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+        device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+        device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+        device->SetSamplerState(0, D3DSAMP_SRGBTEXTURE, FALSE);
+        DrawOverlayBatches(app, device);
+        hr = device->EndScene();
+    }
+    device->SetRenderTarget(0, previous.Get());
+    device->SetDepthStencilSurface(depth.Get());
+    // SetRenderTarget resets the viewport; restore the state block last.
+    saved->Apply();
+    if (FAILED(hr)) runtime_log::Write("HUD presentation failed hr=0x%08lX", hr);
+}
+#endif
+
+}  // namespace
+
+void DrawFrameOverlayBatches(MMDApp* app) {
+    auto* sub = app->Renderer();
+    if (sub && sub->device) DrawOverlayBatches(app, sub->device);
 }
 
 void RenderFrameScene(MMDApp* app) {
@@ -585,12 +655,22 @@ void RenderFrameScene(MMDApp* app) {
 
     {
         MMD_PERF_SCOPE(Overlays);
+#if MMD_ORIGINAL_PROFILE
         DrawFrameOverlayBatches(app);
         FillFramePresentationMargins(app, device);
+#endif
     }
     { MMD_PERF_SCOPE(EndScene); if (SUCCEEDED(device->EndScene())) {
         antialiasFrame.Complete();
-        previewScale.Complete();
+        if (previewScale.Complete()) {
+#if !MMD_ORIGINAL_PROFILE
+            // Keep text and controls out of scene scaling and temporal history.
+            // FPS still comes from FrameDriver's one-count-per-scene counter.
+            MMD_PERF_SCOPE(Overlays);
+            DrawPresentationOverlays(app);
+            FillFramePresentationMargins(app, device);
+#endif
+        }
     } }
 
     DumpAccessoryScreenTexture(app, device);

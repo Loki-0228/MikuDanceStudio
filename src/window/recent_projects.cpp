@@ -46,6 +46,23 @@ void Write() {
 const wchar_t* Text(MMDApp* app,const wchar_t* jp,const wchar_t* en,const wchar_t* zh) {
     return app->EnglishUI()==2?zh:app->EnglishUI()==1?en:jp;
 }
+bool Exists(const std::wstring& path) {
+    const auto attributes=GetFileAttributesW(path.c_str());
+    return path.size()<kPathFieldCapacity && attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
+}
+void RefreshAvailability() {
+    // Attach already populated these rows before the menu loop was painted.
+    // Files can disappear while the loop is open, but that only changes state;
+    // deleting and appending the same rows would invalidate the live popup.
+    for(size_t i=0;i<menuPaths.size();++i) {
+        const UINT command=first+static_cast<UINT>(i);
+        const UINT previous=GetMenuState(recentMenu,command,MF_BYCOMMAND);
+        const bool enabled=Exists(menuPaths[i]);
+        const bool wasEnabled=(previous&(MF_DISABLED|MF_GRAYED))==0;
+        if(previous!=UINT(-1) && enabled!=wasEnabled)
+            EnableMenuItem(recentMenu,command,MF_BYCOMMAND|(enabled?MF_ENABLED:MF_GRAYED));
+    }
+}
 void Populate(MMDApp* app) {
     while(GetMenuItemCount(recentMenu)>0)DeleteMenu(recentMenu,0,MF_BYPOSITION);
     Read();menuPaths=paths;
@@ -54,9 +71,7 @@ void Populate(MMDApp* app) {
     for(size_t i=0;i<menuPaths.size();++i) {
         const auto& path=menuPaths[i];std::wstring label=std::to_wstring(i+1)+L"  ";
         for(wchar_t c:path){label+=c;if(c==L'&')label+=c;}
-        const auto attributes=GetFileAttributesW(path.c_str());
-        const bool exists=path.size()<kPathFieldCapacity && attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
-        AppendMenuW(recentMenu,MF_STRING|(exists?0:MF_GRAYED),first+static_cast<UINT>(i),label.c_str());
+        AppendMenuW(recentMenu,MF_STRING|(Exists(path)?0:MF_GRAYED),first+static_cast<UINT>(i),label.c_str());
     }
     if(menuPaths.empty())AppendMenuW(recentMenu,MF_STRING|MF_GRAYED,0,Text(app,L"履歴はありません",L"No recent projects",L"暂无最近工程"));
     AppendMenuW(recentMenu,MF_SEPARATOR,0,nullptr);
@@ -104,7 +119,7 @@ bool HandleMessage(MMDApp* app,UINT msg,WPARAM wp,LPARAM lp) {
         owner=app;openSelected=false;
         hook=SetWindowsHookExW(WH_MSGFILTER,MenuFilter,nullptr,GetCurrentThreadId());
         if(hook)Attach(app);
-    } else if(msg==WM_INITMENUPOPUP && reinterpret_cast<HMENU>(wp)==recentMenu)Populate(app);
+    } else if(msg==WM_INITMENUPOPUP && recentMenu && reinterpret_cast<HMENU>(wp)==recentMenu)RefreshAvailability();
     else if(msg==WM_MENUSELECT)openSelected=reinterpret_cast<HMENU>(lp)==fileMenu &&
         ((HIWORD(wp)&MF_POPUP)?LOWORD(wp)==openPosition:LOWORD(wp)==205);
     else if(msg==WM_EXITMENULOOP || msg==WM_DESTROY) {

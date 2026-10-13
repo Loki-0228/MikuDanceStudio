@@ -180,8 +180,15 @@ void GpuTests(MMDApp* app, D3DMULTISAMPLE_TYPE msaa) {
                 Check(desc.MultiSampleType == msaa, "anti-aliasing preserved");
                 Check(r->backbufferSurface == target.Get(), "native shadow return target follows preview");
             } else Check(target.Get() == original.Get(), "100 percent matches original path");
+            app->OverlayVertices()->Lock(0,0,&data,D3DLOCK_READONLY);
+            Check(std::memcmp(data, &vertex, sizeof(vertex)) == 0,
+                "HUD vertices stay in display pixels during scene scaling");
+            app->OverlayVertices()->Unlock();
             Check(SUCCEEDED(device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL,0xff2468ac,1,0)), "render scaled color and depth");
-            scope.Complete();
+            Check(scope.Complete(), "composite scene before drawing display HUD");
+            Check(!scale::Rendering(app) && EqualRect(&app->ViewportRect(), &display),
+                "explicit completion restores display coordinates before scope destruction");
+            Check(scope.Complete(), "completion is idempotent");
         }
         Check(EqualRect(&app->ViewportRect(), &display) && r->viewScale == 1.25f, "restore mouse and gizmo coordinate space");
         Check(!r->backbufferSurface && !r->depthStencilSurface, "restore renderer resource slots");

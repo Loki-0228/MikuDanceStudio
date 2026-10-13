@@ -6,6 +6,8 @@
 #include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/force_paste.hpp"
 #include "mikudancestudio/recent_projects.hpp"
+#include "mikudancestudio/plugin_menu.hpp"
+#include "mikudancestudio/plugin_menu.h"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/panel_controls.hpp"
@@ -34,9 +36,28 @@ namespace {
 bool expectExpressionPaste = false;
 bool cancelRecentOpen = false;
 unsigned expressionConfirmations = 0;
+unsigned menuBarDraws = 0, recentItemDeletes = 0;
+HMENU observedRecentMenu = nullptr;
+decltype(&DrawMenuBar) originalDrawMenuBar = nullptr;
+decltype(&DeleteMenu) originalDeleteMenu = nullptr;
+BOOL WINAPI ObserveMenuBar(HWND window) {
+    if(g_Block && window==g_Block->MainWindow())++menuBarDraws;
+    return originalDrawMenuBar(window);
+}
+BOOL WINAPI ObserveMenuDelete(HMENU menu,UINT item,UINT flags) {
+    if(menu==observedRecentMenu)++recentItemDeletes;
+    return originalDeleteMenu(menu,item,flags);
+}
 void Check(bool ok, const char* label) {
     std::printf("%s %s\n", ok ? "PASS" : "FAIL", label);
     if (!ok) std::exit(1);
+}
+void CheckMenuRegression(bool ok,const char* label) {
+    if(GetEnvironmentVariableW(L"MMS_MENU_REDRAW_BASELINE",nullptr,0)) {
+        std::printf("BASELINE %s %s\n",ok?"PASS":"REGRESSION",label);
+        return;
+    }
+    Check(ok,label);
 }
 int WINAPI UnexpectedA(HWND, LPCSTR text, LPCSTR, UINT) {
     std::printf("Unexpected dialog: %s\n", text); std::exit(2);
@@ -297,6 +318,48 @@ void CheckAccessoryMenu(MMDApp* app) {
     app->TransparentMaterialSortPrecision() = savedPrecision;
 }
 
+struct MenuPluginFixture {
+    unsigned populated=0, first=0;
+    bool checked=false;
+    static const wchar_t* __cdecl Title(void*,uint32_t language) {
+        return language==2?L"菜单测试":language==1?L"Menu test":L"メニューテスト";
+    }
+    static void __cdecl Populate(void* data,HMENU menu,uint32_t first,uint32_t) {
+        auto& fixture=*static_cast<MenuPluginFixture*>(data);
+        ++fixture.populated;fixture.first=first;
+        while(GetMenuItemCount(menu)>0)DeleteMenu(menu,0,MF_BYPOSITION);
+        AppendMenuW(menu,MF_STRING|(fixture.checked?MF_CHECKED:0),first,L"Dynamic item");
+    }
+    static void __cdecl Command(void*,uint32_t) {}
+};
+void CheckPluginMenuRefresh(MMDApp* app) {
+    const auto get=reinterpret_cast<MmsGetMenuHostApiFn>(GetProcAddress(GetModuleHandleW(nullptr),"MMSGetMenuHostApi"));
+    MmsMenuHostApi api{sizeof(api)};
+    Check(get&&get(MMS_MENU_ABI_VERSION,&api),"menu host API remains available");
+    MenuPluginFixture fixture;
+    MmsPluginMenu description{sizeof(description),MMS_MENU_ABI_VERSION,app->MainWindow(),
+        "menu-redraw-regression",&fixture,MenuPluginFixture::Title,MenuPluginFixture::Populate,MenuPluginFixture::Command,nullptr};
+    menuBarDraws=0;
+    const auto token=api.registerMenu(&description);
+    Check(token&&menuBarDraws>0,"new plugin root entry redraws the menu bar");
+    HMENU root=GetMenu(app->MainWindow());
+    HMENU popup=GetSubMenu(root,GetMenuItemCount(root)-1);
+    const auto populated=fixture.populated;
+    fixture.checked=true;menuBarDraws=0;
+    api.refreshMenu(token);
+    std::printf("plugin_menu_refresh unchanged_bar_draws=%u populate_delta=%u\n",menuBarDraws,fixture.populated-populated);
+    CheckMenuRegression(menuBarDraws==0,"plugin item state update does not redraw unchanged root title");
+    Check(fixture.populated==populated+1&&(GetMenuState(popup,fixture.first,MF_BYCOMMAND)&MF_CHECKED),
+        "plugin callbacks still refresh dynamic item check state");
+    for(int language:{0,1,2}) {
+        app->EnglishUI()=language;menuBarDraws=0;plugin_menu::Refresh(app);
+        Check(menuBarDraws>0,"changed plugin root title redraws for each language");
+        wchar_t text[80]{};GetMenuStringW(root,GetMenuItemCount(root)-1,text,80,MF_BYPOSITION);
+        Check(!std::wcscmp(text,MenuPluginFixture::Title(nullptr,language)),"plugin root caption follows all three languages");
+    }
+    menuBarDraws=0;api.unregisterMenu(token);
+    Check(menuBarDraws>0&&!IsMenu(popup),"plugin removal redraws and destroys its popup");
+}
 void CheckRecentProjects(MMDApp* app) {
     namespace fs=std::filesystem;
     wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);
@@ -310,16 +373,39 @@ void CheckRecentProjects(MMDApp* app) {
     auto newest=folder/L"工程 & 动作 3.pmm";recent_projects::Record(app,newest.c_str());
     recent_projects::Record(app,(folder/L"ignored.vmd").c_str());
     HWND host=app->MainWindow();app->EnglishUI()=2;LocalizeUI(app);
+    Hook(&DrawMenuBar,&ObserveMenuBar,&originalDrawMenuBar);
+    Hook(&DeleteMenu,&ObserveMenuDelete,&originalDeleteMenu);
     SendMessageW(host,WM_ENTERMENULOOP,FALSE,0);
     HMENU file=GetSubMenu(GetMenu(host),0);MENUITEMINFOW open{sizeof(open)};open.fMask=MIIM_ID|MIIM_SUBMENU;
     Check(GetMenuItemInfoW(file,205,FALSE,&open)&&open.wID==205&&open.hSubMenu,"Open keeps original command and gains native hover submenu");
     Check(GetMenuItemCount(open.hSubMenu)==14,"recent list caps at ten with browse fallback");
+    observedRecentMenu=open.hSubMenu;menuBarDraws=recentItemDeletes=0;
+    SendMessageW(host,WM_INITMENU,reinterpret_cast<WPARAM>(GetMenu(host)),0);
+    const unsigned initialDraws=menuBarDraws;
+    CheckMenuRegression(initialDraws==0,"opening an unchanged menu bar without plugins does not redraw the bar");
+    menuBarDraws=0;
+    for(int opening=0;opening<3;++opening)
+        SendMessageW(host,WM_INITMENUPOPUP,reinterpret_cast<WPARAM>(open.hSubMenu),0);
+    std::printf("recent_menu_refresh initial_bar_draws=%u popup_bar_draws=%u recent_deletes=%u\n",
+        initialDraws,menuBarDraws,recentItemDeletes);
+    CheckMenuRegression(menuBarDraws==0,"opening recent submenu does not redraw the unchanged menu bar");
+    CheckMenuRegression(recentItemDeletes==0,"repeated recent submenu opening preserves its existing rows");
+    std::filesystem::remove(newest);
+    SendMessageW(host,WM_INITMENUPOPUP,reinterpret_cast<WPARAM>(open.hSubMenu),0);
+    Check((GetMenuState(open.hSubMenu,34800,MF_BYCOMMAND)&MF_GRAYED)!=0,"file removed during menu loop becomes disabled");
+    std::ofstream(newest).close();
+    SendMessageW(host,WM_INITMENUPOPUP,reinterpret_cast<WPARAM>(open.hSubMenu),0);
+    Check((GetMenuState(open.hSubMenu,34800,MF_BYCOMMAND)&(MF_GRAYED|MF_DISABLED))==0,"restored file becomes available without reopening the menu loop");
     wchar_t caption[1024]{};GetMenuStringW(open.hSubMenu,34800,caption,1024,MF_BYCOMMAND);
     Check(wcsstr(caption,L"工程 && 动作 3.pmm")!=nullptr,"Unicode history persists, deduplicates, promotes latest and escapes menu ampersands");
     Hook(&GetUiOpenFileNameW,&CancelFileBrowser);
     const auto dirty=app->SceneModified();app->SceneModified()=0;
     int position=0;for(;position<GetMenuItemCount(file);++position)if(GetSubMenu(file,position)==open.hSubMenu)break;
     SendMessageW(host,WM_MENUSELECT,MAKEWPARAM(position,MF_POPUP),reinterpret_cast<LPARAM>(file));
+    MSG navigate{};navigate.message=WM_KEYDOWN;navigate.wParam=VK_RIGHT;
+    Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&navigate))==0,"right arrow remains native submenu navigation");
+    navigate.message=WM_MOUSEMOVE;
+    Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&navigate))==0,"hover remains native submenu navigation");
     MSG enter{};enter.message=WM_KEYDOWN;enter.wParam=VK_RETURN;
     Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&enter))==1,"Enter on original Open requests file browser immediately");
     SendMessageW(host,WM_EXITMENULOOP,FALSE,0);
@@ -337,6 +423,24 @@ void CheckRecentProjects(MMDApp* app) {
     const std::wstring previous=app->EnvFileName();SendMessageW(host,WM_COMMAND,34800,0);
     cancelRecentOpen=false;Check(previous==app->EnvFileName()&&app->SceneModified(),"canceling unsaved-scene confirmation leaves current project untouched");
     app->SceneModified()=0;SendMessageW(host,WM_COMMAND,205,0);Check(fileBrowsers==3,"ordinary Open still opens file browser after menu closes");
+    for(int language:{0,1,2}) {
+        app->EnglishUI()=language;LocalizeUI(app);
+        SendMessageW(host,WM_ENTERMENULOOP,FALSE,0);
+        file=GetSubMenu(GetMenu(host),0);open.hSubMenu=nullptr;
+        Check(GetMenuItemInfoW(file,205,FALSE,&open)&&open.hSubMenu,"recent submenu reattaches after language change");
+        GetMenuStringW(open.hSubMenu,34810,caption,1024,MF_BYCOMMAND);
+        const wchar_t* expected=language==0?L"参照…":language==1?L"Browse…":L"浏览文件…";
+        Check(std::wcscmp(caption,expected)==0,"recent browse caption follows Japanese English and Chinese");
+        HMENU attached=open.hSubMenu;
+        SendMessageW(host,WM_EXITMENULOOP,FALSE,0);
+        Check(!IsMenu(attached),"exiting menu loop destroys owned recent submenu");
+        open.hSubMenu=attached;
+        Check(GetMenuItemInfoW(file,205,FALSE,&open)&&!open.hSubMenu,"Open command returns to a plain item after menu exit");
+    }
+    observedRecentMenu=nullptr;
+    CheckPluginMenuRefresh(app);
+    MH_DisableHook(reinterpret_cast<void*>(&DrawMenuBar));MH_RemoveHook(reinterpret_cast<void*>(&DrawMenuBar));
+    MH_DisableHook(reinterpret_cast<void*>(&DeleteMenu));MH_RemoveHook(reinterpret_cast<void*>(&DeleteMenu));
     MH_DisableHook(reinterpret_cast<void*>(&GetUiOpenFileNameW));MH_RemoveHook(reinterpret_cast<void*>(&GetUiOpenFileNameW));
     app->SceneModified()=dirty;SetEnvironmentVariableW(L"MMS_RECENT_PROJECTS_FILE",nullptr);
 }

@@ -104,7 +104,9 @@ HRESULT Composite(IDirect3DDevice9* device, Target& target, const RECT& rect) {
     device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
     device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
     device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+    // Keep low-resolution scene pixels discrete when enlarged for display.
+    // Minification still uses linear filtering for supersampled previews.
+    device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
     device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
     device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
     device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
@@ -219,14 +221,15 @@ FrameScope::FrameScope(MMDApp* app) {
     r->viewScale *= scaleX_;
     device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
     rendering = app;
-    ready_ = ready_ && ScaleBuffer(app->OverlayVertices(), app->TextOverlayPrimitiveCount() * 3, 28) &&
-        ScaleBuffer(r->lineVertexBuffer, app->LineOverlayPrimitiveCount() * 2, 20) &&
-        ScaleBuffer(app->SpriteOverlayVertices(), app->SpriteOverlayPrimitiveCount() * 3, 28) &&
-        ScaleBuffer(app->AviOverlayVertices(), 6, 28) && ScaleBuffer(app->PictureOverlayVertices(), 6, 28) &&
+    // Screen text, selection lines and HUD controls stay in display pixels.
+    // Only geometry composited as part of the scene follows render resolution.
+    ready_ = ready_ && ScaleBuffer(app->AviOverlayVertices(), 6, 28) && ScaleBuffer(app->PictureOverlayVertices(), 6, 28) &&
         ScaleBuffer(app->LeftViewportVertices(), 6, 28) && ScaleBuffer(app->RightViewportVertices(), 6, 28);
 }
-FrameScope::~FrameScope() {
-    if (!app_) return;
+FrameScope::~FrameScope() { Restore(false); }
+bool FrameScope::Complete() { return Restore(true); }
+bool FrameScope::Restore(bool present) {
+    if (!app_) return ready_;
     auto* r = app_->Renderer();
     for (auto& backup : buffers_) {
         void* data = nullptr;
@@ -241,12 +244,17 @@ FrameScope::~FrameScope() {
     device_->SetRenderTarget(0, previous_.Get());
     device_->SetDepthStencilSurface(depth_.Get());
     device_->SetViewport(&viewport_);
-    if (ready_ && complete_) {
+    bool success = ready_;
+    if (ready_ && present) {
         const HRESULT hr = Composite(device_, targets.at(app_), display_);
+        success = SUCCEEDED(hr);
         if (FAILED(hr)) runtime_log::Write("VIEWPORT_SCALE composite hr=0x%08lX", hr);
         FillFramePresentationMargins(app_, device_);
     }
     device_->SetScissorRect(&scissor_);
     device_->SetRenderState(D3DRS_SCISSORTESTENABLE, scissorEnabled_);
+    app_ = nullptr;
+    buffers_.clear();
+    return success;
 }
 }

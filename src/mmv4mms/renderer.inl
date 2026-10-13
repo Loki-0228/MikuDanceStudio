@@ -87,7 +87,9 @@ int Render(MMDApp* app,const float world[16]) {
         MmvMmsSelfShadow nativeShadow{};nativeShadow.structureSize=sizeof(nativeShadow);
         nativeShadow.version=MMV_MMS_SELF_SHADOW_VERSION;nativeShadow.encoding=MMV_MMS_SHADOW_NATIVE_PROJECTED_DEPTH;
         nativeShadow.frameId=frame.frameId;
-        ComPtr<IDirect3DTexture9> shadowTexture;
+        MmvMmsShadowSampling shadowSampling{};shadowSampling.structureSize=sizeof(shadowSampling);
+        shadowSampling.version=MMV_MMS_SHADOW_SAMPLING_VERSION;shadowSampling.frameId=frame.frameId;
+        ComPtr<IDirect3DTexture9> shadowTexture, builtinShadowTexture;
         if(app->Renderer()->effect&&UseEffectModelRenderer(app)) {
             Check(device->BeginScene(),"Begin native MMV shadow");
             struct EndNativeScene {
@@ -100,13 +102,23 @@ int Render(MMDApp* app,const float world[16]) {
             restore.Apply();
             Check(ended,"End native MMV shadow");
             if(!rendered)throw std::runtime_error("MMS native shadow pass failed; MMV frame discarded");
-            shadowTexture=app->Renderer()->hdrTexture;
+            shadowTexture=shadow_filter::VisibleTexture(app);
             D3DSURFACE_DESC description{};
             if(!shadowTexture||FAILED(shadowTexture->GetLevelDesc(0,&description))||description.Format!=D3DFMT_R32F)
                 throw std::runtime_error("Invalid MMS native shadow texture");
             nativeShadow.mode=app->ShadowMode();nativeShadow.width=description.Width;nativeShadow.height=description.Height;
             nativeShadow.texture=reinterpret_cast<uint64_t>(shadowTexture.Get());
             std::memcpy(nativeShadow.lightViewProjection,&app->LightViewProjection(),sizeof(nativeShadow.lightViewProjection));
+        }
+        if(nativeShadow.mode) {
+            const auto sampling=shadow_filter::ReadSamplingState(app);
+            builtinShadowTexture=sampling.texture;
+            shadowSampling.texture=reinterpret_cast<uint64_t>(builtinShadowTexture.Get());
+            shadowSampling.enhanced=sampling.enhanced?1u:0u;
+            std::copy_n(sampling.mapSize,4,shadowSampling.mapSize);
+            shadowSampling.prefiltered=sampling.prefiltered?1u:0u;
+            std::copy_n(sampling.coarseSize,2,shadowSampling.coarseSize);
+            input.nativeShadowSampling=&shadowSampling;
         }
         input.nativeSelfShadow=&nativeShadow;
         input.shadowMode=nativeShadow.mode;input.shadowWidth=nativeShadow.width;input.shadowHeight=nativeShadow.height;

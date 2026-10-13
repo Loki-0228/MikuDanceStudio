@@ -2893,8 +2893,8 @@ static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool c
         if(FAILED(FxEnd(effect)))succeeded=false;
     }
 #if !MMD_ORIGINAL_PROFILE
-    // Preserve the native map for external effects. The optional finer map
-    // uses the same projection and casters, only for the built-in filter.
+    // Preserve the raw native map for fallback. The finer map uses the same
+    // projection and casters; its filtered result is shared by all receivers.
     if (auto* fine = shadow_filter::Prepare(app, succeeded)) {
         shadow_filter::TargetScope scope;
         bool auxiliary = SUCCEEDED(scope.Begin(device, *fine));
@@ -2929,6 +2929,7 @@ static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool c
             reinterpret_cast<const Matrix*>(&app->WorldViewProjection())))) auxiliary = false;
         shadow_filter::MarkRendered(app, auxiliary && succeeded);
     }
+    shadow_filter::FinalizeDepth(app, succeeded);
 #endif
     app->ActiveRenderPass() = AccessoryRenderPass::None;
     device->SetVertexShader(nullptr);

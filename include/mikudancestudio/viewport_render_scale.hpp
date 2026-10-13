@@ -38,13 +38,15 @@ public:
     FrameScope(const FrameScope&) = delete;
     FrameScope& operator=(const FrameScope&) = delete;
     bool Ready() const { return ready_; }
-    void Complete() { complete_ = true; }
+    // Resolve and restore display coordinates now, before drawing the HUD.
+    bool Complete();
 private:
     struct BufferBackup {
         IDirect3DVertexBuffer9* buffer;
         std::vector<unsigned char> bytes;
     };
     bool ScaleBuffer(IDirect3DVertexBuffer9* buffer, unsigned count, unsigned stride);
+    bool Restore(bool present);
     MMDApp* app_ = nullptr;
     IDirect3DDevice9* device_ = nullptr;
     Microsoft::WRL::ComPtr<IDirect3DSurface9> previous_, depth_;
@@ -57,7 +59,6 @@ private:
     DWORD scissorEnabled_ = FALSE;
     RECT scissor_{};
     bool ready_ = true;
-    bool complete_ = false;
     std::vector<BufferBackup> buffers_;
 };
 }

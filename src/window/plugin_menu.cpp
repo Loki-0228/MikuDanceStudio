@@ -15,6 +15,7 @@ namespace {
 struct Entry {
     MmsPluginMenu api{};
     std::string id;
+    std::wstring caption;
     uint64_t token=0;
     UINT first=0;
     HMENU root=nullptr,popup=nullptr;
@@ -55,23 +56,32 @@ void RefreshWindow(HWND window,uint32_t language){
     HMENU root=GetMenu(window);if(!root)return;
     struct Scope {Scope(){refreshing=true;}~Scope(){refreshing=false;}} scope;
     const auto snapshot=entries;
+    bool barChanged=false;
     for(const auto& e:snapshot)if(e->api.owner==window&&Alive(e)){
+        const wchar_t* label=e->api.title(e->api.context,language);
+        const std::wstring caption=label?label:L"";
         if(e->root!=root||Position(*e)<0){
             Detach(*e);
             HMENU popup=CreatePopupMenu();if(!popup)continue;
             MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_SUBMENU|MIIM_STRING|MIIM_FTYPE|MIIM_DATA;
             item.fType=MFT_STRING|MFT_RIGHTJUSTIFY;item.hSubMenu=popup;
             item.dwItemData=reinterpret_cast<ULONG_PTR>(e.get());
-            item.dwTypeData=const_cast<wchar_t*>(e->api.title(e->api.context,language));
+            item.dwTypeData=const_cast<wchar_t*>(caption.c_str());
             if(!InsertMenuItemW(root,GetMenuItemCount(root),TRUE,&item)){DestroyMenu(popup);continue;}
-            e->root=root;e->popup=popup;
+            e->root=root;e->popup=popup;e->caption=caption;barChanged=true;
         }
-        MENUITEMINFOW title{sizeof(title)};title.fMask=MIIM_STRING;
-        title.dwTypeData=const_cast<wchar_t*>(e->api.title(e->api.context,language));
-        SetMenuItemInfoW(root,Position(*e),TRUE,&title);
+        if(e->caption!=caption) {
+            MENUITEMINFOW title{sizeof(title)};title.fMask=MIIM_STRING;
+            title.dwTypeData=const_cast<wchar_t*>(caption.c_str());
+            if(SetMenuItemInfoW(root,Position(*e),TRUE,&title)) {
+                e->caption=caption;barChanged=true;
+            }
+        }
         e->api.populate(e->api.context,e->popup,e->first,language);
     }
-    DrawMenuBar(window);
+    // Dynamic popup contents still refresh on every request. Only changing a
+    // top-level entry needs to repaint the bar, never an empty/stable refresh.
+    if(barChanged)DrawMenuBar(window);
 }
 uint64_t __cdecl Register(const MmsPluginMenu* api){
     if(!api||api->structureSize<sizeof(*api)||api->abiVersion!=MMS_MENU_ABI_VERSION||

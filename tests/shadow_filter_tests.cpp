@@ -460,6 +460,17 @@ HRESULT WINAPI ObserveDraw(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,INT ba
     // spriteTexture with the same shader. They are not shadow-map samples.
     const bool unshadowed = texture && SameObject(texture.Get(), renderer->spriteTexture);
     const bool nativeVisible=!shadow&&info.nativeShadow&&!unshadowed;
+    const bool sharedVisible=!shadow&&!unshadowed&&sample.Format==D3DFMT_R32F;
+    unsigned sharedTag=0x51444653,readTag=0;
+    DWORD tagBytes=sizeof(readTag);
+    const GUID sharedGuid={0x775d5621,0xd8a7,0x4d7f,{0x93,0x4f,0x6a,0x11,0x72,0x03,0x52,0x29}};
+    bool sameShared=false;
+    if(sharedVisible&&visible) {
+        visible->SetPrivateData(sharedGuid,&sharedTag,sizeof sharedTag,0);
+        sameShared=SUCCEEDED(texture->GetPrivateData(sharedGuid,&readTag,&tagBytes))&&readTag==sharedTag;
+        visible->FreePrivateData(sharedGuid);
+        if(!sameShared)++counts.bad;
+    }
     const HRESULT result=realDraw(device,type,base,min,vertices,start,primitives);
     if(shadow) {
         if(rt.Width==coarse.Width)++counts.shadowCoarse;else ++counts.shadowFine;
@@ -473,9 +484,10 @@ HRESULT WINAPI ObserveDraw(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,INT ba
         if(FAILED(result)||sample.Format!=D3DFMT_R32F||sample.Width!=expected.Width||
            sample.Height!=expected.Height||sample.Width!=desired)++counts.bad;
     }
-    draws<<frameTag<<','<<(shadow?"shadow":nativeVisible?"visible-native":"other")<<','<<info.id<<','
+    draws<<frameTag<<','<<(shadow?"shadow":nativeVisible?"visible-native":sharedVisible?"visible-external":"other")<<','<<info.id<<','
          <<rt.Width<<','<<rt.Height<<','<<unsigned(rt.Format)<<','<<sample.Width<<','<<sample.Height<<','
-         <<unsigned(sample.Format)<<','<<coarse.Width<<','<<expected.Width<<','<<long(result)<<'\n';
+         <<unsigned(sample.Format)<<','<<coarse.Width<<','<<expected.Width<<','<<long(result)<<','
+         <<texture.Get()<<','<<visible<<','<<sameShared<<'\n';
     return result;
 }
 
@@ -485,7 +497,7 @@ void ConfigureFrame(bool enhanced,int mode) {
     host->EditMode()=ViewportEditMode::Camera;
     host->ShadowFilterEnhanced()=enhanced;host->ShadowMode()=mode;
     host->state.selfShadowEnabled=1;host->ShadowDistance()=mode==1?.005f:.001f;
-    host->AdaptiveShadowResolution()=false;host->ShadowResolutionLimit()=1024;
+    host->AdaptiveShadowResolution()=false;host->ShadowResolutionLimit()=4096;
     host->NativePhysicsOverridden()=true;host->PlaybackPhysicsMode()=0;
     host->DeltaTime()=1.f/30;host->state.messageSeen=10;
 }
@@ -509,6 +521,88 @@ void Frame(bool enhanced,int mode,const char* tag) {
 }
 } // namespace
 
+using DrawUp=HRESULT(WINAPI*)(IDirect3DDevice9*,D3DPRIMITIVETYPE,UINT,const void*,UINT);
+DrawUp realUp=nullptr;
+bool failUp=false;
+HRESULT WINAPI UpProbe(IDirect3DDevice9* d,D3DPRIMITIVETYPE type,UINT count,const void* data,UINT stride) {
+    if(d==ownedDevice&&failUp){failUp=false;return E_FAIL;}
+    return realUp(d,type,count,data,stride);
+}
+void SharedChecks() {
+    auto* renderer=host->Renderer();
+    host->ShadowFilterEnhanced()=true;host->ShadowMode()=2;
+    sf::ReleaseRenderer(renderer);
+    sf::Invalidate(host);
+    auto* fine=sf::Prepare(host,true);Check(fine!=nullptr,"prepare private fine input for shared pass");
+    ClearFine(fine);
+    Hr(ownedDevice->BeginScene(),"warm shared resources before timing");
+    sf::FinalizeDepth(host,true);
+    Hr(ownedDevice->EndScene(),"complete shared warmup");
+    DeviceSnapshot snapshot(ownedDevice);
+    ComPtr<IDirect3DQuery9> start,end,frequency,disjoint;
+    bool timing=SUCCEEDED(ownedDevice->CreateQuery(D3DQUERYTYPE_TIMESTAMP,&start))&&
+        SUCCEEDED(ownedDevice->CreateQuery(D3DQUERYTYPE_TIMESTAMP,&end))&&
+        SUCCEEDED(ownedDevice->CreateQuery(D3DQUERYTYPE_TIMESTAMPFREQ,&frequency))&&
+        SUCCEEDED(ownedDevice->CreateQuery(D3DQUERYTYPE_TIMESTAMPDISJOINT,&disjoint));
+    Hr(ownedDevice->BeginScene(),"begin isolated shared depth preprocessing");
+    if(timing){disjoint->Issue(D3DISSUE_BEGIN);frequency->Issue(D3DISSUE_END);start->Issue(D3DISSUE_END);}
+    sf::FinalizeDepth(host,true);
+    if(timing){end->Issue(D3DISSUE_END);disjoint->Issue(D3DISSUE_END);}
+    Hr(ownedDevice->EndScene(),"end isolated shared depth preprocessing");
+    snapshot.Verify();
+    auto* visible=sf::VisibleTexture(host);Check(visible!=renderer->hdrTexture && visible!=fine->Texture(),"published separate filtered R32F, not raw coarse or fine");
+    Check(!EffectEnabled(),"native receiver kernel disabled only after shared output succeeds");
+    if(timing) {
+        UINT64 a=0,b=0,f=0;BOOL invalid=TRUE;const auto until=GetTickCount64()+10000;
+        HRESULT ready=S_FALSE;
+        while((ready=end->GetData(&b,sizeof b,D3DGETDATA_FLUSH))==S_FALSE&&GetTickCount64()<until)Sleep(1);
+        if(ready==S_OK&&start->GetData(&a,sizeof a,0)==S_OK&&frequency->GetData(&f,sizeof f,0)==S_OK&&
+           disjoint->GetData(&invalid,sizeof invalid,0)==S_OK&&!invalid&&f)
+            std::printf("SHARED_GPU warmed_two_pass_ms=%.6f note=single_isolated_timestamp_not_FPS\n",1000.*double(b-a)/double(f));
+        else std::puts("SHARED_GPU timing unavailable");
+    }
+    sf::Invalidate(host);Check(sf::VisibleTexture(host)==renderer->hdrTexture,"frame invalidation cannot reuse prior prefiltered texture");
+    fine=sf::Prepare(host,true);Check(fine!=nullptr,"prepare next shared frame");ClearFine(fine);
+    auto** vt=*reinterpret_cast<void***>(ownedDevice);
+    Check(MH_CreateHook(vt[83],&UpProbe,reinterpret_cast<void**>(&realUp))==MH_OK&&MH_EnableHook(vt[83])==MH_OK,"hook only owned DrawPrimitiveUP failure");
+    DeviceSnapshot failedSnapshot(ownedDevice);
+    failUp=true;Hr(ownedDevice->BeginScene(),"begin injected shared draw failure");sf::FinalizeDepth(host,true);Hr(ownedDevice->EndScene(),"end injected failure");
+    failedSnapshot.Verify();Check(!failUp,"injected draw failure consumed by shared pass");
+    Check(sf::VisibleTexture(host)==renderer->hdrTexture,"failed shared draw publishes coarse fallback, not old filtered frame");
+    Check(sf::Prepare(host,true)==nullptr,"shared failure cached for unchanged device and size");
+    MH_DisableHook(vt[83]);MH_RemoveHook(vt[83]);
+    sf::ReleaseRenderer(renderer);fine=sf::Prepare(host,true);Check(fine!=nullptr,"reset clears shared failure cache");ClearFine(fine);
+    probeSize=fine->Size();probeAllocations=true;failOneAllocation=true;unsigned before=allocationAttempts;
+    Hr(ownedDevice->BeginScene(),"begin injected shared allocation failure");sf::FinalizeDepth(host,true);Hr(ownedDevice->EndScene(),"end allocation failure");
+    probeAllocations=false;
+    Check(!failOneAllocation&&allocationAttempts==before+1,"first shared R32F allocation safely failed");
+    Check(sf::VisibleTexture(host)==renderer->hdrTexture,"allocation failure returns current coarse depth");
+    Check(sf::Prepare(host,true)==nullptr,"allocation failure cached without repeat allocation");
+    host->ShadowFilterEnhanced()=false;sf::Invalidate(host);Check(sf::VisibleTexture(host)==renderer->hdrTexture,"toggle off releases shared resources and returns native map");
+    sf::ReleaseRenderer(renderer);
+}
+
+void SharedSizeChecks() {
+    host->ShadowFilterEnhanced()=true;host->ShadowMode()=2;
+    for(UINT coarse:{512u,1024u,2048u,4096u,8192u}) {
+        CoarseFixture fixture(coarse);
+        sf::Invalidate(host);auto* fine=sf::Prepare(host,true);
+        if(fine)ClearFine(fine);
+        const unsigned before=allocationAttempts;
+        Hr(ownedDevice->BeginScene(),"begin shared size sample");sf::FinalizeDepth(host,true);Hr(ownedDevice->EndScene(),"end shared size sample");
+        auto* visible=sf::VisibleTexture(host);D3DSURFACE_DESC desc{};
+        Check(visible!=host->Renderer()->hdrTexture&&SUCCEEDED(visible->GetLevelDesc(0,&desc))&&desc.Width==FineSize(coarse,deviceLimit),"shared filtered allocation uses current actual size, including capped coarse");
+        Check(!EffectEnabled(),"shared output disables receiver kernel at current size");
+        Check(allocationAttempts==before+2,"shared size creates exactly scratch and final maps");
+        sf::Invalidate(host);Check(sf::VisibleTexture(host)==host->Renderer()->hdrTexture,"resized shared frame starts invalid");
+        fine=sf::Prepare(host,true);if(fine)ClearFine(fine);
+        Hr(ownedDevice->BeginScene(),"begin repeated shared size sample");sf::FinalizeDepth(host,true);Hr(ownedDevice->EndScene(),"end repeated shared size sample");
+        Check(allocationAttempts==before+2,"unchanged shared size reuses allocations without per-frame recreate");
+        summary<<"shared-size,"<<coarse<<','<<desc.Width<<",passed\n";
+    }
+    sf::ReleaseRenderer(host->Renderer());
+}
+
 int wmain(int argc,wchar_t** argv) {
     std::setvbuf(stdout,nullptr,_IONBF,0);
     SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
@@ -524,7 +618,7 @@ int wmain(int argc,wchar_t** argv) {
         Check(!std::filesystem::exists(output), "output directory is new; prior evidence will not be overwritten");
         std::filesystem::create_directories(output);
         draws.open(output/"draw-bindings.csv");summary.open(output/"summary.csv");
-        draws<<"frame,pass,shader,rt_width,rt_height,rt_format,s0_width,s0_height,s0_format,coarse_width,expected_width,hresult\n";
+        draws<<"frame,pass,shader,rt_width,rt_height,rt_format,s0_width,s0_height,s0_format,coarse_width,expected_width,hresult,s0_pointer,visible_pointer,same_resource_tag\n";
         Check(bool(draws)&&bool(summary), "open evidence outputs");
         Check(MH_Initialize()==MH_OK, "initialize process-local hooks");hooks=true;
         Check(MH_CreateHook(&ShowWindow,&Hide,reinterpret_cast<void**>(&realShow))==MH_OK, "hook own window visibility");
@@ -579,6 +673,8 @@ MeshMaterialList { 1;2;0,0;; Material {0.6;0.6;0.6;1.0;;5.0;0.0;0.0;0.0;;0.1;0.1
         ConfigureFrame(false,2);FrameDriver(host); // Finish deferred model/viewport initialization.
         Frame(false,2,"disabled-before");
         ApiTests();
+        SharedChecks();
+        SharedSizeChecks();
         Frame(true,1,"enhanced-mode1");
         Frame(true,2,"enhanced-mode2");
         shaders.clear(); // Shader COM identities may be reused after device reset.

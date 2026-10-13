@@ -45,6 +45,24 @@ typedef struct MmvMmsSelfShadow {
     float lightViewProjection[16];
 } MmvMmsSelfShadow;
 
+/* Optional receiver contract, same projection/frame/device/encoding as the
+ * native map. Version 1 can provide a separate default-material fine map.
+ * Version 2 shares the final depth map with nativeSelfShadow and authored FX:
+ * enhanced=0, mapSize.xy=actual texture size, zw=0 (never filter twice).
+ * prefiltered=1 requests the same two-pass positive cubic prefilter after a
+ * plugin geometry rebuild, using coarseSize and the actual map dimensions.
+ * This changes depth sampling only; authored FX keep their receiver algorithm.
+ * Old-sized frames omit this record. Version 1 records omit its new tail. */
+#define MMV_MMS_SHADOW_SAMPLING_VERSION 2u
+#define MMV_MMS_SHADOW_SAMPLING_VERSION_LEGACY 1u
+typedef struct MmvMmsShadowSampling {
+    uint32_t structureSize, version, enhanced, reserved;
+    uint64_t frameId, texture;
+    float mapSize[4];
+    uint32_t prefiltered; /* Version 2 tail; zero for an unfiltered map. */
+    float coarseSize[2];
+} MmvMmsShadowSampling;
+
 /* Native main-color material grouping. Original is one authored-order draw;
  * Coverage adds only an alpha==255 prepass before the translucent draw.
  * Custom FX keep their own pass states and never receive Coverage. */
@@ -75,6 +93,9 @@ typedef struct MmvMmsFrame {
        callback nor its context may be retained after render returns. */
     void* materialPassContext;
     MmvMmsReadMaterialPassFn readMaterialPass;
+    /* Optional ABI 1 tail. Old-sized frames retain the old plugin receiver.
+       A supplied record selects the matching MMS depth-first receiver. */
+    const MmvMmsShadowSampling* nativeShadowSampling;
 } MmvMmsFrame;
 typedef struct MmvMmsOutput {
     uint32_t structureSize, width, height, reserved;

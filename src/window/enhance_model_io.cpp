@@ -1433,7 +1433,8 @@ void SetModelExtensionMenuEnabled(MMDApp* app, bool enabled) {
     if (position < 0) return;
     EnableMenuItem(help, UINT(position), MF_BYPOSITION |
                    (enabled ? MF_ENABLED : MF_GRAYED));
-    DrawMenuBar(hwnd);
+    // Only popup item states changed. The native popup reads them before
+    // painting; redrawing the whole bar here flashes every nested submenu.
 }
 // VA 0x0042AE20 - path copy: real port moved to src/media/media_load.cpp.
 

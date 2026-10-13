@@ -64,7 +64,16 @@ FineDepthTarget* Prepare(MMDApp* app, bool nativeSucceeded);
 // Call only for a non-null Prepare result, after TargetScope::Restore. Include
 // restoration failures in succeeded; no failed/previous-frame fine map is used.
 void MarkRendered(MMDApp* app, bool succeeded);
+void FinalizeDepth(MMDApp* app, bool succeeded);
 IDirect3DTexture9* VisibleTexture(MMDApp* app);
+struct SamplingState {
+    IDirect3DTexture9* texture = nullptr; // Borrowed; caller may retain for its synchronous draw.
+    bool enhanced = false; // Receiver-side filtering still required.
+    bool prefiltered = false; // Shared texture has already been filtered.
+    float coarseSize[2]{0.0f, 0.0f}; // Required when MMV rebuilds casters.
+    float mapSize[4]{1.0f, 1.0f, 0.0f, 0.0f};
+};
+SamplingState ReadSamplingState(MMDApp* app);
 void ConfigureEffect(MMDApp* app, void* effect);
 
 // Before device Reset, release without forgetting; at renderer shutdown forget.

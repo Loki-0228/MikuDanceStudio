@@ -25,6 +25,7 @@
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/text_encoding.hpp"
 #include "mikudancestudio/shared_toon.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mmv/mesh.hpp"

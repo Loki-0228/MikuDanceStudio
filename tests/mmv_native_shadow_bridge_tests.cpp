@@ -12,6 +12,7 @@
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mmv/mms.h"
 #include <algorithm>
 #include <atomic>
@@ -172,13 +173,31 @@ int MMV_CALL Render(void* runtime,const MmvMmsFrame* input,MmvMmsOutput* output)
     Require(shadow.mode==expected,"native bridge mode follows the production renderer gate");
     if(shadow.mode) {
         auto* texture=reinterpret_cast<IDirect3DTexture9*>(shadow.texture);
-        Require(texture==g_Block->Renderer()->hdrTexture,"bridge borrows the actual MMS native shadow texture");
+        Require(texture==shadow_filter::VisibleTexture(g_Block),"authored FX bridge borrows the final shared MMS depth");
         D3DSURFACE_DESC description{};ComPtr<IDirect3DDevice9> owner;
         Require(texture&&SUCCEEDED(texture->GetLevelDesc(0,&description))&&SUCCEEDED(texture->GetDevice(&owner)),"read native GPU resource description");
         Require(owner.Get()==testDevice&&description.Format==D3DFMT_R32F&&description.Pool==D3DPOOL_DEFAULT&&
             description.Width==shadow.width&&description.Height==shadow.height,"native texture device, dimensions and R32F encoding match");
         Require(!std::memcmp(shadow.lightViewProjection,&g_Block->LightViewProjection(),sizeof(shadow.lightViewProjection)),
             "bridge matrix is exactly the native map projection");
+        Require(input->structureSize>=offsetof(MmvMmsFrame,nativeShadowSampling)+sizeof(input->nativeShadowSampling)&&input->nativeShadowSampling,
+            "host publishes built-in sampling as an optional tail");
+        const auto& sampling=*input->nativeShadowSampling;
+        const auto expectedSampling=shadow_filter::ReadSamplingState(g_Block);
+        auto* sampled=reinterpret_cast<IDirect3DTexture9*>(sampling.texture);
+        Require(sampling.frameId==shadow.frameId&&sampling.version==MMV_MMS_SHADOW_SAMPLING_VERSION&&
+            sampled==expectedSampling.texture&&sampling.enhanced==unsigned(expectedSampling.enhanced)&&
+            !std::memcmp(sampling.mapSize,expectedSampling.mapSize,sizeof(sampling.mapSize))&&
+            sampling.prefiltered==unsigned(expectedSampling.prefiltered)&&
+            !std::memcmp(sampling.coarseSize,expectedSampling.coarseSize,sizeof(sampling.coarseSize)),"bridge reuses exact final sampling state");
+        D3DSURFACE_DESC sampledDesc{};
+        Require(sampled&&SUCCEEDED(sampled->GetLevelDesc(0,&sampledDesc))&&
+            float(sampledDesc.Width)==sampling.mapSize[0]&&float(sampledDesc.Height)==sampling.mapSize[1],"sampling size matches actual visible texture");
+        Require(sampled==texture&&!sampling.enhanced&&sampling.mapSize[2]==0&&sampling.mapSize[3]==0,
+            "authored and default share final depth with no second receiver filter");
+        std::printf("PREFILTER done=%u coarse=%gx%g\n",sampling.prefiltered,sampling.coarseSize[0],sampling.coarseSize[1]);
+        std::printf("SAMPLING enhanced=%u coarse=%ux%u visible=%ux%u footprint=%gx%g distinct=%d\n",sampling.enhanced,
+            shadow.width,shadow.height,sampledDesc.Width,sampledDesc.Height,sampling.mapSize[2],sampling.mapSize[3],sampled!=texture);
     } else Require(!shadow.texture,"disabled native shadow does not publish a stale texture");
     std::copy_n(shadow.lightViewProjection,16,lastMatrix);lastFrame=shadow.frameId;lastMode=shadow.mode;++renderCalls;
     std::printf("BRIDGE frame=%llu mode=%u size=%ux%u texture=%p\n",static_cast<unsigned long long>(lastFrame),lastMode,
@@ -279,6 +298,23 @@ int wmain(int argc,wchar_t** argv) {
     Require(std::memcmp(modeOne,lastMatrix,sizeof(modeOne))!=0,"mode two changes the native projection supplied to MMV");
     float nearRange[16];std::copy_n(lastMatrix,16,nearRange);app->ShadowDistance()=.03568f;Frame(app,2);
     Require(std::memcmp(nearRange,lastMatrix,sizeof(nearRange))!=0,"range edits update the same-frame native projection");
+    for(bool dynamic:{false,true})for(bool enhanced:{false,true})for(unsigned mode:{1u,2u}) {
+        app->AdaptiveShadowResolution()=dynamic;app->ShadowFilterEnhanced()=enhanced;
+        app->CameraDistance()=dynamic?-160.f:-45.f;
+        Frame(app,mode);
+    }
+    app->ShadowFilterEnhanced()=false;
+    app->AdaptiveShadowResolution()=true;app->ShadowFilterEnhanced()=true;
+    unsigned farWidth=0,nearWidth=0;
+    for(float distance:{-720.f,-12.f,-720.f}) {
+        app->CameraDistance()=distance;
+        for(int settle=0;settle<3;++settle)Frame(app,1);
+        D3DSURFACE_DESC desc{};Require(SUCCEEDED(app->Renderer()->hdrTexture->GetLevelDesc(0,&desc)),"read dynamic native depth");
+        std::printf("DYNAMIC distance=%g size=%u\n",distance,desc.Width);
+        if(distance==-12.f)nearWidth=desc.Width;else farWidth=desc.Width;
+    }
+    Require(farWidth<nearWidth,"dynamic resolution actually changes while enhanced sampling remains synchronized");
+    app->ShadowFilterEnhanced()=false;
     {
         const State before(app);const unsigned prior=renderCalls,beginCount=begins,endCount=ends;
         float world[16]{};world[0]=world[5]=world[10]=world[15]=1;
