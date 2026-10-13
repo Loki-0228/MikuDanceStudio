@@ -1,3 +1,4 @@
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/native_mesh.hpp"
@@ -409,6 +410,7 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
     // MMS addition: the Help menu's dock-corner item (command 32810) cycles
     // one corner on each ordinary menu click.
     if (ctrl == nullptr && notification == 0 && viewport_corner_menu::HandleCommand(app, id)) return;
+    if (ctrl == nullptr && notification == 0 && viewport_render_scale::HandleCommand(app, id)) return;
 
     switch (id) {
     case 200:        // File: Exit (0x48BCF9) - flag + WM_CLOSE

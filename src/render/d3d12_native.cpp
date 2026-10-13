@@ -1,4 +1,5 @@
 #include "mikudancestudio/d3d12_native.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 #if defined(MMD_ENABLE_DX12) && MMD_ENABLE_DX12
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -195,9 +196,11 @@ struct Native {
             Check12(Device()->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,f.allocator.Get(),nullptr,IID_PPV_ARGS(&f.list)),"native commands");
             Check12(f.list->Close(),"native initial close");}
     }
-    void Resize(RECT rect) {
-        const unsigned w=std::max<LONG>(1,rect.right-rect.left),h=std::max<LONG>(1,rect.bottom-rect.top);
-        SetWindowPos(window,HWND_TOP,rect.left,rect.top,w,h,SWP_NOACTIVATE|SWP_SHOWWINDOW);
+    void Resize(MMDApp* app) {
+        const RECT rect=app->ViewportRect();
+        const auto size=viewport_render_scale::PreviewSize(app,app->viewportRender.automatic,app->viewportRender.percent);
+        const unsigned w=std::max(1u,size.width),h=std::max(1u,size.height);
+        SetWindowPos(window,HWND_TOP,rect.left,rect.top,std::max<LONG>(1,rect.right-rect.left),std::max<LONG>(1,rect.bottom-rect.top),SWP_NOACTIVATE|SWP_SHOWWINDOW);
         if(w==width&&h==height)return;WaitAll();
         for(auto& f:frames){f.color.Reset();f.depth.Reset();}
         Check12(swap->ResizeBuffers(3,w,h,DXGI_FORMAT_B8G8R8A8_UNORM,0),"native resize");width=w;height=h;
@@ -309,7 +312,7 @@ struct Native {
         }
     }
     void Render(MMDApp* app,const float world[16]) {
-        Resize(app->ViewportRect());unsigned slot=swap->GetCurrentBackBufferIndex();auto& f=frames[slot];Wait(f.done);f.uploads.clear();
+        Resize(app);unsigned slot=swap->GetCurrentBackBufferIndex();auto& f=frames[slot];Wait(f.done);f.uploads.clear();
         Check12(f.allocator->Reset(),"native allocator reset");Check12(f.list->Reset(f.allocator.Get(),nullptr),"native list reset");
         Gather(app,world,f,slot);
         D3DMATRIX view{},projection{},wv{},wvp{};app->Renderer()->device->GetTransform(D3DTS_VIEW,&view);app->Renderer()->device->GetTransform(D3DTS_PROJECTION,&projection);

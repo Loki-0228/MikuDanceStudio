@@ -1,3 +1,4 @@
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
 #include "mikudancestudio/ui_translation.hpp"
@@ -1403,6 +1404,7 @@ void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0
     RefreshTransparentSortPrecisionMenu(app);
     // Refresh the Help menu's corner label along with the interface language.
     viewport_corner_menu::EnsureItem(app);
+    viewport_render_scale::RefreshMenu(app);
     DrawMenuBar(hwnd);
 }
 

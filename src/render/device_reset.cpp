@@ -1,4 +1,5 @@
 #include "mikudancestudio/mmv4mms.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/build_profile.hpp"
@@ -52,6 +53,7 @@ void ReleaseSubSlot(ComPtr& slot) {
 
 bool PostDeviceReset(MMDApp* app) {
     device_lost_wait::ResetScope recovery(app);
+    viewport_render_scale::Release(app);
     ReleaseTransparentCapture(app);
     mmv4mms::DeviceLost();
     native_mesh::DeviceLost();

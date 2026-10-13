@@ -1,3 +1,4 @@
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
@@ -435,6 +436,7 @@ void TeardownDShowGraphCoUninit(DShowRecorder* rec) {
 // VA 0x00462C40 - ShutdownCleanup  (original: sub_462C40, __thiscall, app)
 // =========================================================================//
 void ShutdownCleanup(MMDApp* app) {
+    viewport_render_scale::Release(app);
     device_lost_wait::Forget(app);
     AbortPngMovRecording(app->Recorder());
     ReleaseTransparentCapture(app);

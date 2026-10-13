@@ -1518,6 +1518,12 @@ public:
     }
 
 
+    // Preview preferences never change PMM or export dimensions.
+    struct ViewportRenderSettings {
+        bool automatic = true;
+        double percent = 100.0;
+    } viewportRender;
+
 private:
     friend class ScopedSceneMutation;
     unsigned int m_sceneMutationDepth = 0;

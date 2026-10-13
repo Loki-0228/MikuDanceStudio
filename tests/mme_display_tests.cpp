@@ -2,6 +2,8 @@
 // Exercise the real mapping dialog without displaying or activating a window.
 #define NOMINMAX
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/d3d12_native.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/text_encoding.hpp"
 #include "mikudancestudio/ui_language.hpp"
@@ -224,6 +226,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
     }
     if (tick > 10) { std::puts("FAIL mapping dialog not found"); std::exit(2); }
 }
+#include "viewport_render_scale_scene_checks.hpp"
 }
 int wmain(int argc, wchar_t** argv) {
     Check(argc >= 2 && argc <= 4, "model path supplied");
@@ -248,6 +251,10 @@ int wmain(int argc, wchar_t** argv) {
     LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
     for (int i = 0; i < 3; ++i) { app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app); }
+    if (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0) {
+        CheckViewportRenderScale(app, argv[3]);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
     if (argc >= 3 && std::wcscmp(argv[2], L"--alpha-order") == 0) {
         if (argc == 4) captureDirectory = argv[3];
         CheckAlphaOrder(app);

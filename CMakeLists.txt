@@ -308,6 +308,8 @@ add_library(mikudancestudio_core STATIC
     src/model/model_skinning.cpp
     src/model/skinning_backend.cpp
     src/window/skinning_menu.cpp
+    src/window/viewport_render_scale_dialog.cpp
+    src/render/viewport_render_scale.cpp
     src/app/viewport_corner_settings.cpp
     src/window/viewport_corner_menu.cpp
     src/window/physics_bake_dialog.cpp
@@ -804,6 +806,15 @@ if(TARGET physics_bake_tests)
         "${MIKUDANCESTUDIO_GEN_RES}")
 endif()
 if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(viewport_render_scale_tests EXCLUDE_FROM_ALL
+        tests/viewport_render_scale_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(viewport_render_scale_tests PRIVATE mikudancestudio_core winmm dsound)
+    target_link_options(viewport_render_scale_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(viewport_render_scale_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_test(NAME viewport_render_scale_tests COMMAND viewport_render_scale_tests)
+    set_tests_properties(viewport_render_scale_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_executable(video_export_range_tests EXCLUDE_FROM_ALL
         tests/video_export_range_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(video_export_range_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)

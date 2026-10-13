@@ -1,4 +1,5 @@
 #include "mikudancestudio/mmv4mms.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/deformed_mesh_capture.hpp"
@@ -458,6 +459,9 @@ void RenderFrameScene(MMDApp* app) {
     // Apply native mesh caches before MME caches object data.
     if(!NativeBakePreviewActive())native_mesh::Evaluate(app, reinterpret_cast<const float*>(&frameWorld));
 
+    viewport_render_scale::FrameScope previewScale(app);
+    if (!previewScale.Ready()) return;
+
     DWORD clearFlags = D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER;
     if (sub->d3dInitialized != 0)
         clearFlags |= D3DCLEAR_STENCIL;
@@ -574,7 +578,7 @@ void RenderFrameScene(MMDApp* app) {
         DrawFrameOverlayBatches(app);
         FillFramePresentationMargins(app, device);
     }
-    { MMD_PERF_SCOPE(EndScene); device->EndScene(); }
+    { MMD_PERF_SCOPE(EndScene); if (SUCCEEDED(device->EndScene())) previewScale.Complete(); }
 
     DumpAccessoryScreenTexture(app, device);
 }

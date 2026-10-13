@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 
@@ -57,6 +58,7 @@ RECT FramePresentationRect(MMDApp* app) {
 }
 
 void FillFramePresentationMargins(MMDApp* app, IDirect3DDevice9* device) {
+    if (viewport_render_scale::Rendering(app)) return;
     if (app->RecordingWindow() != nullptr) return;
     const RECT scene = app->ViewportRect();
     const RECT present = FramePresentationRect(app);
