@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/viewport_corner_settings.hpp"
@@ -57,8 +58,7 @@ void PutQuad(TextVertex*& out, float left, float top, float right,
 }
 
 float OverlayScale(MMDApp* app) {
-    D3DRenderer* sub = app->Renderer();
-    return sub != nullptr ? sub->viewScale : 1.0f;
+    return FrameOverlayScale(app);
 }
 
 }  // namespace
@@ -76,7 +76,7 @@ void PrepareFrameTextOverlay(MMDApp* app) {  // 0x423420
     TextVertex* const begin = out;
 
     const float scale = OverlayScale(app);
-    const RECT view = app->ViewportRect();
+    const RECT view = FrameOverlayRect(app);
     auto append = [&](float left, float top, float right, float bottom,
                       float u0, float v0, float u1, float v1,
                       D3DCOLOR color) {

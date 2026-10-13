@@ -4,6 +4,7 @@
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/force_paste.hpp"
 #include "mikudancestudio/recent_projects.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
@@ -414,6 +415,20 @@ void CheckRecentProjects(MMDApp* app) {
     SendMessageW(host,WM_ENTERMENULOOP,FALSE,0);
     Hook(&GetMenuItemRect,&RecentMenuBounds);
     MSG click{};click.message=WM_LBUTTONUP;click.pt={150,110};
+    // A hidden File popup can retain the same screen bounds as a View row.
+    // Clicking the scale command must not be intercepted as Open (205).
+    HMENU view = nullptr;
+    for (int i=0;i<GetMenuItemCount(GetMenu(host));++i) {
+        const auto child=GetSubMenu(GetMenu(host),i);
+        if(GetMenuState(child,viewport_render_scale::kCommand,MF_BYCOMMAND)!=UINT(-1))view=child;
+    }
+    Check(view!=nullptr,"find the viewport scale command in the real View menu");
+    SendMessageW(host,WM_MENUSELECT,MAKEWPARAM(viewport_render_scale::kCommand,0),reinterpret_cast<LPARAM>(view));
+    Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&click))==0,
+        "clicking viewport scale ignores stale Open menu bounds");
+    Check(!PeekMessageW(&command,host,WM_COMMAND,WM_COMMAND,PM_REMOVE),
+        "viewport scale click never posts an Open command");
+    SendMessageW(host,WM_MENUSELECT,MAKEWPARAM(position,MF_POPUP),reinterpret_cast<LPARAM>(file));
     Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&click))==1,"clicking original Open bypasses submenu navigation");
     MH_DisableHook(reinterpret_cast<void*>(&GetMenuItemRect));MH_RemoveHook(reinterpret_cast<void*>(&GetMenuItemRect));
     SendMessageW(host,WM_EXITMENULOOP,FALSE,0);

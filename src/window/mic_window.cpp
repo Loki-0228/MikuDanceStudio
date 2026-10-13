@@ -11,6 +11,8 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
+#include "mikudancestudio/build_profile.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -104,6 +106,10 @@ LRESULT CALLBACK MicWndProc(HWND hwnd, UINT msg, WPARAM wParam,
         GetClientRect(hwnd, &rc);
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
+        if (!build_profile::original) {
+            const RECT frame = FramePresentationRect(app);
+            ExcludeClipRect(hdc, frame.left, frame.top, frame.right, frame.bottom);
+        }
         // Black out the four regions the detached panels no longer cover
         // (the auto-hide margins saved at app+0xA0D40..0xA0D4C).
         const RECT& viewport = s.ViewportRect();

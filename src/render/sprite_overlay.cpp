@@ -10,6 +10,7 @@
 #include <cstdint>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/bone_projection.hpp"
@@ -280,6 +281,7 @@ void AppendLine(LineVertex*& out, int startX, int startY,
 }  // namespace
 
 void PrepareFrameSpriteOverlay(MMDApp* app) {
+    app->hudSprites = {};
     if (app->RecordingWindow() != nullptr)
         return;
 
@@ -306,13 +308,14 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
     };
 
     D3DRenderer* sub = app->Renderer();
-    const float scale = sub != nullptr
+    float scale = sub != nullptr
         ? sub->viewScale
         : 1.0f;
+    const float sceneScale = scale;
     const RECT view = app->ViewportRect();
     // Shared dock layout also places uniform scale on the inward side.
     const viewport_tool_layout::Anchor hud = viewport_tool_layout::Make(
-        view, scale, viewport_corner_settings::Current());
+        FrameOverlayRect(app), FrameOverlayScale(app), viewport_corner_settings::Current());
     const float right = hud.x;
     const float bottom = hud.y;
 
@@ -692,6 +695,8 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
     // serif cells, and no screen-axis state for the model panel). That caption
     // keeps the sheet's serif face; see scene_font.cpp. Keep this batch free of
     // the old label; the hit region remains operation 21 below.
+    app->hudSprites.first = app->SpriteOverlayPrimitiveCount();
+    scale = hud.scale;
     const bool playback = app->PlaybackActive() != 0;
     // 0x46C6E2..0x46CE84: camera and bone operation rows. Playback takes
     // LABEL_105 and deliberately emits neither rows nor highlights.
@@ -809,6 +814,9 @@ void PrepareFrameSpriteOverlay(MMDApp* app) {
                    u0, 0.841796875f, u0 + 0.078125f, 0.8984375f);
         }
 #endif
+
+        app->hudSprites.count = app->SpriteOverlayPrimitiveCount() - app->hudSprites.first;
+        scale = sceneScale;
 
         // 0x46D74D..0x46DB2A: operation cursor pictures in bone mode. These
         // use raw projected mouse coordinates returned by 0x499BD0 and are

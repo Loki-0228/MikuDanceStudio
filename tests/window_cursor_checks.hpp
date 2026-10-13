@@ -29,8 +29,10 @@ inline void Run(MMDApp* app) {
     app->state.optflag[0] = 1;
     app->PlaybackActive() = 0;
     const RECT view = app->ViewportRect();
-    app->MouseX() = app->PreviousMouseX() = view.right - 70;
-    app->MouseY() = app->PreviousMouseY() = view.bottom - 65;
+    const RECT frame = FrameOverlayRect(app);
+    const float scale = FrameOverlayScale(app);
+    app->MouseX() = app->PreviousMouseX() = frame.right - int(70 * scale);
+    app->MouseY() = app->PreviousMouseY() = frame.bottom - int(65 * scale);
     app->LeftMouseButtonState() = 0;
     held = true;
     MouseInteractionBegin(app);

@@ -44,6 +44,7 @@
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/bottom_panel_layout.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/accessory_layout.hpp"
 #include "mikudancestudio/bone_scale.hpp"
@@ -256,8 +257,8 @@ void BoneScaleReadoutTick(MMDApp* app) {
         ? 0 : app->SidebarWidth() + 9;
     // Only the status band the readout lives in; the erase flag is FALSE like
     // the other band invalidations (PostLanguageSweep2).
-    RECT band{x + 10, app->state.hideTop - 25, client.right,
-              app->state.hideTop - 1};
+    const RECT frame = FrameOverlayRect(app);
+    RECT band{x + 10, frame.top - 25, client.right, frame.top - 1};
     InvalidateRect(hwnd, &band, FALSE);
 }
 
@@ -552,8 +553,9 @@ void HandlePaletteChanged2(HDC hdc) {
     const LONG right = rc.right;   // ebp
     const LONG blitX = rc.right;   // v26 (BitBlt x base)
 
-    const std::int32_t hideTop = app->state.hideTop;      // 0xA0D44
-    const std::int32_t hideBottom = app->state.hideBottom;  // 0xA0D4C
+    const RECT frame = FrameOverlayRect(app);
+    const std::int32_t hideTop = frame.top;
+    const std::int32_t hideBottom = frame.bottom;
 
     FillPanelBottom(hdc, xBase, hideTop - 25, right, hideTop - 1,
                     0x969696u, 0x646464u, 1);                    // 0x42C1C7

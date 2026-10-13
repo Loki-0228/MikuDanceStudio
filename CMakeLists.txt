@@ -291,6 +291,7 @@ add_library(mikudancestudio_core STATIC
     src/render/stereo_nvapi.cpp
     src/render/frame_scene.cpp
     src/render/frame_presentation.cpp
+    src/render/frame_rate.cpp
     src/render/sprite_overlay.cpp
     src/render/viewport_cursor_style.cpp
     src/render/overlay_producers.cpp
@@ -609,15 +610,24 @@ set_target_properties(mmv4mms_physics_input_tests PROPERTIES RUNTIME_OUTPUT_DIRE
 add_test(NAME mmv4mms_physics_input COMMAND mmv4mms_physics_input_tests)
 
 enable_testing()
-add_executable(nvidia_antialias_fix_tests EXCLUDE_FROM_ALL
-    tests/nvidia_antialias_fix_tests.cpp src/render/nvidia_antialias_fix.cpp)
+add_executable(frame_rate_tests EXCLUDE_FROM_ALL tests/frame_rate_tests.cpp)
+target_include_directories(frame_rate_tests PRIVATE include)
+target_compile_features(frame_rate_tests PRIVATE cxx_std_17)
+set_target_properties(frame_rate_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME frame_rate_counts COMMAND frame_rate_tests)
+add_library(nvidia_antialias_plugin_stub SHARED EXCLUDE_FROM_ALL tests/nvidia_antialias_plugin_stub.cpp)
+set_target_properties(nvidia_antialias_plugin_stub PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    target_link_options(nvidia_antialias_plugin_stub PRIVATE "/EXPORT:MMSNvidiaAAFixQueryInstalled=_MMSNvidiaAAFixQueryInstalled@4")
+endif()
+add_executable(nvidia_antialias_fix_tests EXCLUDE_FROM_ALL tests/nvidia_antialias_fix_tests.cpp)
+add_dependencies(nvidia_antialias_fix_tests nvidia_antialias_plugin_stub)
 target_include_directories(nvidia_antialias_fix_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(nvidia_antialias_fix_tests PRIVATE cxx_std_17)
-target_link_libraries(nvidia_antialias_fix_tests PRIVATE mikudancestudio_runtime_log user32 shell32 advapi32)
+target_link_libraries(nvidia_antialias_fix_tests PRIVATE mikudancestudio_runtime_log user32 gdi32 shell32 advapi32)
 set_target_properties(nvidia_antialias_fix_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
-add_test(NAME nvidia_antialias_fix_tests COMMAND nvidia_antialias_fix_tests)
-set_tests_properties(nvidia_antialias_fix_tests PROPERTIES ENVIRONMENT "MMS_NVIDIA_AA_FIX=0")
+add_test(NAME nvidia_antialias_fix_tests COMMAND nvidia_antialias_fix_tests "$<TARGET_FILE:nvidia_antialias_plugin_stub>")
 option(MIKUDANCESTUDIO_BUILD_EFFECT_TESTS "Build effect API regression tests" OFF)
 if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     enable_testing()
@@ -1183,15 +1193,17 @@ target_link_libraries(MikuDanceStudio PRIVATE
 
 # The elevated installer has no application/plugin dependencies, and only loads
 # NVAPI from System32. A static CRT avoids loading app-local runtime DLLs.
-add_executable(MMSNvidiaAAFix WIN32 src/tools/nvidia_antialias_helper.cpp)
+add_library(MMSNvidiaAAFix SHARED src/tools/nvidia_antialias_helper.cpp)
 target_include_directories(MMSNvidiaAAFix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(MMSNvidiaAAFix PRIVATE cxx_std_17)
 target_link_libraries(MMSNvidiaAAFix PRIVATE shell32 advapi32)
 set_target_properties(MMSNvidiaAAFix PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>"
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-if(MSVC)
-    target_link_options(MMSNvidiaAAFix PRIVATE "/MANIFESTUAC:level='asInvoker' uiAccess='false'")
+if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    target_link_options(MMSNvidiaAAFix PRIVATE "/EXPORT:DllRegisterServer=_DllRegisterServer@0"
+        "/EXPORT:DllUnregisterServer=_DllUnregisterServer@0"
+        "/EXPORT:MMSNvidiaAAFixQueryInstalled=_MMSNvidiaAAFixQueryInstalled@4")
 endif()
 add_dependencies(MikuDanceStudio MMSNvidiaAAFix)
 

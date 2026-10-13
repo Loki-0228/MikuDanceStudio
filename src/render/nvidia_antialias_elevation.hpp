@@ -2,12 +2,12 @@
 #include "nvidia_antialias_driver.hpp"
 
 namespace mikudancestudio::nvidia_antialias_fix::detail {
-constexpr wchar_t kHelperName[] = L"MMSNvidiaAAFix.exe";
+constexpr wchar_t kHelperName[] = L"MMSNvidiaAAFix.dll";
 constexpr wchar_t kApplicationName[] = L"MikuMikuDance.exe";
 
-inline std::wstring ModulePath() {
+inline std::wstring ModulePath(HMODULE module = nullptr) {
     wchar_t path[32768]{};
-    const DWORD length = GetModuleFileNameW(nullptr, path, 32768);
+    const DWORD length = GetModuleFileNameW(module, path, 32768);
     return length && length < 32768 ? std::wstring(path, length) : std::wstring{};
 }
 inline bool CanonicalFile(const std::wstring& path, std::wstring& canonical) {

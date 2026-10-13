@@ -104,7 +104,7 @@ LRESULT CALLBACK MenuFilter(int code,WPARAM wp,LPARAM lp) {
     if(code==MSGF_MENU && owner && openPosition>=0) {
         const auto& msg=*reinterpret_cast<MSG*>(lp);
         bool activate=msg.message==WM_KEYDOWN && msg.wParam==VK_RETURN && openSelected;
-        if(msg.message==WM_LBUTTONUP) {
+        if(msg.message==WM_LBUTTONUP && openSelected) {
             RECT bounds{};activate=GetMenuItemRect(owner->MainWindow(),fileMenu,openPosition,&bounds) && PtInRect(&bounds,msg.pt);
         }
         if(activate && !(GetMenuState(fileMenu,openPosition,MF_BYPOSITION)&(MF_DISABLED|MF_GRAYED))) {

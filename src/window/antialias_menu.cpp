@@ -11,7 +11,7 @@ HMENU parent=nullptr, popup=nullptr, smaaPopup=nullptr;
 HHOOK hook=nullptr;
 int position=-1;
 bool selected=false,smaaSelected=false;
-constexpr int smaaPosition=6;
+int smaaPosition=-1;
 bool Locate(HMENU menu,HMENU& result,int& index) {
     for(int i=0;i<GetMenuItemCount(menu);++i) {
         MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_ID|MIIM_SUBMENU;
@@ -24,16 +24,24 @@ bool Locate(HMENU menu,HMENU& result,int& index) {
 void Populate(MMDApp* app) {
     while(GetMenuItemCount(popup)>0)DeleteMenu(popup,0,MF_BYPOSITION);
     smaaPopup=nullptr;
-    const wchar_t* original=app->EnglishUI()==2?L"MMD 原始":app->EnglishUI()==1?L"MMD original":L"MMD オリジナル";
+    const wchar_t* original=app->EnglishUI()==2?L"MMD 原始（MSAA）":app->EnglishUI()==1?L"MMD original (MSAA)":L"MMD オリジナル（MSAA）";
     const wchar_t* temporal=app->EnglishUI()==2?L"TAA（运动矢量）":app->EnglishUI()==1?L"TAA (motion vectors)":L"TAA（モーションベクトル）";
-    const wchar_t* labels[]={original,L"MSAA 2×",L"MSAA 4×",L"MSAA 8×",L"FXAA",temporal};
-    for(unsigned i=0;i<unsigned(Algorithm::Smaa);++i) {
-        AppendMenuW(popup,MF_STRING|(Supported(app,Algorithm(i))?MF_ENABLED:MF_GRAYED),kFirstCommand+i,labels[i]);
+    // Keep serialized algorithm IDs stable; explicit MSAA counts remain readable
+    // from older projects, but the menu exposes only the original MSAA choice.
+    const struct { Algorithm algorithm; const wchar_t* label; } entries[]={
+        {Algorithm::MmdOriginal,original},{Algorithm::Fxaa,L"FXAA"},{Algorithm::Taa,temporal}};
+    for(const auto& entry:entries) {
+        const auto command=kFirstCommand+unsigned(entry.algorithm);
+        AppendMenuW(popup,MF_STRING|(Supported(app,entry.algorithm)?MF_ENABLED:MF_GRAYED),command,entry.label);
         MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_FTYPE;item.fType=MFT_RADIOCHECK;
-        SetMenuItemInfoW(popup,kFirstCommand+i,FALSE,&item);
+        SetMenuItemInfoW(popup,command,FALSE,&item);
     }
+    // Legacy explicit counts belong to the same MSAA family. Choosing this
+    // entry explicitly restores the original hardware-negotiated sample count.
+    const auto checked=app->antialiasing.algorithm<=Algorithm::Msaa8?
+        Algorithm::MmdOriginal:app->antialiasing.algorithm;
     CheckMenuRadioItem(popup,kFirstCommand,kFirstCommand+unsigned(Algorithm::Count)-1,
-        kFirstCommand+unsigned(app->antialiasing.algorithm),MF_BYCOMMAND);
+        kFirstCommand+unsigned(checked),MF_BYCOMMAND);
     smaaPopup=CreatePopupMenu();
     const Algorithm modes[]={Algorithm::SmaaStandard,Algorithm::Smaa,Algorithm::SmaaT2xStandard,Algorithm::SmaaT2xEnhanced};
     const wchar_t* chinese[]={L"SMAA 1x（标准）",L"SMAA 1x（斜线与拐角增强）",L"SMAA T2x（标准）",L"SMAA T2x（斜线与拐角增强）"};
@@ -53,6 +61,7 @@ void Populate(MMDApp* app) {
     smaa.fType=MFT_RADIOCHECK;
     smaa.fState=((Supported(app,Algorithm::Smaa) || Supported(app,Algorithm::SmaaStandard))?MFS_ENABLED:MFS_GRAYED)|
         (app->antialiasing.algorithm>=Algorithm::Smaa?MFS_CHECKED:MFS_UNCHECKED);
+    smaaPosition=GetMenuItemCount(popup);
     InsertMenuItemW(popup,smaaPosition,TRUE,&smaa);
 }
 void Detach() {
@@ -62,7 +71,7 @@ void Detach() {
         SetMenuItemInfoW(parent,position,TRUE,&item);
     }
     if(IsMenu(popup))DestroyMenu(popup);
-    popup=parent=smaaPopup=nullptr;position=-1;selected=smaaSelected=false;
+    popup=parent=smaaPopup=nullptr;position=smaaPosition=-1;selected=smaaSelected=false;
 }
 }
 void RefreshMenu(MMDApp* app) {
@@ -83,10 +92,10 @@ LRESULT CALLBACK MenuFilter(int code,WPARAM wp,LPARAM lp) {
         bool activateSmaa=message.message==WM_KEYDOWN && message.wParam==VK_RETURN && smaaSelected;
         if(message.message==WM_LBUTTONUP) {
             RECT rect{};
-            activate=GetMenuItemRect(owner->MainWindow(),parent,position,&rect) && PtInRect(&rect,message.pt);
+            activate=selected && GetMenuItemRect(owner->MainWindow(),parent,position,&rect) && PtInRect(&rect,message.pt);
             // Clicking the arrow opens the submenu; the label remains a toggle.
             if(activate && message.pt.x>=rect.right-GetSystemMetrics(SM_CXMENUCHECK)-8)activate=false;
-            activateSmaa=GetMenuItemRect(owner->MainWindow(),popup,smaaPosition,&rect) && PtInRect(&rect,message.pt);
+            activateSmaa=smaaSelected && GetMenuItemRect(owner->MainWindow(),popup,smaaPosition,&rect) && PtInRect(&rect,message.pt);
             if(activateSmaa && message.pt.x>=rect.right-GetSystemMetrics(SM_CXMENUCHECK)-8)activateSmaa=false;
         }
         if(activateSmaa && !(GetMenuState(popup,kSmaaCommand,MF_BYCOMMAND)&(MF_DISABLED|MF_GRAYED))) {

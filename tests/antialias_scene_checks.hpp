@@ -1,5 +1,6 @@
 // Kept in the real-MME host so every capture uses the production scene path.
 #include "antialias_temporal_checks.hpp"
+#include "antialias_stability_checks.hpp"
 using AntialiasCheckFormat=HRESULT(WINAPI*)(IDirect3D9*,UINT,D3DDEVTYPE,D3DFORMAT,DWORD,D3DRESOURCETYPE,D3DFORMAT);
 AntialiasCheckFormat originalAntialiasCheckFormat=nullptr;
 unsigned rejectedAntialiasFloatQueries=0;
@@ -11,6 +12,7 @@ HRESULT WINAPI RejectAntialiasFloatTarget(IDirect3D9* d3d,UINT adapter,D3DDEVTYP
     return originalAntialiasCheckFormat(d3d,adapter,type,adapterFormat,usage,resource,format);
 }
 void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
+    if(std::getenv("MMS_AA_STABILITY")) { CheckAntialiasStability(app,directory);return; }
     CheckTemporalResolveShader();
     captureDirectory = directory;
     std::filesystem::create_directories(captureDirectory);
@@ -95,7 +97,7 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
     Check(bones && record->boneCount,"animated TAA fixture has a skinned bone");
     std::vector<float> savedBones(std::size_t(record->boneCount)*16);
     for(unsigned bone=0;bone<record->boneCount;++bone)
-        std::memcpy(savedBones.data()+std::size_t(bone)*16,bones[bone].matLocal,16*sizeof(float));
+        std::memcpy(savedBones.data()+std::size_t(bone)*16,bones[bone].matInit,16*sizeof(float));
     const auto savedFrame=app->CurrentFrame();const auto savedPlayback=app->PlaybackActive();
     const auto playbackStart=antialias::AccumulatedSamples(app);
     const auto beforePlayback=capturedPixels;
@@ -104,8 +106,8 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
         // Exercise the production playback rendering branch with deterministic
         // bone deformation; wall-clock animation updates cannot hide a reset.
         for(unsigned bone=0;bone<record->boneCount;++bone) {
-            std::memcpy(bones[bone].matLocal,savedBones.data()+std::size_t(bone)*16,16*sizeof(float));
-            bones[bone].matLocal[12]+=(frame+1)*.02f*(1+bone%3);
+            std::memcpy(bones[bone].matInit,savedBones.data()+std::size_t(bone)*16,16*sizeof(float));
+            bones[bone].matInit[12]+=(frame+1)*.02f*(1+bone%3);
         }
         app->CurrentFrame()=savedFrame+frame+1;
         app->state.messageSeen=10;RenderFrameScene(app);
@@ -121,7 +123,7 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
         "deformed skinned vertices produce real motion vectors during playback");
     Check(capturedPixels!=beforePlayback,"animated TAA test changes actual rendered pixels");
     for(unsigned bone=0;bone<record->boneCount;++bone)
-        std::memcpy(bones[bone].matLocal,savedBones.data()+std::size_t(bone)*16,16*sizeof(float));
+        std::memcpy(bones[bone].matInit,savedBones.data()+std::size_t(bone)*16,16*sizeof(float));
     app->CurrentFrame()=savedFrame;app->PlaybackActive()=savedPlayback;
     select(antialias::Algorithm::Msaa2);capture("msaa2");
     Check(r->presentParameters.MultiSampleType==D3DMULTISAMPLE_2_SAMPLES,"MSAA 2 uses 2 samples");
@@ -168,18 +170,25 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
     app->RecordingWindow()=CreateWindowW(L"STATIC",L"Hidden AA export",WS_POPUP,0,0,640,480,
         nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     Check(app->RecordingWindow()!=nullptr,"hidden recording surface created");
+    Check(EnsureCaptureRenderTarget(app),"initialize the production recording target before AA begins");
+    Microsoft::WRL::ComPtr<IDirect3DSurface9> recordingTarget;
+    r->device->GetRenderTarget(0,&recordingTarget);
     app->state.messageSeen=10;RenderFrameScene(app);
     captureRequested=true;r->device->Present(nullptr,nullptr,nullptr,nullptr);
     Check(!captureRequested,"FXAA completes recording frame before presentation");
     Microsoft::WRL::ComPtr<IDirect3DSurface9> restored;
     r->device->GetRenderTarget(0,&restored);
-    Check(restored.Get()==r->backbufferSurface,"recording restores production target ownership");
+    Check(restored.Get()==recordingTarget.Get(),"recording restores production target ownership");
+    restored.Reset();recordingTarget.Reset();
     select(antialias::Algorithm::Smaa);
+    Check(EnsureCaptureRenderTarget(app),"restore capture target after the SMAA device reset");
+    r->device->GetRenderTarget(0,&recordingTarget);
     app->state.messageSeen=10;RenderFrameScene(app);
     captureRequested=true;r->device->Present(nullptr,nullptr,nullptr,nullptr);
     Check(!captureRequested,"SMAA completes recording frame before presentation");
     restored.Reset();r->device->GetRenderTarget(0,&restored);
-    Check(restored.Get()==r->backbufferSurface,"SMAA recording restores production target ownership");
+    Check(restored.Get()==recordingTarget.Get(),"SMAA recording restores production target ownership");
+    restored.Reset();recordingTarget.Reset();
     select(antialias::Algorithm::Taa);
     const auto recordingFrame=app->CurrentFrame();
     for(int frame=0;frame<10;++frame) {
@@ -203,14 +212,15 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
                 if(item.wID==277){parent=child;popup=item.hSubMenu;index=j;}
             }
         }
-        Check(popup && GetMenuItemCount(popup)==7,"algorithm flyout groups all SMAA variants under one parent");
-        auto smaaPopup=GetSubMenu(popup,6);
+        Check(popup && GetMenuItemCount(popup)==4,"algorithm flyout has original MSAA, FXAA, TAA and grouped SMAA");
+        const int smaaPosition=GetMenuItemCount(popup)-1;
+        auto smaaPopup=GetSubMenu(popup,smaaPosition);
         Check(smaaPopup && GetMenuItemCount(smaaPopup)==4,"four SMAA variants are available in the right-hand submenu");
         Check((GetMenuState(smaaPopup,antialias::kFirstCommand+unsigned(app->antialiasing.lastSmaaAlgorithm),MF_BYCOMMAND)&MF_CHECKED)!=0,
             "SMAA submenu marks the remembered variant even while another algorithm is active");
         Check((GetMenuState(popup,antialias::kFirstCommand+unsigned(antialias::Algorithm::Fxaa),MF_BYCOMMAND)&MF_CHECKED)!=0,
             "selected algorithm has radio check");
-        SendMessageW(app->MainWindow(),WM_MENUSELECT,MAKEWPARAM(6,MF_POPUP),reinterpret_cast<LPARAM>(popup));
+        SendMessageW(app->MainWindow(),WM_MENUSELECT,MAKEWPARAM(smaaPosition,MF_POPUP),reinterpret_cast<LPARAM>(popup));
         MSG smaaEnter{};smaaEnter.message=WM_KEYDOWN;smaaEnter.wParam=VK_RETURN;
         Check(antialias::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&smaaEnter))==1,
             "Enter on the SMAA label applies the remembered variant");

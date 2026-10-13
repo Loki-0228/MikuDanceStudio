@@ -19,10 +19,10 @@ HRESULT WINAPI ObserveHudDraw(IDirect3DDevice9* device, D3DPRIMITIVETYPE type,
         Microsoft::WRL::ComPtr<IDirect3DSurface9> target,back;
         device->GetRenderTarget(0,&target);device->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,&back);
         Check(target.Get()==back.Get(),"HUD uses actual display backbuffer");
-        const auto rect=g_Block->ViewportRect();D3DVIEWPORT9 viewport{};device->GetViewport(&viewport);
+        const auto rect=FrameOverlayRect(g_Block);D3DVIEWPORT9 viewport{};device->GetViewport(&viewport);
         Check(viewport.X==unsigned(rect.left) && viewport.Y==unsigned(rect.top) &&
             viewport.Width==unsigned(rect.right-rect.left) && viewport.Height==unsigned(rect.bottom-rect.top),
-            "HUD viewport matches display coordinates");
+            "HUD viewport covers the whole presentation frame including margins");
         DWORD mask=0,aa=0,blend=0;
         device->GetRenderState(D3DRS_MULTISAMPLEMASK,&mask);
         device->GetRenderState(D3DRS_MULTISAMPLEANTIALIAS,&aa);
@@ -66,6 +66,7 @@ void CheckViewportRenderScale(MMDApp* app, const wchar_t* output) {
     app->FpsOverlayEnabled()=1;
     std::size_t baseline=0;
     const RECT display=app->ViewportRect();
+    const RECT presentation=FrameOverlayRect(app);
     const int exportW=app->RenderWidth(),exportH=app->RenderHeight();
     for (const double percent : {100.,50.,25.,150.,100.}) {
         const bool automatic=percent==100;
@@ -74,10 +75,10 @@ void CheckViewportRenderScale(MMDApp* app, const wchar_t* output) {
         scaledSceneDraws=0;
         for(int i=0;i<2;++i) {
             captureRequested=i==1;
-            app->FramesPerSecond()=126;app->FpsOverlayElapsedSeconds()=0;
-            const auto frameCount=app->state.fpsOverlayFrameCount;
+            frame_rate::Reset(app);app->FramesPerSecond()=126;
+            const auto frameCount=app->frameRate.presentedFrames;
             app->DeltaTime()=1.f/30;app->state.messageSeen=10;FrameDriver(app);
-            Check(app->state.fpsOverlayFrameCount==frameCount+1 && app->FramesPerSecond()==126,
+            Check(app->frameRate.presentedFrames==frameCount+1 && app->FramesPerSecond()==126,
                 "HUD does not add frames or replace the scene FPS counter");
         }
         Check(!captureRequested && !capturedPixels.empty(),"production preview presented");
@@ -85,8 +86,8 @@ void CheckViewportRenderScale(MMDApp* app, const wchar_t* output) {
         Check(hudDraws>0,"real HUD batches drawn at display resolution");hudDraws=0;
         Check(EqualRect(&display,&app->ViewportRect()) && app->RenderWidth()==exportW && app->RenderHeight()==exportH,
             "display geometry and export size unchanged");
-        app->MouseX()=short(display.right-70*app->Renderer()->viewScale);
-        app->MouseY()=short(display.bottom-145*app->Renderer()->viewScale);
+        app->MouseX()=short(presentation.right-70*FrameOverlayScale(app));
+        app->MouseY()=short(presentation.bottom-145*FrameOverlayScale(app));
         app->LeftMouseButtonState()=0;
         Check(HandleCoordinateStripPress(app),"HUD caption hit test uses unchanged display pixels");
         HandleViewportToolRelease(app);
@@ -131,13 +132,13 @@ void CheckViewportRenderScale(MMDApp* app, const wchar_t* output) {
             // Text batches are intentionally produced for the following frame.
             // Let the last caption/input change reach that batch before capture.
             for(int frame=0;frame<2;++frame) {
-                app->FramesPerSecond()=126;app->FpsOverlayElapsedSeconds()=0;app->state.messageSeen=10;
+                frame_rate::Reset(app);app->FramesPerSecond()=126;app->state.messageSeen=10;
                 captureRequested=frame==1;FrameDriver(app);
             }
             Check(!captureRequested && !capturedPixels.empty(),"capture displayed HUD pixels");
             std::vector<std::uint32_t> hud;
-            const RECT regions[]={{display.left,display.bottom-55,display.left+220,display.bottom},
-                {display.right-170,display.bottom-170,display.right,display.bottom}};
+            const RECT regions[]={{presentation.left,presentation.bottom-55,presentation.left+220,presentation.bottom},
+                {presentation.right-170,presentation.bottom-170,presentation.right,presentation.bottom}};
             for(const auto& region:regions)
                 for(LONG y=region.top;y<region.bottom;++y)for(LONG x=region.left;x<region.right;++x)
                     hud.push_back(capturedPixels[std::size_t(y)*captureWidth+x]);

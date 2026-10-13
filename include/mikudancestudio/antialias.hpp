@@ -52,6 +52,8 @@ public:
     ~FrameScope();
     bool Ready() const;
     bool Complete();
+    // Also true when this frame did not need a post-process resolve.
+    bool Succeeded() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

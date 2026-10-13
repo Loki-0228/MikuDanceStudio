@@ -28,6 +28,7 @@
 #include <initializer_list>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/window_dpi_scope.hpp"
 #include "mikudancestudio/ui_language.hpp"
@@ -106,7 +107,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
         inset = s.SidebarWidth() + 9;                             // 657096
     }
     const int right = rc.right;
-    const RECT& viewport = s.ViewportRect();
+    const RECT viewport = FrameOverlayRect(app);
     const int stripY = viewport.bottom;                           // 658764
     const int rowY = viewport.top;                                // 658756
     const bool deferPaint = app->SidebarResizeDragging() != 0;

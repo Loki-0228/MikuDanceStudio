@@ -8,6 +8,7 @@ float4 smaaBounds : register(c1);
 float4 smaaSubsamples : register(c2);
 float4 smaaTemporalState : register(c3); // valid history, absolute/relative depth tolerance
 float4 smaaOutputOffset : register(c4); // undo jitter only after motion capture falls back
+float4 smaaSampleOffsets : register(c5); // current and previous raw texture jitter UV
 #define SMAA_RT_METRICS smaaMetrics
 #define SMAA_HLSL_3 1
 #ifndef MMS_SMAA_ENHANCED
@@ -88,12 +89,22 @@ float smaaOutputAlpha(float2 uv) {
         weight.y*tex2D(smaaOriginal,clamp(at.zw,smaaBounds.xy,smaaBounds.zw)).a;
 }
 float4 smaaTemporal(float2 uv : TEXCOORD0) : COLOR0 {
-    float4 current=tex2D(smaaInput,uv);
-    float alpha=smaaOutputAlpha(uv);
+    float2 currentUV=clamp(uv+smaaSampleOffsets.xy,smaaBounds.xy,smaaBounds.zw);
+    float4 packed=tex2D(smaaInput,currentUV);
+    float4 current=packed;
+    float alpha=smaaOutputAlpha(currentUV);
     current.a=alpha;
     if(smaaTemporalState.x<=0)return current;
-    float4 velocity=tex2D(smaaSearch,uv);
-    float2 previous=uv+velocity.xy;
+    float4 velocity=tex2D(smaaSearch,currentUV);
+    if(velocity.z>0 && velocity.w<=0)return current;
+    // A phase may uncover an edge pixel. Borrow only tracked neighboring
+    // geometry, never another object's history through a transparent fragment.
+    [unroll] for(int y=-1;y<=1;++y) [unroll] for(int x=-1;x<=1;++x) {
+        float2 at=clamp(currentUV+float2(x,y)*smaaMetrics.xy,smaaBounds.xy,smaaBounds.zw);
+        float4 candidate=tex2D(smaaSearch,at);
+        if(candidate.z>0 && (velocity.z<=0 || candidate.z<velocity.z))velocity=candidate;
+    }
+    float2 previous=uv+velocity.xy+smaaSampleOffsets.zw;
     if(velocity.z<=0 || velocity.w<=0 || any(previous<smaaBounds.xy) || any(previous>smaaBounds.zw))return current;
     float tolerance=max(smaaTemporalState.y,abs(velocity.w)*smaaTemporalState.z);
     float mismatch=abs(tex2D(smaaPreviousDepth,previous).z-velocity.w);
@@ -103,9 +114,13 @@ float4 smaaTemporal(float2 uv : TEXCOORD0) : COLOR0 {
         if(depth>0)mismatch=min(mismatch,abs(depth-velocity.w));
     }
     if(mismatch>tolerance)return current;
-    // Keep exactly the upstream two-frame resolve and velocity-change weight.
-    // History is the previous neighborhood result, never the resolved result.
-    float4 result=SMAAResolvePS(uv,smaaInput,smaaSecondary,smaaSearch);
+    // Keep upstream's two-frame blend and velocity-change weight, with both
+    // raw neighborhood images aligned to the fixed display pixel. History is
+    // the previous neighborhood result, never the recursively resolved result.
+    float4 old=tex2D(smaaSecondary,previous);
+    float delta=abs(packed.a*packed.a-old.a*old.a)/5.0;
+    float weight=0.5*saturate(1.0-sqrt(delta)*SMAA_REPROJECTION_WEIGHT_SCALE);
+    float4 result=lerp(packed,old,weight);
     result.a=alpha;
     return result;
 }

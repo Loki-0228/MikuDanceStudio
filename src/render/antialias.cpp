@@ -34,6 +34,7 @@ struct Target {
     D3DSURFACE_DESC description{};
     D3DFORMAT depthFormat=D3DFMT_UNKNOWN;
     unsigned samples=0, historyIndex=0;
+    float historyJitterX=0, historyJitterY=0;
     Algorithm algorithm=Algorithm::MmdOriginal;
     D3DVIEWPORT9 historyViewport{};
     int frame=0;
@@ -408,7 +409,7 @@ struct FrameScope::Impl {
     D3DMATRIX projection{};
     IDirect3DSurface9* previousSlot=nullptr;
     IDirect3DSurface9* depthSlot=nullptr;
-    bool ready=false,restored=false,temporal=false,bindingsChanged=false;
+    bool ready=false,restored=false,temporal=false,bindingsChanged=false,completed=false;
     float jitterX=0,jitterY=0;
     explicit Impl(MMDApp* value):app(value),device(value->Renderer()->device) {}
     void Restore() {
@@ -479,6 +480,7 @@ FrameScope::FrameScope(MMDApp* app) {
 }
 FrameScope::~FrameScope()=default;
 bool FrameScope::Ready()const{return !impl_ || impl_->ready;}
+bool FrameScope::Succeeded()const{return !impl_ || impl_->completed;}
 bool FrameScope::Complete() {
     if(!impl_ || !impl_->ready)return false;
     auto& p=*impl_;auto& t=targets.at(p.app);
@@ -497,8 +499,9 @@ bool FrameScope::Complete() {
         const auto& v=p.viewport;const auto& desc=t.description;
         const float constants[]={1.f/desc.Width,1.f/desc.Height,vectors?float(std::min(t.samples,7u))/(std::min(t.samples,7u)+1):0,0,
             (v.X+.5f)/desc.Width,(v.Y+.5f)/desc.Height,(v.X+v.Width-.5f)/desc.Width,(v.Y+v.Height-.5f)/desc.Height,
-            vectors?0:p.jitterX,vectors?0:p.jitterY,.002f,.002f};
-        device->SetPixelShaderConstantF(0,constants,3);
+            p.jitterX,p.jitterY,.002f,.002f,
+            t.historyJitterX,t.historyJitterY,0,0};
+        device->SetPixelShaderConstantF(0,constants,4);
         if(Smaa(p.app->antialiasing.algorithm)) {
             const float metrics[]={1.f/desc.Width,1.f/desc.Height,float(desc.Width),float(desc.Height)};
             device->SetPixelShaderConstantF(0,metrics,1);
@@ -507,6 +510,8 @@ bool FrameScope::Complete() {
                 vectors && t.samples?1.f:0,.002f,.002f,0,
                 vectors?0:p.jitterX,vectors?0:p.jitterY,0,0};
             device->SetPixelShaderConstantF(2,temporalConstants,3);
+            const float sampleOffsets[]={p.jitterX,p.jitterY,t.historyJitterX,t.historyJitterY};
+            device->SetPixelShaderConstantF(5,sampleOffsets,1);
             for(unsigned i=0;i<3;++i) {
                 device->SetSamplerState(i,D3DSAMP_MINFILTER,D3DTEXF_LINEAR);
                 device->SetSamplerState(i,D3DSAMP_MAGFILTER,D3DTEXF_LINEAR);
@@ -576,6 +581,7 @@ bool FrameScope::Complete() {
     if(SUCCEEDED(hr) && historyWritten && SUCCEEDED(device->StretchRect(motionSurface.Get(),nullptr,
         t.historyDepthSurface.Get(),nullptr,D3DTEXF_NONE))) {
         motion::Commit(p.app);++t.samples;
+        t.historyJitterX=p.jitterX;t.historyJitterY=p.jitterY;
     } else if(p.temporal) {
         t.samples=0;t.temporalUnavailable=true;motion::Cancel(p.app);
     } else if(SUCCEEDED(hr) && !Temporal(t.algorithm)) {
@@ -586,6 +592,7 @@ bool FrameScope::Complete() {
     device->SetDepthStencilSurface(nullptr);device->SetRenderTarget(0,p.previous.Get());device->SetDepthStencilSurface(p.depth.Get());
     device->SetViewport(&p.viewport);device->SetTransform(D3DTS_PROJECTION,&p.projection);ApplyRenderState(p.app);
     if(FAILED(hr))runtime_log::Write("AA resolve failed hr=0x%08lX",hr);
+    p.completed=SUCCEEDED(hr);
     return SUCCEEDED(hr);
 }
 }

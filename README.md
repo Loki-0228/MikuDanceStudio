@@ -120,7 +120,7 @@ For package scope and save limits, see [Downloads and package differences](#down
 
 #### Anti-aliasing and project settings (current source)
 
-The full build offers original MMD anti-aliasing, MSAA, FXAA, motion-vector TAA,
+The full build offers original MMD anti-aliasing (MSAA), FXAA, motion-vector TAA,
 and SMAA. Click **SMAA** to apply the last SMAA choice. The initial choice is
 **SMAA 1x (diagonal and corner enhancement)**. Hover over SMAA and move right
 to choose 1x or T2x, with standard edges or diagonal and corner enhancement.
@@ -136,12 +136,16 @@ image. Sampling does not advance animation or physics and does not add files.
 PMM v2 extensions store the AA switch, algorithm, and last SMAA choice. Loading
 a project does not overwrite local defaults. See [PMM settings](docs/PMM_V2_EXTENSIONS.md).
 
-On an NVIDIA renderer, startup checks the effective driver fix. **Help** offers
-installation only when the fix is absent. Installation explains the one-time
-administrator authorization, then runs the accompanying `MMSNvidiaAAFix.exe`.
-The verified result is recorded in `Data/nvidia_antialias_fix.ini`; driver state
-determines whether the menu item appears. AMD and Intel use the standard rendering
-path. Keep the helper beside `MikuMikuDance.exe` in full builds from this source.
+Place the optional `MMSNvidiaAAFix.dll` beside `MikuMikuDance.exe` to show its
+installation command in **Help**. Windows asks for administrator approval when
+you install it. The DLL applies and verifies this program's NVIDIA driver fix;
+MMS does not contain the registration code or check driver settings at startup.
+If no usable NVIDIA driver is found, installation stops with a warning. AMD and
+Intel graphics cards do not need this fix.
+After installation, keeping the DLL changes the command to **Uninstall**, including
+after restarting MMS. Uninstalling displays a red warning that MSAA may again show
+white edges or seams on double-sided materials. It removes only this program's fix.
+You can delete the DLL instead; its menu item disappears and the driver setting remains.
 
 #### MMV plug-in (under testing; not released)
 
@@ -332,7 +336,7 @@ MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌
 
 #### 抗锯齿与工程设置（当前源码）
 
-完整版本提供 MMD 原始抗锯齿、MSAA、FXAA、带运动矢量的 TAA 和 SMAA。
+完整版本提供 MMD 原始（MSAA）、FXAA、带运动矢量的 TAA 和 SMAA。
 直接点击「SMAA」应用上次所选，首次默认为「SMAA 1x（斜线与拐角增强）」。
 悬停在「SMAA」后向右移动，可选择以下档位：
 
@@ -354,11 +358,13 @@ SMAA 1x 不需要这一步。
 本机默认设置。临时硬件回退和未知档位不会覆盖工程原记录，用户重新选择后才更新。
 具体格式见 [PMM v2 项目扩展](docs/PMM_V2_EXTENSIONS.md)。
 
-使用 NVIDIA 渲染时，启动检测驱动中的双面绘制修复。尚未启用时，「帮助」菜单显示
-「安装 NVIDIA 修复双面绘制补丁」。点击后提示一次管理员授权要求，安装程序只设置当前程序的驱动配置。
-成功后重新读取驱动，并记录到 `Data/nvidia_antialias_fix.ini`。删除记录后会重新检测，
-菜单始终以驱动实际状态为准。AMD、Intel 使用通用渲染路径。
-当前源码构建的完整版本须保留同目录的 `MMSNvidiaAAFix.exe`。
+将可选的 `MMSNvidiaAAFix.dll` 放在 `MikuMikuDance.exe` 同目录，「帮助」菜单即显示
+「安装 NVIDIA 双面绘制补丁」。点击安装时，Windows 会请求管理员授权。
+DLL 自行设置并验证当前程序的 NVIDIA 驱动配置；MMS 不包含注册代码，也不在启动时检测驱动补丁状态。
+未检测到可用的 NVIDIA 驱动时，会提示无法安装并停止操作；AMD / Intel 显卡无需此补丁。
+安装后保留 DLL，菜单会改为「卸载 NVIDIA 双面绘制补丁」，重启 MMS 后仍然有效。
+卸载前会用红字提示：开启 MSAA 时，双面材质可能再次出现白边、接缝或绘制异常。
+卸载仅移除当前目录 MMS 的补丁设置。也可以删除 DLL，驱动设置仍保留，但菜单入口会消失。
 
 #### MMV 插件（测试中，尚未发布）
 
@@ -548,7 +554,7 @@ MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・�
 
 #### アンチエイリアスとプロジェクト設定（現在のソース）
 
-完全版は MMD オリジナル、MSAA、FXAA、モーションベクトルを使う TAA、SMAA に対応します。
+完全版は MMD オリジナル（MSAA）、FXAA、モーションベクトルを使う TAA、SMAA に対応します。
 「SMAA」を直接クリックすると前回の選択を適用します。初期値は「SMAA 1x（斜線・コーナー強化）」です。
 項目にカーソルを合わせて右へ移動すると、1x と T2x、それぞれの標準・斜線とコーナーの強化を選べます。
 T2x はモーションベクトルで位置を合わせた 2 フレームのサンプルを合成します。
@@ -561,10 +567,16 @@ T2x の最初の画像は 2 回、以後は画像ごとに 1 回だけシーン�
 AA の有効状態、方式、前回の SMAA 選択は PMM v2 拡張に保存されます。
 読み込み時にローカルの既定設定を書き換えません。
 
-NVIDIA では起動時にドライバーの両面描画修正を検出し、未適用の場合だけヘルプに
-インストール項目を表示します。クリック後に管理者権限の説明を表示し、同梱の
-`MMSNvidiaAAFix.exe` を起動します。結果は `Data/nvidia_antialias_fix.ini` に記録しますが、
-メニューの表示はドライバーの実際の設定で決まります。AMD と Intel は共通の描画経路を使います。
+任意の `MMSNvidiaAAFix.dll` を `MikuMikuDance.exe` と同じフォルダーに置くと、ヘルプに
+インストール項目が表示されます。実行時に Windows が管理者権限の承認を求めます。
+DLL 自身がこのプログラム専用の NVIDIA ドライバー設定を変更し、結果を確認します。
+MMS 本体に登録処理は含まれず、起動時のドライバー設定確認も行いません。
+利用可能な NVIDIA ドライバーが見つからない場合は警告を表示し、インストールを中止します。
+AMD / Intel のグラフィックスカードには、この修正は不要です。
+インストール後も DLL を残すと、MMS の再起動後もメニューにアンインストール項目が表示されます。
+実行前に、MSAA 使用時に両面材質の白い縁や継ぎ目などが再発する可能性を赤字で警告します。
+解除するのは、このフォルダーの MMS に適用した修正のみです。DLL を削除した場合は、
+メニュー項目が消えますが、適用した設定は残ります。
 
 #### MMV プラグイン（テスト中・未公開）
 

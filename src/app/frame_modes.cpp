@@ -47,6 +47,7 @@
 #include "mikudancestudio/bone_scale_gizmo.hpp"
 #include "mikudancestudio/viewport_corner_settings.hpp"
 #include "mikudancestudio/viewport_tool_layout.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/mmd_app.hpp"
@@ -203,22 +204,21 @@ int ViewportToolAtPoint(MMDApp* app) {
     GetClientRect(window, &client);
 
     int operation = 0;
-    if (y > view.top - 25 && y < view.top) {
+    const RECT frame = FrameOverlayRect(app);
+    if (y > frame.top - 25 && y < frame.top) {
         if (x > client.right - 60 && x < client.right - 36)
             operation = 1;
         else if (x > client.right - 30 && x < client.right - 6)
             operation = 2;
     }
 
-    float scale = 1.0f;
-    if (D3DRenderer* r = app->Renderer())
-        scale = r->viewScale;  // wrapper+120048
+    float scale = FrameOverlayScale(app);
     if (!(scale > 0.0f))
         scale = 1.0f;
 
     // Draw, hit testing and cursor restore share the same corner layout.
     const viewport_tool_layout::Anchor hud = viewport_tool_layout::Make(
-        view, scale, viewport_corner_settings::Current());
+        FrameOverlayRect(app), scale, viewport_corner_settings::Current());
 
     if (operation == 0 && app->PlaybackActive() == 0) {
         const float fx = static_cast<float>(x);
@@ -409,19 +409,19 @@ void BeginCenteredDrag(MMDApp* app, int operation) {
 
 void RestoreViewportToolCursor(MMDApp* app, int operation) {
     const RECT view = app->ViewportRect();
-    const float scale = ViewportScale(app);
+    const float scale = viewport_tool_layout::NormalizeScale(FrameOverlayScale(app));
     // Same docked anchor as ViewportToolAtPoint: the cursor lands on the
     // pressed button wherever the row block is docked (bottom-right keeps the
     // original numbers).  Operation 1/2 keeps the real viewport.
     const viewport_tool_layout::Anchor hud = viewport_tool_layout::Make(
-        view, scale, viewport_corner_settings::Current());
+        FrameOverlayRect(app), scale, viewport_corner_settings::Current());
     POINT point{};
     if (operation == 1 || operation == 2) {
         HWND window = ViewportWindow(app);
         RECT client{};
         GetClientRect(window, &client);
         point.x = client.right - (operation == 1 ? 48 : 18);
-        point.y = view.top - 12;
+        point.y = FrameOverlayRect(app).top - 12;
     } else if (operation >= 22 && operation <= 25) {
         point.x = static_cast<int>(hud.ScaleCenterX(operation - 22));
         point.y = hud.y - static_cast<int>(25.0f * scale);

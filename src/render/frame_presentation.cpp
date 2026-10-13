@@ -6,6 +6,8 @@
 #include <algorithm>
 
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/frame_rate.hpp"
+#include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
@@ -23,10 +25,11 @@ bool BakePreview::Due(bool last){
 void BakePreview::Present(){
     if(!app_||!app_->Renderer()||!app_->Renderer()->device)return;
     auto* device=app_->Renderer()->device;
-    FillFramePresentationMargins(app_,device);
+    if (build_profile::original) FillFramePresentationMargins(app_,device);
     const RECT rect=FramePresentationRect(app_);
     const HWND window=app_->FloatingWindow()?app_->FloatingWindow():app_->MainWindow();
-    device->Present(&rect,&rect,window,nullptr);
+    const HRESULT presented=device->Present(&rect,&rect,window,nullptr);
+    frame_rate::Presented(app_,SUCCEEDED(presented));
 }
 void BakePreview::RenderNative(){
     struct Guard{
@@ -57,7 +60,25 @@ RECT FramePresentationRect(MMDApp* app) {
     // Keep the GDI controls above/below the scene outside the present region.
     result.left = std::max<LONG>(0, floating ? 0 : app->SidebarWidth() + 9);
     result.right = std::max(result.left, client.right);
+    if (!build_profile::original) {
+        result.top = std::min<LONG>(25, client.bottom);
+        result.bottom = std::max(result.top, client.bottom - (floating ? 32 : 192));
+    }
     return result;
+}
+
+RECT FrameOverlayRect(MMDApp* app) {
+    return build_profile::original ? app->ViewportRect() : FramePresentationRect(app);
+}
+
+float FrameOverlayScale(MMDApp* app) {
+    const float scale = app->Renderer() ? app->Renderer()->viewScale : 1.0f;
+    const RECT scene = app->ViewportRect(), frame = FrameOverlayRect(app);
+    const LONG width = scene.right - scene.left;
+    if (build_profile::original || width <= 0) return scale;
+    const float frameWidth = float(frame.right - frame.left), frameHeight = float(frame.bottom - frame.top);
+    return frameWidth > 0 && frameHeight > 0
+        ? std::min({scale * frameWidth / float(width), frameWidth / 180.0f, frameHeight / 177.0f}) : scale;
 }
 
 void FillFramePresentationMargins(MMDApp* app, IDirect3DDevice9* device) {

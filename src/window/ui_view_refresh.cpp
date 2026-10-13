@@ -41,6 +41,7 @@
 
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/bone_parent_coordinates.hpp"
@@ -81,8 +82,8 @@ void PostLanguageSweep2(MMDApp* app) {
     }
 
     // Panel strip: (x+10, hideTop-22) .. (client.right-450, hideTop-1).
-    const std::int32_t hideTop =
-        app->state.hideTop;  // 0xA0D44
+    const RECT frame = FrameOverlayRect(app);
+    const std::int32_t hideTop = frame.top;
     RECT rc;
     rc.left = x + 10;
     rc.bottom = hideTop - 1;
@@ -91,7 +92,7 @@ void PostLanguageSweep2(MMDApp* app) {
     InvalidateRect(hwnd, &rc, FALSE);               // 0x40D0DD
 
     // Value column: (x+68, hideBottom) .. (x+139, hideBottom+30).
-    rc.top = app->state.hideBottom;  // 0xA0D4C
+    rc.top = frame.bottom;
     rc.left = x + 68;
     rc.right = x + 139;
     rc.bottom = rc.top + 30;

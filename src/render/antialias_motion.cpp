@@ -185,7 +185,15 @@ struct State final:deformed_mesh_capture::DrawObserver {
     }
     void Capture(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,INT base,UINT minVertex,UINT vertexCount,
                  UINT firstIndex,UINT primitives,const void* object,unsigned material) {
-        if(!primitives||!SceneDraw(device)||type<D3DPT_TRIANGLELIST)return;
+        if(!primitives||!SceneDraw(device))return;
+        bool grid=false;
+        if(type<D3DPT_TRIANGLELIST) {
+            ComPtr<IDirect3DIndexBuffer9> indices;
+            device->GetIndices(&indices);
+            grid=type==D3DPT_LINELIST && indices && indices.Get()==app->GroundGridIndices();
+            if(!grid)return;
+            object=app->GroundGridIndices();material=UINT_MAX;
+        }
         D3DVIEWPORT9 drawViewport{};
         Check(device->GetViewport(&drawViewport),"Cannot read motion source viewport");
         if(drawViewport.X!=viewport.X||drawViewport.Y!=viewport.Y||drawViewport.Width!=viewport.Width||
@@ -198,7 +206,7 @@ struct State final:deformed_mesh_capture::DrawObserver {
         if(!object&&app->ActiveRenderPass()==AccessoryRenderPass::ModelOutline) {
             object=app->ActiveRenderObject();material=UINT_MAX;
         }
-        if(type!=D3DPT_TRIANGLELIST){Fail("Non-triangle-list material geometry");return;}
+        if(type!=D3DPT_TRIANGLELIST && !grid){Fail("Non-triangle-list material geometry");return;}
         ComPtr<IDirect3DSurface9> extra;
         if(SUCCEEDED(device->GetRenderTarget(1,&extra))&&extra){Fail("Material writes multiple scene render targets");return;}
         ComPtr<IDirect3DIndexBuffer9> indices;
@@ -206,7 +214,7 @@ struct State final:deformed_mesh_capture::DrawObserver {
         if(!indices)throw std::runtime_error("Motion source has no index buffer");
         D3DINDEXBUFFER_DESC desc{};Check(indices->GetDesc(&desc),"Cannot describe motion indices");
         const unsigned indexBytes=desc.Format==D3DFMT_INDEX32?4:2;
-        const std::uint64_t indexCount=std::uint64_t(primitives)*3;
+        const std::uint64_t indexCount=std::uint64_t(primitives)*(grid?2:3);
         if(indexCount>48000000||(std::uint64_t(firstIndex)+indexCount)*indexBytes>desc.Size)
             throw std::runtime_error("Motion index range is invalid");
         std::vector<unsigned> meshIndices(static_cast<std::size_t>(indexCount));
@@ -330,7 +338,7 @@ struct State final:deformed_mesh_capture::DrawObserver {
         for(auto sampler:{D3DSAMP_MINFILTER,D3DSAMP_MAGFILTER})device->SetSamplerState(0,sampler,D3DTEXF_POINT);
         device->SetSamplerState(0,D3DSAMP_MIPFILTER,D3DTEXF_NONE);device->SetSamplerState(0,D3DSAMP_SRGBTEXTURE,FALSE);
         device->SetSamplerState(0,D3DSAMP_ADDRESSU,D3DTADDRESS_CLAMP);device->SetSamplerState(0,D3DSAMP_ADDRESSV,D3DTADDRESS_CLAMP);
-        Check(device->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST,0,count,primitives,meshIndices.data(),D3DFMT_INDEX32,
+        Check(device->DrawIndexedPrimitiveUP(type,0,count,primitives,meshIndices.data(),D3DFMT_INDEX32,
             vertices.data(),sizeof(Vertex)),"Motion geometry replay failed");
         ++draws;if(historyAllowed)++validDraws;
         if(object)current.emplace(key,std::move(snapshot));

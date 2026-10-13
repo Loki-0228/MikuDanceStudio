@@ -19,6 +19,7 @@
 #pragma once
 #include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/antialias.hpp"
+#include "mikudancestudio/frame_rate.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -1527,6 +1528,10 @@ public:
         double percent = 100.0;
     } viewportRender;
 
+    // Primitive range of screen-anchored controls in the mixed sprite batch.
+    // Bone markers and edit cursors outside this range remain scene-clipped.
+    struct HudSpriteRange { unsigned first = 0, count = 0; } hudSprites;
+
     // Session-only UI geometry; never part of the PMM/legacy state blob.
     struct BottomPanelSizing {
         int extra[9]{};
@@ -1644,6 +1649,10 @@ private:
 #endif
     // Plugin ownership is transient; the PMM/menu mode remains the user's choice.
     bool m_nativePhysicsOverridden = false;
+public:
+    // Keep display accounting outside the original PMM/ABI state, appended so
+    // existing runtime members retain their offsets as well.
+    frame_rate::State frameRate;
 };
 
 static_assert(sizeof(MMDApp) >= sizeof(MMDAppState),

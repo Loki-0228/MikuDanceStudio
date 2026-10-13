@@ -27,6 +27,7 @@
 #include <cstdint>
 
 #include "mikudancestudio/bottom_panel_layout.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/model.hpp"
@@ -97,6 +98,13 @@ void HandleWindowPaint(MMDApp* app) {
     RECT rc;
     GetClientRect(hwnd, &rc);
     HDC hdc = BeginPaint(hwnd, &ps);
+    // The display-resolution scene composite owns its black margins and HUD.
+    // A modal dialog disables the owner, so no FrameDriver follows this paint
+    // to repair GDI blackouts over those pixels.
+    if (!build_profile::original && !app->FloatingWindow()) {
+        const RECT frame = FramePresentationRect(app);
+        ExcludeClipRect(hdc, frame.left, frame.top, frame.right, frame.bottom);
+    }
 
     HPEN pen = CreatePen(0, 1,
         app->ThemeColor(UiThemeColor::WindowFill));

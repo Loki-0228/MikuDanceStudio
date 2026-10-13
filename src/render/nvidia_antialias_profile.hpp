@@ -3,7 +3,16 @@
 #include <cwchar>
 #include <cwctype>
 #include <string>
-#include "mikudancestudio/nvidia_antialias_fix.hpp"
+
+namespace mikudancestudio::nvidia_antialias_fix {
+// Private to the optional installer DLL and its driver-contract tests.
+struct State {
+    bool available = false;
+    bool enabled = false;
+    std::wstring error;
+    int driverStatus = 0;
+};
+}
 
 namespace mikudancestudio::nvidia_antialias_fix::detail {
 // Minimal ABI declarations from NVIDIA's public nvapi.h / nvapi_interface.h.

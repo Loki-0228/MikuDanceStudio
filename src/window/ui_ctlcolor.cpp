@@ -43,6 +43,7 @@
 #include <new>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 
@@ -94,7 +95,7 @@ LRESULT HandleCtlColor(HWND control, HDC dc) {
         GetClientRect(ctrl, &client);
         GetWindowRect(ctrl, &position);
         MapWindowPoints(nullptr, GetParent(ctrl), reinterpret_cast<POINT*>(&position), 2);
-        const LONG top = app->ViewportRect().bottom - position.top;
+        const LONG top = FrameOverlayRect(app).bottom - position.top;
         TRIVERTEX vertices[2]{};
         vertices[0].x = client.left; vertices[0].y = top;
         vertices[0].Red = vertices[0].Green = vertices[0].Blue = 0x7800;

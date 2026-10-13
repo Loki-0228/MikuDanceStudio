@@ -2,6 +2,7 @@
 #include "mikudancestudio/nvidia_antialias_fix.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/build_profile.hpp"
+#include "nvidia_antialias_uninstall_dialog.hpp"
 
 namespace mikudancestudio::nvidia_antialias_menu {
 namespace {
@@ -25,7 +26,13 @@ void Refresh(MMDApp* app) {
         if (exists) DeleteMenu(help, kInstallCommand, MF_BYCOMMAND);
         return;
     }
-    const wchar_t* label = app->EnglishUI() == 2 ? L"安装 NVIDIA 修复双面绘制补丁…"
+    bool installed = false;
+    std::wstring error;
+    nvidia_antialias_fix::QueryInstalled(installed, error, app->EnglishUI());
+    const wchar_t* label = installed ? (app->EnglishUI() == 2 ? L"卸载 NVIDIA 双面绘制补丁…"
+        : app->EnglishUI() == 1 ? L"Uninstall NVIDIA double-sided rendering fix…"
+        : L"NVIDIA 両面描画の修正をアンインストール…")
+        : app->EnglishUI() == 2 ? L"安装 NVIDIA 双面绘制补丁…"
         : app->EnglishUI() == 1 ? L"Install NVIDIA double-sided rendering fix…"
         : L"NVIDIA 両面描画の修正をインストール…";
     if (exists) {
@@ -43,15 +50,28 @@ bool HandleMessage(MMDApp* app, UINT message, WPARAM wp, LPARAM lp) {
         Refresh(app);
     } else if (message == WM_COMMAND && HIWORD(wp) == 0 && lp == 0 && LOWORD(wp) == kInstallCommand) {
         std::wstring error;
-        const bool installed = nvidia_antialias_fix::InstallForCurrentExecutable(app->MainWindow(), error, app->EnglishUI());
+        bool wasInstalled = false;
+        if (!nvidia_antialias_fix::QueryInstalled(wasInstalled, error, app->EnglishUI())) {
+            MessageBoxW(app->MainWindow(), error.c_str(), L"NVIDIA", MB_OK | MB_ICONWARNING);
+            return true;
+        }
+        if (wasInstalled && !uninstall_dialog::Confirm(app->MainWindow(), app->EnglishUI())) return true;
+        const bool completed = wasInstalled
+            ? nvidia_antialias_fix::UninstallForCurrentExecutable(app->MainWindow(), error, app->EnglishUI())
+            : nvidia_antialias_fix::InstallForCurrentExecutable(app->MainWindow(), error, app->EnglishUI());
         Refresh(app);
         const wchar_t* title = L"NVIDIA";
-        if (installed) {
-            std::wstring text = app->EnglishUI() == 2
-                ? L"已确认 NVIDIA 双面绘制修复已启用。\n下次正常启动程序时，驱动将使用该设置。"
+        if (completed) {
+            std::wstring text = wasInstalled ? (app->EnglishUI() == 2
+                ? L"NVIDIA 双面绘制补丁已卸载。下次启动 MMS 时生效。保留 MMSNvidiaAAFix.dll 可通过帮助菜单重新安装。"
                 : app->EnglishUI() == 1
-                ? L"The NVIDIA double-sided rendering fix is enabled.\nThe driver will use it the next time you start the program normally."
-                : L"NVIDIA 両面描画の修正が有効になりました。\n次回の通常起動時にドライバーがこの設定を使用します。";
+                ? L"The NVIDIA double-sided rendering fix has been uninstalled. The change takes effect the next time MMS starts. Keep MMSNvidiaAAFix.dll to reinstall it from Help."
+                : L"NVIDIA 両面描画の修正をアンインストールしました。次回の MMS 起動時に反映されます。MMSNvidiaAAFix.dll を残しておくと、ヘルプから再インストールできます。")
+                : app->EnglishUI() == 2
+                ? L"NVIDIA 双面绘制修复已安装，下次启动 MMS 时生效。\n现在可以删除 MMSNvidiaAAFix.dll；若希望以后通过帮助菜单卸载，请保留该文件。"
+                : app->EnglishUI() == 1
+                ? L"The NVIDIA double-sided rendering fix is installed. It takes effect the next time MMS starts.\nYou can now delete MMSNvidiaAAFix.dll, or keep it to uninstall the fix from Help later."
+                : L"NVIDIA 両面描画の修正をインストールしました。次回の MMS 起動時に反映されます。\nMMSNvidiaAAFix.dll は削除してかまいません。後でヘルプからアンインストールする場合は、このファイルを残してください。";
             if (!error.empty()) text += L"\n\n" + error;
             MessageBoxW(app->MainWindow(), text.c_str(), title,
                 MB_OK | (error.empty() ? MB_ICONINFORMATION : MB_ICONWARNING));

@@ -1,8 +1,35 @@
 #include "../src/render/nvidia_antialias_profile.hpp"
 #include "../src/render/nvidia_antialias_elevation.hpp"
+#include "mikudancestudio/nvidia_antialias_fix.hpp"
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <filesystem>
+#include <shellapi.h>
+#include "../src/window/nvidia_antialias_uninstall_dialog.hpp"
+namespace host_mock {
+inline int calls = 0;
+inline bool cancel = false;
+inline DWORD wait = WAIT_OBJECT_0, exitCode = 0;
+inline std::wstring parameters;
+inline BOOL WINAPI Launch(SHELLEXECUTEINFOW* info) {
+    ++calls; parameters = info->lpParameters;
+    if (cancel) { SetLastError(ERROR_CANCELLED); return FALSE; }
+    info->hProcess = reinterpret_cast<HANDLE>(321); return TRUE;
+}
+inline DWORD WINAPI Wait(HANDLE, DWORD) { return wait; }
+inline BOOL WINAPI Exit(HANDLE, LPDWORD value) { *value = exitCode; return TRUE; }
+inline BOOL WINAPI Close(HANDLE) { return TRUE; }
+}
+#define ShellExecuteExW host_mock::Launch
+#define WaitForSingleObject host_mock::Wait
+#define GetExitCodeProcess host_mock::Exit
+#define CloseHandle host_mock::Close
+#include "../src/render/nvidia_antialias_fix.cpp"
+#undef ShellExecuteExW
+#undef WaitForSingleObject
+#undef GetExitCodeProcess
+#undef CloseHandle
 using namespace mikudancestudio::nvidia_antialias_fix;
 using namespace mikudancestudio::nvidia_antialias_fix::detail;
 namespace {
@@ -63,29 +90,66 @@ Api Mock(){return {Create,Destroy,Load,Save,Find,CreateProfile,Info,Enum,CreateA
 }
 int main(int argc,char** argv){
     if(argc==2 && std::string(argv[1])=="--inspect") {
-        auto state=Inspect();std::printf("NVAPI read-only available=%d enabled=%d error=%ls\n",state.available,state.enabled,state.error.c_str());
+        State state; RunForPath(CanonicalModulePath(),nullptr,state);std::printf("NVAPI read-only available=%d enabled=%d error=%ls\n",state.available,state.enabled,state.error.c_str());
         return state.available?0:77;
     }
     std::wstring error;
-    Check(EnsureForAdapter(0x1002,error)&&error.empty(),"AMD skips NVAPI and succeeds");
-    Check(!ShouldOfferInstall(),"AMD never offers installation");
-    Check(!InstallForCurrentExecutable(nullptr,error),"AMD installation command cannot launch a helper");
-    Check(!InstallForCurrentExecutable(nullptr,error,1) && error==L"The current renderer is not using an NVIDIA GPU.",
-        "English UI gets an English install error without requesting elevation");
-    Check(!InstallForCurrentExecutable(nullptr,error,0) && error==L"現在のレンダラーは NVIDIA GPU を使用していません。",
-        "Japanese UI gets a Japanese install error without requesting elevation");
-    Check(EnsureForAdapter(0x8086,error)&&error.empty(),"Intel skips NVAPI and succeeds");
+    const auto patch=std::filesystem::path(ModulePath()).parent_path()/kHelperName;
+    Check(!std::filesystem::exists(patch),"test directory starts without a patch DLL");
+    Check(!ShouldOfferInstall(),"missing patch hides installation");
+    Check(!InstallForCurrentExecutable(nullptr,error,1) && error==L"MMSNvidiaAAFix.dll is not in the program folder.",
+        "missing DLL reports English error without elevation");
+    Check(!InstallForCurrentExecutable(nullptr,error,0) && error==L"プログラムのフォルダーに MMSNvidiaAAFix.dll がありません。",
+        "missing DLL reports Japanese error without elevation");
+    { std::ofstream file(patch); file << "presence-only fixture, not a DLL"; }
+    Check(ShouldOfferInstall(),"DLL presence alone offers install without loading it or querying a GPU");
+    bool installed = true;
+    Check(!QueryInstalled(installed,error,1) && !installed && !error.empty(),"invalid DLL cannot report installed");
+    Check(UninstallForCurrentExecutable(nullptr,error,1) && host_mock::parameters.find(L"/s /u \"")==0,
+        "uninstall invokes Windows unregister with quoted DLL path");
+    Check(InstallForCurrentExecutable(nullptr,error,1) && host_mock::parameters.find(L"/s \"")==0,
+        "install invokes Windows registration with quoted DLL path");
+    host_mock::cancel=true;
+    Check(!UninstallForCurrentExecutable(nullptr,error,1) && error.empty(),"UAC cancellation performs no successful uninstall");
+    host_mock::cancel=false;host_mock::exitCode=3;
+    Check(!UninstallForCurrentExecutable(nullptr,error,1) && !error.empty(),"unregister failure is reported");
+    host_mock::exitCode=0;host_mock::wait=WAIT_TIMEOUT;
+    Check(!InstallForCurrentExecutable(nullptr,error,1) && !error.empty(),"pending registration never reports success");
+    host_mock::wait=WAIT_OBJECT_0;
+    std::filesystem::remove(patch);
+    Check(!ShouldOfferInstall(),"removing the DLL hides installation immediately");
+    if(argc==2) {
+        std::filesystem::copy_file(argv[1],patch);
+        SetEnvironmentVariableW(L"MMS_TEST_PATCH_STATE",L"0");
+        Check(QueryInstalled(installed,error) && !installed,"uninstalled DLL reports install action");
+        SetEnvironmentVariableW(L"MMS_TEST_PATCH_STATE",L"1");
+        Check(QueryInstalled(installed,error) && installed,"fresh DLL load detects installation without host records");
+        SetEnvironmentVariableW(L"MMS_TEST_PATCH_STATE",L"0");
+        Check(QueryInstalled(installed,error) && !installed,"uninstall status refreshes without restarting");
+        SetEnvironmentVariableW(L"MMS_TEST_PATCH_STATE",L"?");
+        Check(!QueryInstalled(installed,error) && !installed,"query failure does not use stale installation state");
+        SetEnvironmentVariableW(L"MMS_TEST_PATCH_STATE",L"!");
+        for(int language=0;language<3;++language)Check(!QueryInstalled(installed,error,language) &&
+            !installed && error.find(L"AMD")!=std::wstring::npos && error.find(L"Intel")!=std::wstring::npos,
+            "non-NVIDIA fallback explains installation is unavailable in each language");
+        SetEnvironmentVariableW(L"MMS_TEST_PATCH_STATE",nullptr);
+        std::filesystem::remove(patch);
+    }
     Api api=Mock();State state;bool on=true,off=false;
     Check(Execute(api,path,nullptr,state)&&!db.saves&&!db.exists,"read-only inspection never creates or saves");
     Check(Execute(api,path,&on,state)&&state.enabled&&db.saves==1&&db.sets==1,"default enables scoped profile and reads back");
+    Check(Execute(api,path,nullptr,state)&&state.enabled&&db.saves==1,"installed query survives a new driver session without writes");
     Check(Execute(api,path,&on,state)&&db.saves==1&&db.sets==1,"already enabled is idempotent");
     Check(Execute(api,path,&off,state)&&!state.enabled&&db.removes==1&&db.saves==2,"restore preserves profile and unrelated settings");
+    Check(Execute(api,path,nullptr,state)&&!state.enabled&&db.saves==2,"post-uninstall query selects install again");
+    Check(Execute(api,path,&off,state)&&db.removes==1&&db.saves==2,"repeated uninstall is idempotent");
     db.apps=2;state={};Check(!Execute(api,path,&on,state)&&db.saves==2,"shared profile is never changed");
     db.apps=1;db.predefined=1;Check(!Execute(api,path,&on,state)&&db.saves==2,"predefined profile is never changed");
     db.predefined=0;db.mismatched=true;Check(!Execute(api,path,&on,state)&&db.saves==2,"wrong application is never changed");
     db.mismatched=false;db.failSave=true;Check(!Execute(api,path,&on,state)&&!state.error.empty(),"driver save failure propagates");
     db={};Check(!Execute(api,L"game.exe",&on,state)&&!db.saves&&!db.exists,"relative paths rejected before driver access");
     db={};db.appFound=false;db.basePresent=true;db.baseValue=0;
+    Check(Execute(api,path,nullptr,state)&&!state.enabled&&!db.saves,"global fix is not mistaken for DLL-owned installation");
     Check(InspectEffective(api,path,state)&&state.enabled&&!db.saves&&!db.sets&&!db.exists,"original global patch detected without creating an app profile");
     db.globalPresent=true;db.globalValue=1;
     Check(InspectEffective(api,path,state)&&!state.enabled,"global override off wins over base on");
@@ -97,13 +161,37 @@ int main(int argc,char** argv){
     Check(!InspectEffective(api,path,state)&&state.driverStatus==-175&&!state.enabled,"read failure cannot become a success record");
     db={};db.appFound=false;
     Check(InspectEffective(api,path,state)&&!state.enabled&&!db.sets&&!db.saves,"missing patch remains visible without driver writes");
-    Check(IsSiblingApplication(L"D:\\MMS only\\MMSNvidiaAAFix.exe",path),"helper accepts only its sibling host");
-    Check(!IsSiblingApplication(L"C:\\Other\\MMSNvidiaAAFix.exe",path),"helper rejects a different directory");
-    Check(!IsSiblingApplication(L"D:\\MMS only\\MMSNvidiaAAFix.exe",L"D:\\MMS only\\other.exe"),"helper rejects another executable name");
-    Check(!IsSiblingApplication(L"D:\\MMS only\\MMSNvidiaAAFix.exe",L"D:\\MMS only\\..\\MikuMikuDance.exe"),"helper rejects uncanonical parent traversal");
+    Check(IsSiblingApplication(L"D:\\MMS only\\MMSNvidiaAAFix.dll",path),"helper accepts only its sibling host");
+    Check(!IsSiblingApplication(L"C:\\Other\\MMSNvidiaAAFix.dll",path),"helper rejects a different directory");
+    Check(!IsSiblingApplication(L"D:\\MMS only\\MMSNvidiaAAFix.dll",L"D:\\MMS only\\other.exe"),"helper rejects another executable name");
+    Check(!IsSiblingApplication(L"D:\\MMS only\\MMSNvidiaAAFix.dll",L"D:\\MMS only\\..\\MikuMikuDance.exe"),"helper rejects uncanonical parent traversal");
     std::wstring canonical;
     const bool canonicalValid=CanonicalFile(ModulePath(),canonical);
     if(!canonicalValid)std::printf("canonical diagnostics: module=%ls result=%ls windows=%lu\n",ModulePath().c_str(),canonical.c_str(),GetLastError());
     Check(canonicalValid&&canonical==CanonicalModulePath(),"startup inspection and helper registration share the canonical executable identity");
-    std::puts("PASS scoped NVIDIA AA profile, effective inheritance detection, helper identity, failures, and AMD/Intel fallback");return 0;
+    namespace dialog = mikudancestudio::nvidia_antialias_menu::uninstall_dialog;
+    const auto previousDesktop=GetThreadDesktop(GetCurrentThreadId());
+    const auto desktopName=L"MMSNvidiaDialogTest-"+std::to_wstring(GetCurrentProcessId());
+    const auto desktop=CreateDesktopW(desktopName.c_str(),nullptr,nullptr,0,GENERIC_ALL,nullptr);
+    Check(desktop && SetThreadDesktop(desktop),"dialog audit uses a private desktop");
+    for(int language=0;language<3;++language) {
+        auto data=dialog::Template();
+        HWND window=CreateDialogIndirectParamW(GetModuleHandleW(nullptr),reinterpret_cast<DLGTEMPLATE*>(data.data()),
+            nullptr,dialog::Proc,language);
+        Check(window && LOWORD(SendMessageW(window,DM_GETDEFID,0,0))==IDCANCEL,"cancel is default in each language");
+        HDC dc=GetDC(window);
+        dialog::Proc(window,WM_CTLCOLORSTATIC,reinterpret_cast<WPARAM>(dc),reinterpret_cast<LPARAM>(GetDlgItem(window,dialog::Warning)));
+        Check(GetTextColor(dc)==RGB(192,0,0),"uninstall consequence is painted red");
+        for(int id : {dialog::Warning,dialog::Detail}) {
+            HWND child=GetDlgItem(window,id);RECT bounds{};GetClientRect(child,&bounds);
+            wchar_t text[1024]{};GetWindowTextW(child,text,1024);
+            auto previous=SelectObject(dc,reinterpret_cast<HFONT>(SendMessageW(child,WM_GETFONT,0,0)));
+            RECT measure=bounds;DrawTextW(dc,text,-1,&measure,DT_CALCRECT|DT_WORDBREAK|DT_LEFT);
+            Check(measure.bottom<=bounds.bottom,"localized warning and explanation fit their controls");
+            SelectObject(dc,previous);
+        }
+        ReleaseDC(window,dc);DestroyWindow(window);
+    }
+    Check(SetThreadDesktop(previousDesktop)!=FALSE,"restore test desktop");CloseDesktop(desktop);
+    std::puts("PASS scoped NVIDIA install/uninstall, DLL status, host invocation, cancellation, and trilingual red warning");return 0;
 }

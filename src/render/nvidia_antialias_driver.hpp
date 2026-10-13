@@ -10,7 +10,7 @@
 
 namespace mikudancestudio::nvidia_antialias_fix::detail {
 // Shared with the elevated helper. No renderer, plug-in, or application runtime
-// library may be linked into that executable.
+// library may be linked into that DLL.
 struct Driver {
     HMODULE module = nullptr;
     Api api;

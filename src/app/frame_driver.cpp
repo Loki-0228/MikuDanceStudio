@@ -50,6 +50,7 @@
 #include "mikudancestudio/bone_scale.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/frame_rate.hpp"
 #include "mikudancestudio/frame_sampling.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/globals.hpp"
@@ -565,6 +566,7 @@ void FrameDriver(MMDApp* app) {
     if (requireLineEnabled && lineModeRequested != 0)
         DumpFrameEntryState(app, "frame_state_line.json");
 #endif
+#if MMD_ORIGINAL_PROFILE
     // 0x46B118..0x46B17B: one-second render-frame counter.  The original
     // snaps the two common cap-adjacent values to their nominal rates.
     float& fpsElapsed = s.state.fpsOverlayElapsedSeconds;
@@ -582,6 +584,10 @@ void FrameDriver(MMDApp* app) {
         s.state.framesPerSecond = 30;
     if (s.state.framesPerSecond == 59)
         s.state.framesPerSecond = 60;
+#else
+    // Idle/performance-saving pump iterations are not rendered scene frames.
+    frame_rate::Tick(app);
+#endif
 
     // ---- 1. mouse-delta snapshot reset ------------------------------------
     // Clamp the coordinate selector's state before anything reads it this frame
@@ -870,6 +876,7 @@ void FrameDriver(MMDApp* app) {
                                      static_cast<HWND>(s.Hwnd()),
                                      nullptr);
             }
+            frame_rate::Presented(app, SUCCEEDED(hr));
             if (hr == D3DERR_DEVICELOST) {
                 device_lost_wait::Wait(app, device, false);
                 // A dispatched message may have destroyed the renderer.

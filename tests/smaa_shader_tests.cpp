@@ -90,14 +90,16 @@ int main() {
         input->UnlockRect(0);
     };
     unsigned selectedVariant=0,submitted=0;
+    float currentJitter=0,previousJitter=0;
     const auto render=[&] {
         const auto& v=viewport;
         const bool temporal=selectedVariant>=2;
         const float phase=temporal?float(submitted%2+1):0;
         float constants[]={1.f/side,1.f/side,float(side),float(side),
             (v.X+.5f)/side,(v.Y+.5f)/side,(v.X+v.Width-.5f)/side,(v.Y+v.Height-.5f)/side,
-            phase,phase,phase,0,submitted?1.f:0,.002f,.002f,0,0,0,0,0};
-        device->SetPixelShaderConstantF(0,constants,5);
+            phase,phase,phase,0,submitted?1.f:0,.002f,.002f,0,0,0,0,0,
+            currentJitter/side,0,previousJitter/side,0};
+        device->SetPixelShaderConstantF(0,constants,6);
         device->SetVertexShader(nullptr);device->SetFVF(D3DFVF_XYZRHW|D3DFVF_TEX1);
         device->SetDepthStencilSurface(nullptr);
         for(auto state:{D3DRS_ZENABLE,D3DRS_ZWRITEENABLE,D3DRS_ALPHABLENDENABLE,D3DRS_ALPHATESTENABLE,
@@ -210,6 +212,18 @@ int main() {
         Check(close(temporalPixels[48*side+x],pixels>0?0x80006464:0x80646400),
             pixels>0?"T2x reprojects forward object motion":"T2x reprojects backward object motion");
     }
+    // Smooth ramp isolates phase alignment from edge detection and velocity.
+    D3DLOCKED_RECT ramp{};Check(SUCCEEDED(input->LockRect(0,&ramp,nullptr,0)),"write phase-alignment ramp");
+    for(unsigned y=0;y<side;++y)for(unsigned x=0;x<side;++x)
+        reinterpret_cast<DWORD*>(static_cast<char*>(ramp.pBits)+y*ramp.Pitch)[x]=D3DCOLOR_ARGB(128,x*2,x*2,x*2);
+    input->UnlockRect(0);
+    submitted=0;velocity(0,10,10);currentJitter=2;previousJitter=-2;
+    temporalPixels=render();
+    Check(close(temporalPixels[48*side+48],0x80646464),"T2x first frame removes current jitter");
+    temporalPixels=render();
+    Check(close(temporalPixels[48*side+48],0x80606060),"T2x aligns current and previous raw images using separate jitter offsets");
+    velocity(0,0,10);temporalPixels=render();
+    Check(close(temporalPixels[48*side+48],0x80646464),"T2x history rejection still removes current jitter");
     for(unsigned i=0;i<6;++i)device->SetTexture(i,nullptr);
     device->SetPixelShader(nullptr);device.Reset();DestroyWindow(window);
     std::puts("SMAA GPU regression checks passed");return 0;

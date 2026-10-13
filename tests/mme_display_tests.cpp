@@ -3,6 +3,8 @@
 #define NOMINMAX
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/scene_sampling.hpp"
 #include "mikudancestudio/d3d12_native.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/text_encoding.hpp"
@@ -474,6 +476,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
     if (tick > 10) { std::puts("FAIL mapping dialog not found"); std::exit(2); }
 }
 #include "viewport_render_scale_scene_checks.hpp"
+#include "viewport_scale_dialog_checks.hpp"
 #include "antialias_scene_checks.hpp"
 #include "antialias_startup_checks.hpp"
 ULONGLONG startupClock = 0;
@@ -546,7 +549,7 @@ int wmain(int argc, wchar_t** argv) {
         const auto& adapters=skinning::AvailableAdapters();Check(!adapters.empty(),"GPU skinning adapter available");
         skinning::SetPreference({skinning::Mode::Adapter,adapters.front().id,adapters.front().name});
     }
-    if (aaScene) {
+    if (aaScene && std::filesystem::path(argv[1]).extension() == L".pmm") {
         wcscpy_s(app->EnvFileName(), kPathFieldCapacity, argv[1]);
         LoadSceneFile();
         app->SelectedModel() = app->ModelSlot(0);
@@ -559,7 +562,8 @@ int wmain(int argc, wchar_t** argv) {
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0) {
-        CheckViewportRenderScale(app, argv[3]);
+        if(std::getenv("MMS_VIEWPORT_DIALOG")) CheckViewportScaleDialog(app,argv[3]);
+        else CheckViewportRenderScale(app, argv[3]);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (emmLoad) {

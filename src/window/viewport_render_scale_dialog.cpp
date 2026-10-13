@@ -2,14 +2,24 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/frame_rate.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/build_profile.hpp"
 #include <CommCtrl.h>
 #include <algorithm>
+#include <chrono>
 #include <cwchar>
 
 namespace mikudancestudio::viewport_render_scale {
 namespace {
+using Clock = std::chrono::steady_clock;
+constexpr wchar_t kPreviewSession[] = L"MMS.ViewportScalePreview";
+constexpr UINT_PTR kPreviewSubclass = 9140;
+struct PreviewSession {
+    MMDApp* app;
+    HWND dialog = nullptr;
+    Clock::time_point lastFrame{};
+};
 const wchar_t* Text(MMDApp* app, const wchar_t* zh, const wchar_t* en, const wchar_t* ja) {
     return app->EnglishUI() == 2 ? zh : app->EnglishUI() == 0 ? ja : en;
 }
@@ -51,18 +61,52 @@ void UpdateReadout(HWND dialog, MMDApp* app) {
     SetDlgItemTextW(dialog, Dimensions, text);
     Show4KWarning(dialog, app, Above4K(size));
 }
-void RefreshPreview(MMDApp* app) {
-    InvalidateRect(app->FloatingWindow() ? app->FloatingWindow() : app->MainWindow(), nullptr, FALSE);
+bool RefreshPreview(MMDApp* app) {
     auto* renderer = app->Renderer();
-    if (!renderer || !renderer->device) return;
+    if (!renderer || !renderer->device || FAILED(renderer->device->TestCooperativeLevel())) return false;
+    auto* session = static_cast<PreviewSession*>(GetPropW(app->MainWindow(), kPreviewSession));
+    if (session) session->lastFrame = Clock::now();
     const auto previous = app->state.messageSeen;
+    const float delta = app->DeltaTime();
     app->state.messageSeen = 1;
+    // The modal preview redraws the current scene without advancing playback,
+    // physics or effect time. Its frame rate counts these real scene presents.
+    app->DeltaTime() = 0;
+    frame_rate::Tick(app);
+    PrepareFrameTextOverlay(app);
     RenderFrameScene(app);
     app->state.messageSeen = previous;
-    FillFramePresentationMargins(app, renderer->device);
+    app->DeltaTime() = delta;
+    // RenderFrameScene already cleared the margins before drawing the HUD.
     const RECT rect = FramePresentationRect(app);
-    renderer->device->Present(&rect, &rect,
-        app->FloatingWindow() ? app->FloatingWindow() : app->MainWindow(), nullptr);
+    const bool presented = SUCCEEDED(renderer->device->Present(&rect, &rect,
+        app->FloatingWindow() ? app->FloatingWindow() : app->MainWindow(), nullptr));
+    frame_rate::Presented(app, presented);
+    return presented;
+}
+LRESULT CALLBACK PreviewIdle(HWND window, UINT message, WPARAM wp, LPARAM lp,
+    UINT_PTR, DWORD_PTR data) {
+    auto& session = *reinterpret_cast<PreviewSession*>(data);
+    if (message == WM_ENTERIDLE && wp == MSGF_DIALOGBOX &&
+        reinterpret_cast<HWND>(lp) == session.dialog && IsWindow(session.dialog)) {
+        const double cap = session.app->FpsLimit();
+        const double elapsed = std::chrono::duration<double>(Clock::now() - session.lastFrame).count();
+        const double remaining = cap > 0 ? 1.0 / cap - elapsed : 0;
+        const DWORD waitMs = remaining > 0 ? DWORD(remaining * 1000) : 0;
+        if (waitMs) {
+            // Let user input wake the wait; do not spin or use a 16-ms timer
+            // that would impose its own frame-rate cap on an uncapped scene.
+            MsgWaitForMultipleObjectsEx(0, nullptr, waitMs,
+                QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        } else if (!RefreshPreview(session.app)) {
+            MsgWaitForMultipleObjectsEx(0, nullptr, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+        // DialogBox sends ENTERIDLE only once per empty queue. A no-op wakes
+        // its message loop so the next idle iteration can render another frame.
+        PostMessageW(session.dialog, WM_NULL, 0, 0);
+        return 0;
+    }
+    return DefSubclassProc(window, message, wp, lp);
 }
 bool ApplyValue(HWND dialog, MMDApp* app) {
     const bool automatic = IsDlgButtonChecked(dialog, Automatic) == BST_CHECKED;
@@ -86,6 +130,8 @@ INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wp, LPARAM lp) {
     if (message == WM_INITDIALOG) {
         app = reinterpret_cast<MMDApp*>(lp);
         SetWindowLongPtrW(dialog, DWLP_USER, lp);
+        if (auto* session = static_cast<PreviewSession*>(GetPropW(app->MainWindow(), kPreviewSession)))
+            session->dialog = dialog;
         SetWindowTextW(dialog, Title(app));
         SetDlgItemTextW(dialog, Automatic, Text(app, L"自动：匹配当前窗口尺寸",
             L"Automatic: match window size", L"自動：ウィンドウサイズに合わせる"));
@@ -156,8 +202,14 @@ bool HandleCommand(MMDApp* app, unsigned command) {
     if (build_profile::original || command != kCommand) return false;
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_BAR_CLASSES};
     InitCommonControlsEx(&controls);
+    PreviewSession session{app};
+    const HWND owner = app->MainWindow();
+    SetPropW(owner, kPreviewSession, &session);
+    SetWindowSubclass(owner, PreviewIdle, kPreviewSubclass, reinterpret_cast<DWORD_PTR>(&session));
     UiDialogBoxParamW(static_cast<HINSTANCE>(app->HInstance()), MAKEINTRESOURCEW(kDialog),
-        app->MainWindow(), DialogProc, reinterpret_cast<LPARAM>(app));
+        owner, DialogProc, reinterpret_cast<LPARAM>(app));
+    RemoveWindowSubclass(owner, PreviewIdle, kPreviewSubclass);
+    RemovePropW(owner, kPreviewSession);
     return true;
 }
 }

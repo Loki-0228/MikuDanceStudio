@@ -21,11 +21,13 @@
 #include <d3d9.h>
 
 #include <cstdio>
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/frame_rate.hpp"
 #include "mikudancestudio/d3d_object_guard.hpp"
 #if !MMD_ORIGINAL_PROFILE
 #include "mikudancestudio/transparent_triangles.hpp"
@@ -92,7 +94,7 @@ void DrawLineOverlay(MMDApp* app, D3DRenderer* sub,
     device->DrawPrimitive(D3DPT_LINELIST, 0, count);
 }
 
-void DrawSpriteOverlay(MMDApp* app, IDirect3DDevice9* device) {
+void DrawSpriteOverlay(MMDApp* app, IDirect3DDevice9* device, bool presentation) {
     const UINT count = app->SpriteOverlayPrimitiveCount();
     auto* vb = app->SpriteOverlayVertices();
     if (count == 0 || vb == nullptr)
@@ -123,7 +125,19 @@ void DrawSpriteOverlay(MMDApp* app, IDirect3DDevice9* device) {
     device->SetTexture(0, app->OverlayTexture());
     device->SetStreamSource(0, vb, 0, sizeof(TexturedScreenVertex));
     device->SetFVF(kTexturedScreenVertexFvf);
-    device->DrawPrimitive(D3DPT_TRIANGLELIST, 0, count);
+    if (presentation) {
+        const RECT scene = app->ViewportRect(), frame = FrameOverlayRect(app);
+        const UINT first = std::min(count, app->hudSprites.first);
+        const UINT end = first + std::min(count - first, app->hudSprites.count);
+        device->SetScissorRect(&scene);
+        if (first) device->DrawPrimitive(D3DPT_TRIANGLELIST, 0, first);
+        device->SetScissorRect(&frame);
+        if (end > first) device->DrawPrimitive(D3DPT_TRIANGLELIST, first * 3, end - first);
+        device->SetScissorRect(&scene);
+        if (count > end) device->DrawPrimitive(D3DPT_TRIANGLELIST, end * 3, count - end);
+    } else {
+        device->DrawPrimitive(D3DPT_TRIANGLELIST, 0, count);
+    }
     for (int i=0; i<6; ++i) device->SetTextureStageState(0, stages[i], saved[i]);
     for (int i = 0; i < 3; ++i) device->SetSamplerState(0, filters[i], savedFilters[i]);
 }
@@ -389,15 +403,18 @@ void CaptureAccessoryScreenTexture(MMDApp* app, D3DRenderer* sub,
         textureSurface->Release();
 }
 
-void DrawOverlayBatches(MMDApp* app, IDirect3DDevice9* device) {
+void DrawOverlayBatches(MMDApp* app, IDirect3DDevice9* device, bool presentation = false) {
     auto* sub = app->Renderer();
     device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
     // Draw the sprite controls first; the coordinate-space caption is part
     // of the text batch and must remain on top of the atlas background.
-    DrawSpriteOverlay(app, device);
+    DrawSpriteOverlay(app, device, presentation);
+    const RECT scene = app->ViewportRect(), frame = FrameOverlayRect(app);
+    if (presentation) device->SetScissorRect(&scene);
     DrawLineOverlay(app, sub, device);
+    if (presentation) device->SetScissorRect(&frame);
     DrawTextOverlay(app, device);
 }
 
@@ -417,7 +434,7 @@ void DrawPresentationOverlays(MMDApp* app) {
     device->GetDepthStencilSurface(&depth);
     device->SetDepthStencilSurface(nullptr);
     HRESULT hr = device->SetRenderTarget(0, back.Get());
-    const RECT rect = app->ViewportRect();
+    const RECT rect = FrameOverlayRect(app);
     const D3DVIEWPORT9 viewport{DWORD(rect.left), DWORD(rect.top),
         DWORD(rect.right - rect.left), DWORD(rect.bottom - rect.top), 0, 1};
     if (SUCCEEDED(hr)) hr = device->SetViewport(&viewport);
@@ -457,7 +474,7 @@ void DrawPresentationOverlays(MMDApp* app) {
         device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
         device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
         device->SetSamplerState(0, D3DSAMP_SRGBTEXTURE, FALSE);
-        DrawOverlayBatches(app, device);
+        DrawOverlayBatches(app, device, true);
         hr = device->EndScene();
     }
     device->SetRenderTarget(0, previous.Get());
@@ -476,6 +493,7 @@ void DrawFrameOverlayBatches(MMDApp* app) {
 }
 
 void RenderFrameScene(MMDApp* app) {
+    frame_rate::BeginScene(app);
     MMD_PERF_SCOPE(Scene);
     shadow_filter::Invalidate(app);
     D3DRenderer* sub = app->Renderer();
@@ -507,8 +525,11 @@ void RenderFrameScene(MMDApp* app) {
     native_mesh::Initialize(app);
     mmv4mms::Initialize(app);
     const bool transparent = TransparentExportActive(app);
-    if (!mmv4mms::Active() && !transparent && !NativeBakePreviewActive() && !deformed_mesh_capture::Active() && mesh_bake_cache::Empty() && RenderD3D12Native(app, reinterpret_cast<const float*>(&frameWorld)))
+    if (!mmv4mms::Active() && !transparent && !NativeBakePreviewActive() && !deformed_mesh_capture::Active() && mesh_bake_cache::Empty() && RenderD3D12Native(app, reinterpret_cast<const float*>(&frameWorld))) {
+        frame_rate::CompleteScene(app);
+        frame_rate::Presented(app, true);
         return;
+    }
     TransparentFrameScope transparentFrame(app);
     if (!transparentFrame.Ready()) {
         FinishAviRecord(app);
@@ -667,9 +688,10 @@ void RenderFrameScene(MMDApp* app) {
             // Keep text and controls out of scene scaling and temporal history.
             // FPS still comes from FrameDriver's one-count-per-scene counter.
             MMD_PERF_SCOPE(Overlays);
-            DrawPresentationOverlays(app);
             FillFramePresentationMargins(app, device);
+            DrawPresentationOverlays(app);
 #endif
+            if(antialiasFrame.Succeeded())frame_rate::CompleteScene(app);
         }
     } }
 

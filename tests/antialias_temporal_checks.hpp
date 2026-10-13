@@ -53,10 +53,10 @@ void CheckTemporalResolveShader() {
     Check(SUCCEEDED(device->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,&target)) &&
         SUCCEEDED(device->CreateOffscreenPlainSurface(side,side,D3DFMT_A8R8G8B8,D3DPOOL_SYSTEMMEM,&cpu,nullptr)),
         "allocate temporal shader readback");
-    const auto render=[&](float weight=.875f) {
+    const auto render=[&](float weight=.875f,float currentJitter=0,float previousJitter=0) {
         const float constants[]={1.f/side,1.f/side,weight,0,.5f/side,.5f/side,
-            (side-.5f)/side,(side-.5f)/side,0,0,.002f,.002f};
-        device->SetPixelShaderConstantF(0,constants,3);
+            (side-.5f)/side,(side-.5f)/side,currentJitter/side,0,.002f,.002f,previousJitter/side,0,0,0};
+        device->SetPixelShaderConstantF(0,constants,4);
         device->SetTexture(0,scene.Get());device->SetTexture(1,history.Get());
         device->SetTexture(2,motion.Get());device->SetTexture(3,depth.Get());
         for(unsigned sampler=0;sampler<4;++sampler) {
@@ -105,6 +105,19 @@ void CheckTemporalResolveShader() {
     Check(std::abs(render()-128)<=1,"history outside the prior viewport is rejected");
     vectors(-4.f/side,3,false);
     Check(std::abs(render(0)-128)<=1,"first frame does not sample uninitialized history");
+    Check(std::abs(render(0,.5f)-192)<=1,"first frame removes current positive jitter before display");
+    Check(std::abs(render(0,-.5f)-64)<=1,"first frame removes current negative jitter before display");
+    vectors(-4.f/side,0,false);
+    Check(std::abs(render(.875f,.5f)-192)<=1,"history rejection also removes current jitter");
+    vectors(-4.f/side,3,false);
+    D3DLOCKED_RECT prior{};
+    Check(SUCCEEDED(depth->LockRect(0,&prior,nullptr,0)),"write shifted previous-depth fixture");
+    for(unsigned y=0;y<side;++y)for(unsigned x=0;x<side;++x)
+        reinterpret_cast<float*>(static_cast<char*>(prior.pBits)+y*prior.Pitch)[x*4+2]=x==18?3.f:1.f;
+    depth->UnlockRect(0);
+    Check(std::abs(render()-128)<=1,"unaligned previous depth rejects unrelated geometry");
+    Check(std::abs(render(.875f,0,6)-100)<=1,"previous jitter aligns depth while resolved history stays on the fixed grid");
+    vectors(-4.f/side,3,false);
     colors(scene.Get(),true,true);
     Check(std::abs(render()-51)<=1,"neighborhood clamp rejects obsolete material colors");
     for(unsigned sampler=0;sampler<4;++sampler)device->SetTexture(sampler,nullptr);
