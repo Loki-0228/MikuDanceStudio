@@ -156,7 +156,7 @@ void CheckControls(MMDApp* app) {
     for (int id : {32900, 32901, 32902, 32904, 32905, 32906, 32907}) absent &= GetDlgItem(main, id) == nullptr;
     Check(absent, "scale readouts and curve-editor launcher controls were not created");
     Require(GetDlgItem(main, panel::kBoxSelectRadio) != nullptr, "original BOX control exists");
-    const wchar_t* box[] = {L"BOX選択", L"box-sel", L"框选"};
+    const wchar_t* box[] = {L"BOX選択", L"Box-sel", L"框选"};
     Check(Caption(GetDlgItem(main, panel::kBoxSelectRadio)) == box[app->EnglishUI()], "491 is labelled BOX in the active language");
     const HWND combo = GetDlgItem(main, panel::kInterpCurveCombo);
     Require(combo != nullptr, "original interpolation combo exists");
@@ -195,6 +195,7 @@ void CheckOriginalShadow(MMDApp* app) {
     const HWND slider = GetDlgItem(main, panel::kSelfShadowRangeSlider);
     Require(fine && slider && GetDlgItem(main, panel::kSelfShadowRangeEdit), "original fine-shadow and distance controls exist");
     Check(!GetDlgItem(main, panel::kAdaptiveShadowCheckbox), "adaptive shadow control was not created");
+    Check(!GetDlgItem(main, panel::kShadowFilterCheckbox), "enhanced filter control was not created");
     Check(SendMessageW(slider, TBM_GETRANGEMIN, 0, 0) == 0 && SendMessageW(slider, TBM_GETRANGEMAX, 0, 0) == 9999,
           "original shadow distance slider range is 0 through 9999");
     for (bool enabled : {false, true, false}) {

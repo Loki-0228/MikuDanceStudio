@@ -2445,13 +2445,14 @@ void RenderModelsFixed(MMDApp* app) {                         // 0x425D20
             if (model != nullptr) {
                 app->ActiveRenderObject() = model;
                 app->ActiveRenderPass() = AccessoryRenderPass::FixedFunction;
-                // Full keeps its native opaque/translucent material passes
-                // even with distance sorting Off. MME must not replace that
-                // plan with one unsplit pass just because its DLL is loaded.
-                // The original-function profile retains the original walk.
+                // With MME and sorting Off, submit one authored-order walk.
+                // Splitting opaque/translucent materials would still reorder
+                // MME draws even though the user explicitly disabled sorting.
                 const bool originalMaterialOrder =
                     mdl::Mdl(model)->displayState != 0 ||
-                    MMD_ORIGINAL_PROFILE;
+                    MMD_ORIGINAL_PROFILE ||
+                    (!app->AutoTransparentMaterialSortingEnabled() &&
+                     GetModuleHandleW(L"MMEffect.dll") != nullptr);
                 if (!originalMaterialOrder || alphaPass == ModelAlphaPass::Opaque)
                     DrawModelMaterials(app, model, false, false,
                                        originalMaterialOrder
@@ -2554,8 +2555,9 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
     FxSetFloatArray(effect, "LightDir", light, 4);
     FxSetFloatArray(effect, "Place", place, 4);
 #if !MMD_ORIGINAL_PROFILE
-    // Native PCF needs the allocated map size, including quality changes and
-    // device caps. Keep the legacy projection and MME effect parameters intact.
+    // Spline reconstruction needs the actual allocation, including adaptive
+    // resizing. The default branch retains the native linear-depth ramp.
+    FxSetInt(effect, "MdsShadowFilterEnhanced", app->ShadowFilterEnhanced() ? 1 : 0);
     if (sub->hdrTexture != nullptr) {
         D3DSURFACE_DESC shadowDesc{};
         if (SUCCEEDED(sub->hdrTexture->GetLevelDesc(0, &shadowDesc))) {
@@ -2635,11 +2637,13 @@ void RenderModelsEffect(MMDApp* app, const float frameMatrix[16]) { // 0x4277E0
                 runtime_log::Write("FX model slot=%d order=%d toon=%u", slot,
                                    order,
                                    static_cast<unsigned>(mdl::Mdl(model)->toonFlag));
-                // Keep the same full-profile pass plan with and without MME;
-                // only the original profile and translucent display are unsplit.
+                // Match the fixed-function entry: MME with sorting Off keeps
+                // authored material order and draws each material once.
                 const bool originalMaterialOrder =
                     mdl::Mdl(model)->displayState != 0 ||
-                    MMD_ORIGINAL_PROFILE;
+                    MMD_ORIGINAL_PROFILE ||
+                    (!app->AutoTransparentMaterialSortingEnabled() &&
+                     GetModuleHandleW(L"MMEffect.dll") != nullptr);
                 const auto drawPass = originalMaterialOrder
                     ? ModelAlphaPass::Original
                     : alphaPass;
@@ -2715,7 +2719,7 @@ static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool c
         return false;
 
 #if !MMD_ORIGINAL_PROFILE
-    UpdateAdaptiveShadowMap(app, frameMatrix);
+    const auto lightProjection = UpdateAdaptiveShadowMap(app, frameMatrix);
 #endif
     auto*& texture = sub->hdrTexture;
     auto*& surface = sub->shadowSurface;
@@ -2854,14 +2858,6 @@ static bool RenderShadowMapImpl(MMDApp* app, const float frameMatrix[16], bool c
                 sizeof(shadowMatrix));
 
 #else
-    float focus[3]{};
-    const auto focusSource = ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focus);
-    if (focusSource == FrameFocusSource::FreeView) {
-        focus[0] = app->ViewOffsetX();
-        focus[1] = app->ViewOffsetY();
-    }
-    const auto lightProjection = NativeShadowProjection(
-        focus, app->LightDirection(), app->ShadowDistance(), app->ShadowMode());
     Matrix shadowMatrix;
     std::memcpy(&shadowMatrix, lightProjection.data(), sizeof(shadowMatrix));
     FxSetInt(effect, "parthf", app->ShadowMode() == 1 ? 0 : 1);

@@ -13,6 +13,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <vector>
 
 using namespace mikudancestudio;
 namespace mikudancestudio {
@@ -113,6 +115,8 @@ void CheckShadowCheckboxPainting(MMDApp* app, HWND checkbox) {
 }
 }
 
+#include "bottom_panel_layout_checks.hpp"
+
 int main(int argc, char** argv) {
     Require(argc == 3 || argc == 4, "expected startup width and height arguments");
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -128,35 +132,119 @@ int main(int argc, char** argv) {
     Require(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "initialize production host");
     HandleWindowSize(app); // Hidden ShowWindow does not send the visible startup resize.
     Check(!IsWindowVisible(app->MainWindow()), "startup window stays hidden");
+    if (argc == 4 && std::strcmp(argv[3], "--bottom-panels") == 0) {
+        bottom_panel_checks::Run(app);
+        ShutdownCleanup(app); g_Block = nullptr; delete app;
+        return failures ? 1 : 0;
+    }
     const float shadowRange = app->ShadowDistance();
     const auto light = app->SceneLight();
     const HWND dynamic = GetDlgItem(app->MainWindow(), panel::kAdaptiveShadowCheckbox);
     const HWND shadowSlider = GetDlgItem(app->MainWindow(), panel::kSelfShadowRangeSlider);
+    const HWND shadowEdit = GetDlgItem(app->MainWindow(), panel::kSelfShadowRangeEdit);
+    const auto checkPrecision = [&](int expected) {
+        char text[32]{};
+        GetWindowTextA(shadowEdit, text, sizeof(text));
+        Check(SendMessageW(shadowSlider, TBM_GETPOS, 0, 0) == expected &&
+              std::atoi(text) == expected && ShadowSliderPosition(app) == expected,
+              "mode switch preserves the precision value and slider position");
+    };
     CheckShadowCheckboxPainting(app, dynamic);
     RECT dynamicRect{}; GetWindowRect(dynamic, &dynamicRect);
     for (int id : {560, 561, 562, 563, 564, 565}) {
         RECT other{}, overlap{}; GetWindowRect(GetDlgItem(app->MainWindow(), id), &other);
         Check(!IntersectRect(&overlap, &dynamicRect, &other), "dynamic checkbox does not overlap existing shadow controls");
     }
+    const int initialPrecision = static_cast<int>(SendMessageW(shadowSlider, TBM_GETPOS, 0, 0));
     SendMessageW(dynamic, BM_SETCHECK, BST_CHECKED, 0);
     SendMessageW(app->MainWindow(), WM_COMMAND, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
     Check(app->AdaptiveShadowResolution(), "real checkbox enables dynamic scaling");
-    Check(DynamicShadowMultiplier(0) > DynamicShadowMultiplier(5000) &&
-          DynamicShadowMultiplier(5000) > DynamicShadowMultiplier(9999),
-          "dynamic precision increases toward the left like the fixed range control");
+    checkPrecision(initialPrecision);
+    Check(app->ShadowDistance() == shadowRange, "enabling adaptive resolution retains exact shadow coverage");
     for (int precision : {0, 7500, 9999, 5000}) {
         SendMessageW(shadowSlider, TBM_SETPOS, TRUE, precision);
         SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(shadowSlider));
         SyncSelfShadowControls(app);
-        Check(app->DynamicShadowPrecision() == precision && SendMessageW(shadowSlider, TBM_GETPOS, 0, 0) == precision,
-              "dynamic precision survives ordinary panel refresh");
-        Check(app->ShadowDistance() == shadowRange && std::memcmp(&light, &app->SceneLight(), sizeof(light)) == 0,
-              "dynamic precision changes neither shadow coverage nor light");
+        checkPrecision(precision);
+        const float expectedRange = float((10000.0 - precision) / 100000.0);
+        Check(app->ShadowDistance() == expectedRange && app->SceneModified(),
+              "dynamic slider changes the project's actual shadow coverage");
+        Check(std::memcmp(&light, &app->SceneLight(), sizeof(light)) == 0,
+              "shadow coverage edits leave the light unchanged");
     }
     SendMessageW(dynamic, BM_SETCHECK, BST_UNCHECKED, 0);
     SendMessageW(app->MainWindow(), WM_COMMAND, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
     Check(!app->AdaptiveShadowResolution() && SendMessageW(shadowSlider, TBM_GETPOS, 0, 0) == ShadowSliderPosition(app),
-          "disabling dynamic scaling restores the original range slider");
+          "disabling dynamic scaling uses the displayed precision as the fixed range");
+    checkPrecision(5000);
+    for (int precision : {0, 9999, 7500}) {
+        SendMessageW(shadowSlider, TBM_SETPOS, TRUE, precision);
+        SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(shadowSlider));
+        const float fixedRange = app->ShadowDistance();
+        app->SceneModified() = 0;
+        for (bool enabled : {true, false, true, false}) {
+            SendMessageW(dynamic, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+            SendMessageW(app->MainWindow(), WM_COMMAND,
+                MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
+            SyncSelfShadowControls(app);
+            Check(app->AdaptiveShadowResolution() == enabled, "dynamic scaling follows repeated checkbox clicks");
+            checkPrecision(precision);
+            Check(app->ShadowDistance() == fixedRange && !app->SceneModified(),
+                  "unchanged precision keeps exact fixed range without marking the scene modified");
+        }
+    }
+    // Reproduce a tight fixed range followed by dragging right in dynamic mode.
+    // The same off-centre receiver must project identically in both modes.
+    const float focus[3]{0, 10, 0}, direction[3]{-.5f, -1, .5f};
+    for (int shadowMode : {1, 2}) {
+        std::array<float, 16> sharedProjection{};
+        for (bool enabled : {false, true}) {
+            app->AdaptiveShadowResolution() = enabled;
+            SetShadowSliderPosition(app, 0);
+            SendMessageW(shadowSlider, TBM_SETPOS, TRUE, 9500);
+            SendMessageW(app->MainWindow(), WM_HSCROLL, TB_THUMBPOSITION, reinterpret_cast<LPARAM>(shadowSlider));
+            const auto projection = NativeShadowProjection(focus, direction, app->ShadowDistance(), shadowMode);
+            if (!enabled) sharedProjection = projection;
+            Check(projection == sharedProjection, "fixed and adaptive sliders produce identical coverage matrices");
+            for (float x : {-15.f, 15.f}) for (float y : {0.f, 25.f}) {
+                const float px = x*projection[0] + y*projection[4] + projection[12];
+                const float py = x*projection[1] + y*projection[5] + projection[13];
+                Check(std::abs(px) < 1 && std::abs(py) < 1,
+                      "dragging right removes clipping from the former tight coverage");
+            }
+        }
+    }
+    app->ShadowDistance() = .01234567f; // A keyframe's unrounded value.
+    SyncSelfShadowControls(app);
+    checkPrecision(8765);
+    app->SceneModified() = 0;
+    for (bool enabled : {false, true, false}) {
+        SendMessageW(dynamic, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessageW(app->MainWindow(), WM_COMMAND, MAKEWPARAM(panel::kAdaptiveShadowCheckbox, BN_CLICKED), reinterpret_cast<LPARAM>(dynamic));
+        Check(app->ShadowDistance() == .01234567f && !app->SceneModified(),
+              "mode switches preserve fractional keyframe coverage without dirtying the project");
+    }
+    const auto preference = std::filesystem::path(app->ExeDir()) / L"Data/adaptive_shadow.ini";
+    { std::ofstream old(preference); old << "1 0\n"; }
+    LoadShadowResolutionPreference(app);
+    Check(app->AdaptiveShadowResolution() && app->ShadowDistance() == .01234567f,
+          "legacy independent precision cannot overwrite project coverage");
+    SyncSelfShadowControls(app);
+    checkPrecision(8765);
+    const float nearSize = RequiredShadowMapSize(.01f, 1, 1000.f, 25.f, false);
+    const float farSize = RequiredShadowMapSize(.01f, 1, 1000.f, 100.f, false);
+    Check(std::abs(nearSize - 2500.f) < .01f && std::abs(farSize - 625.f) < .01f,
+          "adaptive demand matches projected coverage and decreases with camera distance");
+    Check(RequiredShadowMapSize(.01f, 1, 1000.f, 25.f, true) ==
+          RequiredShadowMapSize(.01f, 1, 1000.f, 100.f, true),
+          "orthographic demand is independent of camera distance");
+    Check(RequiredShadowMapSize(.01f, 2, 1000.f, 25.f, false) < nearSize &&
+          RequiredShadowMapSize(.005f, 1, 1000.f, 25.f, false) > nearSize,
+          "adaptive allocation uses the same mode and range as the actual projection");
+    if (argc == 4 && std::strcmp(argv[3], "--shadow-controls") == 0) {
+        ShutdownCleanup(app); g_Block = nullptr; delete app;
+        return failures ? 1 : 0;
+    }
     SetModelNameAutoTranslation(false);
     DisablePlaybackMenus(app->MainWindow());
     Check((GetMenuState(GetMenu(app->MainWindow()), 311, MF_BYCOMMAND) & (MF_GRAYED | MF_DISABLED)) == 0,

@@ -20,6 +20,8 @@ const wchar_t* EffectMaterialNameWithFallback(EffectMaterialNameQuery query,
 // Optional, in-memory compatibility for MMEffect's named MMHack import.
 // Does not load either DLL or write DLL/model files. False means unavailable.
 bool InstallEffectMaterialNameCompatibility();
+// Resolve legacy EMM path bytes against existing files in native MME only.
+void InstallEffectPathCompatibility();
 
 // MME rebuilds its object/order table inside IDirect3DDevice9::BeginScene.
 void BeginEffectObjectRegistration();

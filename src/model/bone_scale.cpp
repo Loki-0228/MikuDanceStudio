@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -355,6 +356,7 @@ void CaptureUndo(unsigned char* model) {
     if (!model) return;
     auto& s=states[model]; const unsigned ring=mdl::Mdl(model)->undoState[0];
     if (ring>=30) return;
+    bone_curve::CaptureUndo(model,ring);
     s.undo[ring]=s.current; s.undoValid[ring]=true; s.redoValid[ring]=false;
 }
 bool StageBakeState(unsigned char* model,Snapshot current,std::size_t capacity,StagedBakeState& out) {
@@ -373,6 +375,7 @@ void PublishBakeState(StagedBakeState&& staged) noexcept {
     s.current=std::move(staged.current);
 }
 void Undo(unsigned char* model,int ring) {
+    bone_curve::Undo(model,unsigned(ring));
     const auto it=states.find(model); if (it==states.end()||ring<0||ring>=30) return;
     auto& s=it->second;
     if (!s.undoValid[ring]) return;
@@ -382,6 +385,7 @@ void Undo(unsigned char* model,int ring) {
     s.current=s.undo[ring];
 }
 void Redo(unsigned char* model,int ring) {
+    bone_curve::Redo(model,unsigned(ring));
     const auto it=states.find(model); if (it==states.end()||ring<0||ring>=30) return;
     auto& s=it->second;
     if (s.redoValid[ring]) {
@@ -510,14 +514,17 @@ void ApplyTransforms(unsigned char* model) {
     s.applied=true;
 }
 void ExchangeState(unsigned char* first,unsigned char* second) {
-    if(first&&second&&first!=second)std::swap(states[first],states[second]);
+    if(first&&second&&first!=second){std::swap(states[first],states[second]);bone_curve::ExchangeState(first,second);}
 }
 void CopyState(const unsigned char* source,unsigned char* destination) {
-    const auto it=states.find(source);if(it==states.end()||!destination)return;
+    const auto it=states.find(source);
+    if(it==states.end()||!destination){bone_curve::CopyState(source,destination);return;}
     const auto& s=it->second;
     Restore(destination,s.current);
     if(s.applied&&s.rigid.size()==mdl::Mdl(destination)->boneCount)
         for(unsigned i=0;i<s.rigid.size();++i)std::memcpy(mdl::Bones(destination)[i].matInit,s.rigid[i].data(),64);
+    // Free-curve validation hashes include the restored scale-key state.
+    bone_curve::CopyState(source,destination);
 }
 void ResolvePhysics(unsigned char* model,const std::map<int,Transform>& world) {
     if(!model||world.empty())return;
@@ -566,7 +573,7 @@ void ResolvePhysics(unsigned char* model,const std::map<int,Transform>& world) {
         }
     }
 }
-void Forget(unsigned char* model) { states.erase(model); }
+void Forget(unsigned char* model) { bone_curve::Forget(model); states.erase(model); }
 bool Scale(unsigned char* model,int bone,const Matrix& basis,const float direction[3],float factor,bool uniform) {
     if (!std::isfinite(factor)||factor<=0||!Valid(basis)) return false;
     Matrix delta;

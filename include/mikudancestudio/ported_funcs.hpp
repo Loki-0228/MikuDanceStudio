@@ -536,6 +536,7 @@ void RefreshSelfShadowPanel(MMDApp* app);        // was Sub411B90, VA 0x00411B90
 void RefreshLightPanel(MMDApp* app);             // was Sub411070, VA 0x00411070
 void TraceSceneLightState(MMDApp* app, const char* stage);
 void RelayoutSidebarControls(MMDApp* app);       // was Sub442EB0, VA 0x00442EB0
+void CommitSidebarResize(MMDApp* app);          // apply the staged pointer width on mouse-up
 void SetModelColor(MMDApp* model, int r, int g, int b);  // was Sub4A4850, VA 0x004A4850
 void SeekSelectedModelToCurrentFrame(MMDApp* app);  // was Sub4220C0,
                                                    // VA 0x004220C0 (model_frame_seek.cpp)
@@ -552,6 +553,7 @@ void ReloadTextureCache(void* renderer);        // was Sub4076E0, VA 0x004076E0
 bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char rec[40],
                                 int frameOffset);  // was Sub49F190, VA 0x0049F190
 void RegisterMorphKeyCurrent(unsigned char* model, int morph, int frame);  // was Sub49EEE0, 0x0049EEE0
+bool RegisterMorphKeyAtIndex(unsigned char* model, int morph, std::uint32_t frame, float value);
 bool RegisterDisplayKeyFromRecord(unsigned char* model, int frame,
                                   unsigned char view, int ikCount,
                                   const unsigned char* ikEntries, int selCount,

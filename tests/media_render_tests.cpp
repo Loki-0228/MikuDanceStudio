@@ -10,6 +10,9 @@
 #include <vector>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
+#include <algorithm>
+#include <memory>
 #include <MinHook.h>
 using namespace mikudancestudio;
 using Microsoft::WRL::ComPtr;
@@ -24,6 +27,7 @@ int WINAPI UnexpectedA(HWND, LPCSTR text, LPCSTR, UINT) { std::printf("Unexpecte
 int WINAPI UnexpectedW(HWND, LPCWSTR text, LPCWSTR, UINT) { std::fwprintf(stderr, L"Unexpected dialog: %s\n", text); std::exit(2); }
 decltype(&ShowWindow) originalShowWindow = nullptr;
 BOOL WINAPI KeepHidden(HWND window, int) { return originalShowWindow(window, SW_HIDE); }
+#include "window_cursor_checks.hpp"
 template<class T> void Put(std::ofstream& f, T value) { f.write(reinterpret_cast<char*>(&value), sizeof(value)); }
 void Text(std::ofstream& f, const wchar_t* text) { Put(f, std::uint32_t(wcslen(text) * 2)); f.write(reinterpret_cast<const char*>(text), wcslen(text) * 2); }
 void Fixture(const fs::path& path) {
@@ -86,8 +90,10 @@ void Blocks(IDirect3DDevice9* device, IDirect3DSurface9* target) {
     device->EndScene(); device->SetRenderTarget(0,original.Get()); device->SetViewport(&old);
 }
 int wmain(int argc,wchar_t** argv) {
-    Check(argc==2,"fixture directory required"); std::setvbuf(stdout,nullptr,_IONBF,0);
+    Check(argc==2 || argc==3,"fixture directory required"); std::setvbuf(stdout,nullptr,_IONBF,0);
     const fs::path directory=fs::absolute(argv[1]);
+    const bool backgroundOnly = argc==3 && std::wcscmp(argv[2],L"--background")==0;
+    const bool benchmark = argc==3 && !backgroundOnly;
     const auto initialized=MH_Initialize(); Check(initialized==MH_OK || initialized==MH_ERROR_ALREADY_INITIALIZED,"dialog guard init");
     MH_CreateHook(reinterpret_cast<void*>(&MessageBoxA),reinterpret_cast<void*>(&UnexpectedA),nullptr);
     MH_CreateHook(reinterpret_cast<void*>(&MessageBoxW),reinterpret_cast<void*>(&UnexpectedW),nullptr);
@@ -99,19 +105,70 @@ int wmain(int argc,wchar_t** argv) {
     auto* app=new MMDApp; g_Block=app; app->state=MMDAppState{}; app->InitDefaults(); app->EnglishUI()=1;
     Check(InitMainWindowAndD3D(app,GetModuleHandleW(nullptr),SW_HIDE),"hidden production host");
     Check(!IsWindowVisible(app->MainWindow()),"host stays hidden");
+    if (!benchmark) cursor_checks::Run(app);
     app->DeltaTime()=1.f/30; app->state.messageSeen=1; FrameDriver(app);
-    wcscpy_s(app->AviBackgroundPath(),256,(directory/L"corners.mp4").c_str()); LoadAviFile(app);
+    wcscpy_s(app->AviBackgroundPath(),256,(benchmark ? fs::absolute(argv[2]) : directory/L"corners.mp4").c_str()); LoadAviFile(app);
     Check(app->AviBackgroundEnabled()==1 && media::HasVideo(app),"production MP4 import and texture refresh");
+    if (benchmark) {
+        app->PlaybackActive() = 1;
+        for (int mode : {0, 1}) {
+            app->state.optflag[0] = mode;
+            double total = 0, maximum = 0;
+            for (int i = 0; i < 600; ++i) {
+                app->PlaybackCursorSeconds() = float(i / 60.0);
+                const auto start = std::chrono::steady_clock::now();
+                AviBgOverlayRefresh(app);
+                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
+                if (i >= 60) { total += ms; maximum = std::max(maximum, ms); }
+            }
+            std::printf("VIDEO_BENCH mode=%d frames=540 mean_ms=%.6f max_ms=%.6f\n", mode, total/540, maximum);
+        }
+        app->PlaybackActive() = 0;
+        ShutdownCleanup(app); g_Block=nullptr; delete app; UnhookWindowsHookEx(hide);
+        return 0;
+    }
+    for (bool playing : {false, true}) {
+        app->PlaybackActive() = playing;
+        CommandDispatch(0, MAKEWPARAM(216, 0));
+        Check(!app->AviBackgroundEnabled() && media::HasVideo(app), "hiding MP4 preserves its reader");
+        app->CurrentFrame() = 30;
+        app->PlaybackCursorSeconds() = 1.1f;
+        CommandDispatch(0, MAKEWPARAM(216, 0));
+        Check(app->AviBackgroundEnabled() && media::HasVideo(app), "show MP4 again without reloading");
+        AviBgOverlayRefresh(app);
+        auto displayed = Read(app->Renderer()->device, app->AviBackgroundSurface());
+        const auto pixel = (8 * 64 + 8) * 4;
+        Check(displayed[pixel+1] > 235 && displayed[pixel+2] < 20, "restored MP4 displays the current green frame");
+    }
+    app->PlaybackActive() = 0;
+    app->CurrentFrame() = 0;
+    app->PlaybackCursorSeconds() = 0;
     auto* device=app->Renderer()->device;
+    // Keep the alpha-export assertion independent of the user's grid setting.
+    app->GroundGridEnabled() = 0;
     app->AviOutputWidth()=64; app->AviOutputHeight()=48;
     std::wstring error; const auto output=directory/L"render-alpha.mov";
     Check(StartPngMovRecording(app->Recorder(),output.c_str(),64,48,30,error),"start production recorder");
     app->RecordingWindow()=CreateWindowW(L"STATIC",L"Hidden capture",WS_POPUP,0,0,64,48,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     app->state.messageSeen=1; RenderFrameScene(app);
     auto clear=Read(device,TransparentCaptureSurface(app));
+    std::size_t opaque = 0, clearPixels = 0;
+    for (std::size_t i=3;i<clear.size();i+=4) { opaque += clear[i]==255; clearPixels += clear[i]==0; }
+    std::printf("Empty export alpha: clear=%zu opaque=%zu total=%zu\n",clearPixels,opaque,clear.size()/4);
     for(std::size_t i=3;i<clear.size();i+=4) Check(clear[i]==0,"transparent scene excludes loaded background");
+    if (backgroundOnly) {
+        AbortPngMovRecording(app->Recorder());
+        ReleaseTransparentCapture(app);
+        DestroyWindow(app->RecordingWindow()); app->RecordingWindow()=nullptr;
+        ShutdownCleanup(app); g_Block=nullptr; delete app; UnhookWindowsHookEx(hide);
+        std::puts("PASS MP4 toggle, current-frame pixels, transparent background exclusion and cursor handling");
+        return 0;
+    }
     const auto model=directory/L"alpha-triangle.pmx"; Fixture(model); LoadModelFile(app,model.c_str(),false);
     Check(app->ModelSlot(0)!=nullptr,"load semitransparent model");
+    // Settle the newly loaded model through the same pose/physics frame that
+    // the main loop runs before validating its rendered coverage.
+    app->state.messageSeen=1; FrameDriver(app);
     app->state.messageSeen=1; RenderFrameScene(app);
     const auto triangle=Read(device,TransparentCaptureSurface(app));
     std::size_t empty=0,half=0;

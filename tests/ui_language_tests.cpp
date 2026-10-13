@@ -319,10 +319,10 @@ void CaptionRegression() {
           "501 Japanese caption is 未登録選 (not the English fallback)");
     Check(UiControlCaption(562, kUiJapanese) == std::wstring(L"\u306a\u3057"),
           "562 Japanese caption is なし (not the byte-shifted q_j0W0)");
-    Check(UiControlCaption(494, kUiEnglish) == std::wstring(L"select all") &&
-              UiControlCaption(501, kUiEnglish) == std::wstring(L"unregisted") &&
-              UiControlCaption(562, kUiEnglish) == std::wstring(L"off"),
-          "the English captions are unchanged");
+    Check(UiControlCaption(494, kUiEnglish) == std::wstring(L"Select all") &&
+              UiControlCaption(501, kUiEnglish) == std::wstring(L"Unregisted") &&
+              UiControlCaption(562, kUiEnglish) == std::wstring(L"Off"),
+          "the English captions start with uppercase letters");
     Check(UiControlCaption(494, kUiChinese) == std::wstring(L"\u5168\u9009") &&
               UiControlCaption(501, kUiChinese) == std::wstring(L"\u672a\u767b\u8bb0"),
           "the Chinese captions are unchanged");

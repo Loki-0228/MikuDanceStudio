@@ -200,7 +200,7 @@ void LoadAviFile(MMDApp* app) {
         int width = 0, height = 0;
         double duration = 0;
         std::wstring error;
-        if (!media::OpenVideo(app, path, width, height, duration, error)) {
+        if (!media::OpenVideo(app, path, width, height, duration, error, 1024)) {
             MessageBoxW(hwnd, error.c_str(), L"Video import", MB_OK | MB_ICONERROR);
             AviFailTail(app);
             return;

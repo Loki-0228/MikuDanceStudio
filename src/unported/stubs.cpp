@@ -15,6 +15,7 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/wic_mov_recorder.hpp"
 #include <Windows.h>
@@ -88,6 +89,8 @@ void FinishAviRecord(MMDApp* app, bool reachedRequestedEnd) {  // was Sub464A00
         ? static_cast<std::uint64_t>(s.AviRecordEndFrame() - s.AviRecordStartFrame()) + 1
         : 0;
     const bool mfRecording = IsBuiltInH264Recording(s.Recorder());
+    std::wstring sequenceError;
+    const bool sequenceComplete = image_sequence::Finish(app, reachedRequestedEnd, sequenceError);
     const bool mfComplete = mfRecording &&
         FinishBuiltInH264Recording(s.Recorder(), expectedFrames);
     const bool movRecording = IsPngMovRecording(s.Recorder());
@@ -121,7 +124,7 @@ void FinishAviRecord(MMDApp* app, bool reachedRequestedEnd) {  // was Sub464A00
         const std::int32_t winW = s.state.recRTW;
         const std::int32_t winH = s.state.recRTH;
         if (r != nullptr &&
-            (r->screenWidth > winW || r->screenHeight > winH)) {
+            (r->screenWidth != winW || r->screenHeight != winH)) {
             r->presentParameters.BackBufferWidth = winW;   // 0x1D4FC
             r->presentParameters.BackBufferHeight = winH;  // 0x1D500
             r->screenWidth = winW;                          // 0x1D4E4
@@ -174,7 +177,9 @@ void FinishAviRecord(MMDApp* app, bool reachedRequestedEnd) {  // was Sub464A00
     s.state.recordPlaybackStartPending = 0;
     s.state.frameStepPlayback = 0;
     if (!movError.empty()) MessageBoxW(static_cast<HWND>(s.Hwnd()), movError.c_str(), L"MOV export", MB_OK | MB_ICONERROR);
-    if (reachedRequestedEnd && (mfComplete || dshowComplete || movComplete) &&
+    if (!sequenceError.empty()) MessageBoxW(s.MainWindow(), sequenceError.c_str(),
+        image_sequence::Text(app, L"图片序列输出", L"Image sequence export", L"連番画像出力"), MB_OK | MB_ICONERROR);
+    if (reachedRequestedEnd && (mfComplete || dshowComplete || movComplete || sequenceComplete) &&
         s.AviCloseAfterExport())
         PostMessageW(static_cast<HWND>(s.Hwnd()), WM_CLOSE, 0, 0);
 }

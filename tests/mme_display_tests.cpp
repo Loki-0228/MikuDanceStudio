@@ -1,4 +1,4 @@
-// MAINTENANCE: regression-keep; hidden real-MME display and material-order checks.
+// MAINTENANCE: regression-keep; hidden real-MME display, EMD and material-order checks.
 // Exercise the real mapping dialog without displaying or activating a window.
 #define NOMINMAX
 #include "mikudancestudio/mmd_app.hpp"
@@ -8,7 +8,11 @@
 #include "mikudancestudio/text_encoding.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/effect_display.hpp"
+#include "mikudancestudio/effect_api.hpp"
 #include "mikudancestudio/model.hpp"
+#include "mikudancestudio/d3dx_dyn.hpp"
+#include "mikudancestudio/d3dx_effect.hpp"
+#include "mikudancestudio/skinning_backend.hpp"
 #include <MinHook.h>
 #include <commctrl.h>
 #include <cstdio>
@@ -20,12 +24,30 @@
 #include <filesystem>
 #include <fstream>
 #include <wrl/client.h>
+#include <set>
+#include <cwctype>
 
 using namespace mikudancestudio;
+extern "C" char* ExpGetPmdFilename(int);
 namespace {
 void Check(bool ok, const char* label) {
     std::printf("%s %s\n", ok ? "PASS" : "FAIL", label);
     if (!ok) std::exit(2);
+}
+
+unsigned emdEffectCompiles = 0;
+struct ShaderMacro { const char* name; const char* definition; };
+using CreateEffectFile = HRESULT(WINAPI*)(IDirect3DDevice9*, LPCWSTR,
+    const ShaderMacro*, void*, DWORD, void*, void**, void**);
+CreateEffectFile originalCompile = nullptr;
+HRESULT WINAPI ObserveCompile(IDirect3DDevice9* device, LPCWSTR path,
+    const ShaderMacro* macros, void* include, DWORD flags, void* pool,
+    void** effect, void** errors) {
+    const HRESULT result = originalCompile(device, path, macros, include, flags, pool, effect, errors);
+    std::string utf8; text_encoding::EncodeExact(path, CP_UTF8, utf8);
+    std::printf("COMPILE path=%s result=%08lx\n", utf8.c_str(), static_cast<unsigned long>(result));
+    if (std::filesystem::path(path).filename() == L"assigned.fx" && SUCCEEDED(result)) ++emdEffectCompiles;
+    return result;
 }
 decltype(&ShowWindow) originalShow;
 BOOL WINAPI Hide(HWND window, int) { return originalShow(window, SW_HIDE); }
@@ -56,6 +78,9 @@ DrawIndexed originalDraw = nullptr;
 std::vector<unsigned> drawnMaterials;
 using Present = HRESULT(WINAPI*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
 Present originalPresent = nullptr;
+bool inspectOutlines = false;
+unsigned outlineDraws = 0, outlineStateErrors = 0;
+DWORD expectedOutlineAA = TRUE, observedOutlineAA = 0, observedOutlineSamples = 0;
 bool captureRequested = false;
 std::vector<std::uint32_t> capturedPixels;
 unsigned captureWidth = 0, captureHeight = 0;
@@ -89,6 +114,17 @@ HRESULT WINAPI ObservePresent(IDirect3DDevice9* device, const RECT* source, cons
 }
 HRESULT WINAPI ObserveDraw(IDirect3DDevice9* device, D3DPRIMITIVETYPE type, INT base, UINT min,
                             UINT vertices, UINT start, UINT primitives) {
+    if (inspectOutlines && g_Block && g_Block->ActiveRenderPass() == AccessoryRenderPass::ModelOutline) {
+        Microsoft::WRL::ComPtr<IDirect3DSurface9> target;
+        D3DSURFACE_DESC desc{}; DWORD aa = 0, mask = 0;
+        const bool queried = SUCCEEDED(device->GetRenderTarget(0, &target)) &&
+            SUCCEEDED(target->GetDesc(&desc)) &&
+            SUCCEEDED(device->GetRenderState(D3DRS_MULTISAMPLEANTIALIAS, &aa)) &&
+            SUCCEEDED(device->GetRenderState(D3DRS_MULTISAMPLEMASK, &mask));
+        ++outlineDraws; observedOutlineAA = aa; observedOutlineSamples = desc.MultiSampleType;
+        if (!queried || aa != expectedOutlineAA || desc.MultiSampleType == D3DMULTISAMPLE_NONE || mask != 0xFFFFFFFFu)
+            ++outlineStateErrors;
+    }
     if (g_Block && g_Block->ActiveRenderObject() == g_Block->SelectedModel() &&
         (g_Block->ActiveRenderPass() == AccessoryRenderPass::FixedFunction ||
          g_Block->ActiveRenderPass() == AccessoryRenderPass::Effect)) {
@@ -97,7 +133,60 @@ HRESULT WINAPI ObserveDraw(IDirect3DDevice9* device, D3DPRIMITIVETYPE type, INT 
     }
     return originalDraw(device, type, base, min, vertices, start, primitives);
 }
+void CheckOutlineAntialias(MMDApp* app) {
+    app->EditMode() = ViewportEditMode::None;
+    auto** vtable = *reinterpret_cast<void***>(app->Renderer()->device);
+    Check(MH_CreateHook(vtable[82], &ObserveDraw, reinterpret_cast<void**>(&originalDraw)) == MH_OK &&
+          MH_EnableHook(vtable[82]) == MH_OK, "observe outline draw states");
+    Check(MH_CreateHook(vtable[17], &ObservePresent, reinterpret_cast<void**>(&originalPresent)) == MH_OK &&
+          MH_EnableHook(vtable[17]) == MH_OK, "observe actual outline presentation");
+    app->GroundGridEnabled() = false; app->GroundShadowEnabled() = false;
+    app->CameraPositionX() = app->ViewOffsetX() = 0.f;
+    app->CameraPositionY() = app->ViewOffsetY() = 18.f;
+    app->CameraPositionZ() = 0.f; app->CameraDistance() = -16.f;
+    app->CameraYaw() = app->CameraPitch() = app->CameraRoll() = 0.f;
+    inspectOutlines = true;
+    const auto frame = [&](const char* label, bool enabled) {
+        const UINT menu = GetMenuState(GetMenu(app->MainWindow()), 277, MF_BYCOMMAND);
+        Check(menu != UINT(-1) && ((menu & MF_CHECKED) != 0) == enabled, "AA menu matches requested state");
+        expectedOutlineAA = enabled; outlineDraws = outlineStateErrors = 0;
+        captureRequested = true;
+        app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app);
+        std::printf("OUTLINE stage=%s aa=%lu samples=%lu draws=%u errors=%u size=%ux%u\n",
+            label, observedOutlineAA, observedOutlineSamples, outlineDraws, outlineStateErrors, captureWidth, captureHeight);
+        Check(outlineDraws > 0 && outlineStateErrors == 0, "every real outline draw retains AA selection and multisample target");
+        Check(!captureRequested && !capturedPixels.empty(), "outline pixels captured at real Present");
+        if (!captureDirectory.empty()) {
+            std::filesystem::create_directories(captureDirectory);
+            std::ofstream file(captureDirectory / (std::string(label) + ".bgra"), std::ios::binary);
+            file.write(reinterpret_cast<const char*>(capturedPixels.data()), capturedPixels.size() * 4);
+            Check(bool(file), "write outline comparison pixels");
+        }
+    };
+    frame("initial", true);
+    CommandDispatch(nullptr, MAKEWPARAM(277, 0)); frame("disabled", false);
+    Check(PostDeviceReset(app), "reset with AA disabled"); frame("disabled-reset", false);
+    CommandDispatch(nullptr, MAKEWPARAM(277, 0)); frame("enabled", true);
+    Check(PostDeviceReset(app), "reset with AA enabled"); frame("enabled-reset", true);
+    for (int shadow : {0, 1, 2}) {
+        app->SelfShadowMode() = shadow;
+        const auto label = std::string("shadow-") + std::to_string(shadow);
+        frame(label.c_str(), true);
+    }
+    for (auto precision : {TransparentSortPrecision::Low, TransparentSortPrecision::Off}) {
+        app->TransparentMaterialSortPrecision() = precision;
+        frame(precision == TransparentSortPrecision::Off ? "sort-off" : "sort-low", true);
+    }
+    app->state.englishUI = 1; RefreshMenuLanguage(app); frame("language", true);
+    SetWindowPos(app->MainWindow(), nullptr, 0, 0, 1200, 850,
+        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    Check(PostDeviceReset(app), "reset after resize"); frame("resized", true);
+    inspectOutlines = false;
+    MH_DisableHook(vtable[82]); MH_DisableHook(vtable[17]);
+    Check(!IsWindowVisible(app->MainWindow()), "outline host stays hidden");
+}
 void CheckAlphaOrder(MMDApp* app) {
+    const bool mmeLoaded = GetModuleHandleW(L"MMEffect.dll") != nullptr;
     auto** vtable = *reinterpret_cast<void***>(app->Renderer()->device);
     auto* target = vtable[82]; // IDirect3DDevice9::DrawIndexedPrimitive
     Check(MH_CreateHook(target, &ObserveDraw, reinterpret_cast<void**>(&originalDraw)) == MH_OK &&
@@ -117,11 +206,15 @@ void CheckAlphaOrder(MMDApp* app) {
             std::printf("DRAW shadow=%d precision=%d:", shadow, int(precision));
             for (auto material : drawnMaterials) std::printf(" %u", material);
             std::puts("");
-            const std::vector<unsigned> expected = MMD_ORIGINAL_PROFILE
+            const bool recordOrder = MMD_ORIGINAL_PROFILE ||
+                (mmeLoaded && precision == TransparentSortPrecision::Off);
+            const std::vector<unsigned> expected = recordOrder
                 ? std::vector<unsigned>{0, 1} : std::vector<unsigned>{1, 0};
-            Check(drawnMaterials == expected, "material draws follow the profile's native pass order with sorting off and on");
+            Check(drawnMaterials == expected, "MME Off preserves authored material order; native and sorted passes retain their order");
             Check(!captureRequested && !capturedPixels.empty(), "capture came from a real Present");
             if (run == 0) firstOff = capturedPixels;
+            if (run == 1 && mmeLoaded && !MMD_ORIGINAL_PROFILE)
+                Check(firstOff != capturedPixels, "fixture visibly distinguishes authored and alpha-grouped material order");
             if (run == 2) Check(firstOff == capturedPixels, "On to Off preserves every frame RGB pixel");
             std::uint64_t hash = 14695981039346656037ull;
             for (auto pixel : capturedPixels) hash = (hash ^ pixel) * 1099511628211ull;
@@ -139,6 +232,155 @@ void CheckAlphaOrder(MMDApp* app) {
     }
     MH_DisableHook(target);
     MH_DisableHook(vtable[17]);
+    Check(!IsWindowVisible(app->MainWindow()), "material-order host stays hidden");
+}
+DrawIndexed surfaceDraw = nullptr;
+std::set<std::pair<void*, int>> surfaceShaders;
+std::set<unsigned> hiddenSurfaceMaterials;
+unsigned blockedSurfaceDx12=0;
+decltype(&LoadLibraryW) surfaceLoadLibrary=nullptr;
+HMODULE WINAPI SurfaceLoadLibrary(LPCWSTR path){
+    const wchar_t* name=std::wcsrchr(path,L'\\');name=name?name+1:path;
+    if(_wcsicmp(name,L"d3d12.dll")==0){++blockedSurfaceDx12;SetLastError(ERROR_MOD_NOT_FOUND);return nullptr;}
+    return surfaceLoadLibrary(path);
+}
+HRESULT WINAPI InspectSurfaceDraw(IDirect3DDevice9* device, D3DPRIMITIVETYPE type, INT base,
+    UINT min, UINT vertices, UINT start, UINT primitives) {
+    Microsoft::WRL::ComPtr<IDirect3DPixelShader9> shader;
+    device->GetPixelShader(&shader);
+    const int pass = int(g_Block->ActiveRenderPass());
+    const auto* activeModel=mdl::Mdl(g_Block->SelectedModel());
+    if(activeModel && hiddenSurfaceMaterials.count(activeModel->toonShared))return S_OK;
+    static bool dumped=false;
+    if(pass==2 && !dumped) {
+        dumped=true;
+        Microsoft::WRL::ComPtr<IDirect3DVertexBuffer9> vb;
+        Microsoft::WRL::ComPtr<IDirect3DIndexBuffer9> ib;
+        UINT offset=0,stride=0;device->GetStreamSource(0,&vb,&offset,&stride);device->GetIndices(&ib);
+        D3DVERTEXBUFFER_DESC vd{};D3DINDEXBUFFER_DESC id{};vb->GetDesc(&vd);ib->GetDesc(&id);
+        void* data=nullptr;
+        if(SUCCEEDED(vb->Lock(0,0,&data,D3DLOCK_READONLY))) {
+            std::ofstream f(captureDirectory/"vertices.bin",std::ios::binary);f.write(static_cast<char*>(data),vd.Size);vb->Unlock();
+        }
+        if(SUCCEEDED(ib->Lock(0,0,&data,D3DLOCK_READONLY))) {
+            std::ofstream f(captureDirectory/"indices.bin",std::ios::binary);f.write(static_cast<char*>(data),id.Size);ib->Unlock();
+        }
+        std::ofstream meta(captureDirectory/"geometry.txt");meta<<stride<<" "<<offset<<" "<<vertices<<" "<<int(id.Format)<<"\n";
+        float constants[256][4]{};device->GetVertexShaderConstantF(0,constants[0],256);
+        std::ofstream f(captureDirectory/"vs-constants.bin",std::ios::binary);f.write(reinterpret_cast<char*>(constants),sizeof(constants));
+        D3DMATRIX m[3]{};device->GetTransform(D3DTS_WORLD,&m[0]);device->GetTransform(D3DTS_VIEW,&m[1]);device->GetTransform(D3DTS_PROJECTION,&m[2]);
+        std::ofstream matrices(captureDirectory/"transforms.bin",std::ios::binary);matrices.write(reinterpret_cast<char*>(m),sizeof(m));
+    }
+    if(captureRequested) {
+        const auto* model=mdl::Mdl(g_Block->SelectedModel());
+        std::ofstream log(captureDirectory/"draws.csv",std::ios::app);
+        log<<g_Block->SelfShadowMode()<<","<<g_Block->CameraYaw()<<","<<pass<<","<<model->toonShared<<","<<start<<","<<primitives<<"\n";
+    }
+    if (surfaceShaders.emplace(shader.Get(), pass).second) {
+        DWORD z=0,write=0,cull=0,aa=0,blend=0,fill=0;
+        device->GetRenderState(D3DRS_ZENABLE,&z);device->GetRenderState(D3DRS_ZWRITEENABLE,&write);
+        device->GetRenderState(D3DRS_CULLMODE,&cull);device->GetRenderState(D3DRS_MULTISAMPLEANTIALIAS,&aa);
+        device->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend);device->GetRenderState(D3DRS_FILLMODE,&fill);
+        std::printf("SURFACE DRAW shader=%zu pass=%d shadow=%d start=%u faces=%u z=%lu write=%lu cull=%lu aa=%lu blend=%lu fill=%lu\n",
+            surfaceShaders.size(),pass,g_Block->SelfShadowMode(),start,primitives,z,write,cull,aa,blend,fill);
+        if (shader) {
+            UINT size=0;shader->GetFunction(nullptr,&size);std::vector<DWORD> bytes((size+3)/4);shader->GetFunction(bytes.data(),&size);
+            using Disassemble=HRESULT(WINAPI*)(const DWORD*,BOOL,LPCSTR,void**);
+            auto disassemble=reinterpret_cast<Disassemble>(GetProcAddress(d3dx::Get().module,"D3DXDisassembleShader"));
+            void* assembly=nullptr;
+            if (disassemble && SUCCEEDED(disassemble(bytes.data(),FALSE,nullptr,&assembly))) {
+                using Data=const char*(WINAPI*)(void*);using Size=DWORD(WINAPI*)(void*);
+                std::ofstream file(captureDirectory/("shader-"+std::to_string(surfaceShaders.size())+".txt"));
+                file.write(d3dx::EffectMethod<Data,3>(assembly)(assembly),d3dx::EffectMethod<Size,4>(assembly)(assembly));
+                static_cast<IUnknown*>(assembly)->Release();
+            }
+        }
+    }
+    DWORD previousCull=0;
+    const bool singleSided=pass==2 && std::getenv("MMS_SURFACE_SINGLE_SIDED");
+    if(singleSided){device->GetRenderState(D3DRS_CULLMODE,&previousCull);device->SetRenderState(D3DRS_CULLMODE,D3DCULL_CCW);}
+    const HRESULT result=surfaceDraw(device,type,base,min,vertices,start,primitives);
+    if(singleSided)device->SetRenderState(D3DRS_CULLMODE,previousCull);
+    return result;
+}
+void CheckSurfaceGrid(MMDApp* app) {
+    unsigned width=3840,height=2160;
+    if(const char* size=std::getenv("MMS_SURFACE_SIZE"))Check(std::sscanf(size,"%u,%u",&width,&height)==2,"read test resolution");
+    const auto* testModel=mdl::Mdl(app->SelectedModel());
+    for(unsigned i=0;i<testModel->materialCount;++i){
+        auto name=text_encoding::MaterialName(*testModel,i,false);
+        auto english=text_encoding::MaterialName(*testModel,i,true);
+        std::string utf8;text_encoding::EncodeExact((name+L" / "+english).c_str(),CP_UTF8,utf8);
+        std::printf("MATERIAL %u %s\n",i,utf8.c_str());
+        std::transform(english.begin(),english.end(),english.begin(),[](wchar_t ch){return std::towlower(ch);});
+        if(std::getenv("MMS_SURFACE_HIDE_HAIR") && (name.find(L"髪")!=std::wstring::npos || english.find(L"hair")!=std::wstring::npos))hiddenSurfaceMaterials.insert(i);
+    }
+    auto* renderer=app->Renderer();
+    app->RenderWidth()=width;app->RenderHeight()=height;
+    renderer->presentParameters.BackBufferWidth=renderer->screenWidth=width;
+    renderer->presentParameters.BackBufferHeight=renderer->screenHeight=height;
+    if(const char* quality=std::getenv("MMS_SURFACE_AA_QUALITY"))renderer->presentParameters.MultiSampleQuality=std::atoi(quality);
+    Check(PostDeviceReset(app),"create 3840x2160 production backbuffer");
+    std::printf("SURFACE AA type=%u quality=%lu depth=%u\n",unsigned(renderer->presentParameters.MultiSampleType),renderer->presentParameters.MultiSampleQuality,unsigned(renderer->presentParameters.AutoDepthStencilFormat));
+    auto** vtable = *reinterpret_cast<void***>(app->Renderer()->device);
+    Check(MH_CreateHook(vtable[17], &ObservePresent, reinterpret_cast<void**>(&originalPresent)) == MH_OK &&
+          MH_EnableHook(vtable[17]) == MH_OK, "observe surface presentation");
+    app->EditMode() = ViewportEditMode::Camera;
+    app->GroundGridEnabled() = false; app->GroundShadowEnabled() = false;
+    app->CameraPositionX() = app->ViewOffsetX() = 0.f;
+    app->CameraPositionY() = app->ViewOffsetY() = 10.f;
+    app->CameraPositionZ() = 0.f; app->CameraDistance() = -28.f;
+    app->CameraPitch() = app->CameraRoll() = 0.f;
+    if (const char* camera = std::getenv("MMS_SURFACE_CAMERA")) {
+        float x=0,y=10,z=0,d=-28;
+        Check(std::sscanf(camera,"%f,%f,%f,%f",&x,&y,&z,&d)==4,"read test camera");
+        app->CameraPositionX()=app->ViewOffsetX()=x;
+        app->CameraPositionY()=app->ViewOffsetY()=y;
+        app->CameraPositionZ()=z;app->CameraDistance()=d;
+    }
+    if (std::getenv("MMS_SURFACE_NO_EDGE")) mdl::Mdl(app->SelectedModel())->edgeScale=0;
+    if (std::getenv("MMS_SURFACE_NO_AA")) CommandDispatch(nullptr,MAKEWPARAM(277,0));
+    app->TransparentMaterialSortPrecision() = TransparentSortPrecision::Off;
+    std::filesystem::create_directories(captureDirectory);
+    wchar_t system[MAX_PATH]{};GetSystemDirectoryW(system,MAX_PATH);
+    auto library=LoadLibraryW((std::filesystem::path(system)/L"d3d9.dll").c_str());
+    auto create=reinterpret_cast<IDirect3D9*(WINAPI*)(UINT)>(GetProcAddress(library,"Direct3DCreate9"));
+    Microsoft::WRL::ComPtr<IDirect3D9> raw;raw.Attach(create(D3D_SDK_VERSION));
+    Microsoft::WRL::ComPtr<IDirect3DDevice9> dummy;
+    D3DPRESENT_PARAMETERS pp{};pp.Windowed=TRUE;pp.SwapEffect=D3DSWAPEFFECT_DISCARD;pp.hDeviceWindow=app->MainWindow();
+    pp.BackBufferWidth=pp.BackBufferHeight=32;pp.BackBufferFormat=D3DFMT_A8R8G8B8;
+    Check(SUCCEEDED(raw->CreateDevice(0,D3DDEVTYPE_HAL,app->MainWindow(),D3DCREATE_HARDWARE_VERTEXPROCESSING,&pp,&dummy)),"obtain native surface draw entry");
+    auto** native=*reinterpret_cast<void***>(dummy.Get());
+    Check(MH_CreateHook(native[82],&InspectSurfaceDraw,reinterpret_cast<void**>(&surfaceDraw))==MH_OK && MH_EnableHook(native[82])==MH_OK,"inspect actual surface shaders");
+    for (int shadow : {0, 2}) for (int yaw : {0, 1, 2}) {
+        app->SelfShadowMode() = shadow;
+        const char* baseYaw=std::getenv("MMS_SURFACE_YAW");
+        app->CameraYaw() = (baseYaw?float(std::atof(baseYaw)):0.f) + yaw * .035f;
+        for (int i = 0; i < 3; ++i) {
+            const bool legacy=std::getenv("MMS_SURFACE_LEGACY_VIEWPORT")!=nullptr;
+            D3DVIEWPORT9 viewport=legacy?D3DVIEWPORT9{312,25,618,464,0,1}:D3DVIEWPORT9{0,0,width,height,0,1};
+            app->ViewportRect()={LONG(viewport.X),LONG(viewport.Y),LONG(viewport.X+viewport.Width),LONG(viewport.Y+viewport.Height)};
+            renderer->aspectRatio=float(viewport.Width)/viewport.Height;
+            Check(SUCCEEDED(renderer->device->SetViewport(&viewport)),"install 4K viewport");
+            app->EditMode()=ViewportEditMode::Camera;
+            app->state.selfShadowEnabled=shadow!=0;
+            captureRequested = i == 2;
+            app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app);
+        }
+        Check(!captureRequested && !capturedPixels.empty(), "capture surface pixels");
+        const auto name = "surface-" + std::to_string(shadow) + "-" + std::to_string(yaw);
+        std::ofstream file(captureDirectory / (name + ".bgra"), std::ios::binary);
+        file.write(reinterpret_cast<const char*>(capturedPixels.data()), capturedPixels.size() * 4);
+        std::ofstream size(captureDirectory / (name + ".txt"));
+        size << captureWidth << " " << captureHeight;
+        std::printf("SURFACE shadow=%d yaw=%d width=%u height=%u\n", shadow, yaw, captureWidth, captureHeight);
+    }
+    MH_DisableHook(vtable[17]);
+    MH_DisableHook(native[82]);
+    const auto status=skinning::GetStatus();
+    std::printf("SURFACE SKINNING cpu=%llu gpu=%llu blockedDx12=%u\n",static_cast<unsigned long long>(status.cpuUpdates),static_cast<unsigned long long>(status.gpuUpdates),blockedSurfaceDx12);
+    if(std::getenv("MMS_SURFACE_MISSING_DX12"))Check(blockedSurfaceDx12>0 && status.gpuUpdates==0 && status.cpuUpdates>0,"real missing-DX12 CPU fallback rendered model");
+    dummy.Reset();raw.Reset();FreeLibrary(library);
 }
 std::uint64_t PaintHash(HWND list) {
     RECT rect{}; GetClientRect(list, &rect);
@@ -237,22 +479,74 @@ int wmain(int argc, wchar_t** argv) {
     Check(MH_CreateHook(&ShowWindow, &Hide, reinterpret_cast<void**>(&originalShow)) == MH_OK, "hook ShowWindow");
     Check(MH_CreateHook(&MessageBoxW, &Unexpected, nullptr) == MH_OK, "guard unexpected dialogs");
     Check(MH_CreateHook(&MessageBoxA, &UnexpectedAnsi, nullptr) == MH_OK, "guard legacy dialogs");
+    if(std::getenv("MMS_SURFACE_MISSING_DX12"))Check(MH_CreateHook(&LoadLibraryW,&SurfaceLoadLibrary,reinterpret_cast<void**>(&surfaceLoadLibrary))==MH_OK,"simulate missing DX12 in test process");
     Check(MH_EnableHook(MH_ALL_HOOKS) == MH_OK, "enable hidden-window guards");
     HHOOK guard = SetWindowsHookExW(WH_CBT, HideCreated, nullptr, GetCurrentThreadId());
     Check(guard != nullptr, "prevent window activation");
     auto* app = new MMDApp; g_Block = app;
     app->state = MMDAppState{}; app->InitDefaults();
     Check(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "start production host");
+    const bool emdAutoload = argc == 3 && std::wcscmp(argv[2], L"--emd-autoload") == 0;
+    const bool emmLoad = argc == 4 && std::wcscmp(argv[2], L"--emm-load") == 0;
+    if (emdAutoload || emmLoad || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
+        auto* compile = reinterpret_cast<void*>(GetProcAddress(d3dx::Get().module, "D3DXCreateEffectFromFileW"));
+        Check(compile && MH_CreateHook(compile, &ObserveCompile, reinterpret_cast<void**>(&originalCompile)) == MH_OK &&
+              MH_EnableHook(compile) == MH_OK, "observe actual MME effect compilation");
+    }
     wchar_t native[4]{};
     const bool nativeOrder = GetEnvironmentVariableW(L"MMS_MME_ORDER_NATIVE", native, 4) == 1 && native[0] == L'1';
     Check(nativeOrder ? !GetModuleHandleW(L"MMEffect.dll") && !GetModuleHandleW(L"MMHack.dll") :
         GetModuleHandleW(L"MMEffect.dll") && GetModuleHandleW(L"MMHack.dll"),
         nativeOrder ? "native baseline excludes MME DLLs" : "real MME DLLs loaded");
+    if(std::getenv("MMS_SURFACE_FORCE_GPU")){
+        const auto& adapters=skinning::AvailableAdapters();Check(!adapters.empty(),"GPU skinning adapter available");
+        skinning::SetPreference({skinning::Mode::Adapter,adapters.front().id,adapters.front().name});
+    }
     LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
     for (int i = 0; i < 3; ++i) { app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app); }
+
     if (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0) {
         CheckViewportRenderScale(app, argv[3]);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (emmLoad) {
+        Check(std::filesystem::is_regular_file(argv[3]), "EMM project notification target exists");
+        NotifyEffectFileOpen(argv[3]);
+        for (int i = 0; i < 4; ++i) {
+            app->DeltaTime() = 1.f / 30;
+            app->state.messageSeen = 10;
+            FrameDriver(app);
+        }
+        Check(emdEffectCompiles > 0, "EMM loads and compiles its assigned effect");
+        void** vtable = *reinterpret_cast<void***>(app->Renderer()->device);
+        Check(MH_CreateHook(vtable[17], &ObservePresent, reinterpret_cast<void**>(&originalPresent)) == MH_OK &&
+              MH_EnableHook(vtable[17]) == MH_OK, "observe actual EMM presentation");
+        captureRequested = true;
+        app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app);
+        Check(!captureRequested && std::count(capturedPixels.begin(), capturedPixels.end(), 0xFF00FFu) > 50,
+              "assigned EMM effect renders magenta pixels on the real model");
+        MH_DisableHook(vtable[17]);
+        Check(!IsWindowVisible(app->MainWindow()), "host stays hidden");
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (emdAutoload) {
+        const auto* filename = reinterpret_cast<const unsigned char*>(ExpGetPmdFilename(0));
+        std::printf("EXPORTED_PATH acp=%u bytes=", GetACP());
+        for (; filename && *filename; ++filename) std::printf("%02x", *filename);
+        std::puts("");
+        Check(emdEffectCompiles > 0, "same-name EMD automatically loads and compiles its assigned effect");
+        Check(!IsWindowVisible(app->MainWindow()), "host stays hidden");
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0) {
+        captureDirectory = argv[3];
+        CheckSurfaceGrid(app);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (argc >= 3 && std::wcscmp(argv[2], L"--outline-antialias") == 0) {
+        if (argc == 4) captureDirectory = argv[3];
+        CheckOutlineAntialias(app);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (argc >= 3 && std::wcscmp(argv[2], L"--alpha-order") == 0) {

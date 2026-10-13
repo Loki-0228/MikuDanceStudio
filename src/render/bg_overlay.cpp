@@ -42,6 +42,8 @@ namespace {
 // both quad builders (x87 divide runs in double precision, result stored
 // as float - reproduced by keeping the arithmetic in double).
 constexpr double kOverlayScale = 1.2000000476837158;
+constexpr GUID kVideoUploadRevision =
+    {0x36f9a7c2, 0x8ef1, 0x41e8, {0xa3, 0x91, 0x2f, 0xc8, 0x5e, 0x8d, 0x10, 0x44}};
 
 // 0x529688 - L"%s%s"; the original calls it with no varargs (VC9 stack
 // garbage).  The port passes two empty strings (same idiom as the file
@@ -315,10 +317,22 @@ void AviBgOverlayRefresh(MMDApp* app) {
         return;
     }
 
+    const auto revision = media::VideoFrameRevision(app);
+    unsigned long long uploadedRevision = 0;
+    DWORD revisionSize = sizeof(uploadedRevision);
+    if (revision && SUCCEEDED(s.AviBackgroundTexture()->GetPrivateData(
+            kVideoUploadRevision, &uploadedRevision, &revisionSize)) &&
+        revisionSize == sizeof(uploadedRevision) && uploadedRevision == revision) {
+        RefreshOverlayVertexBuffer(app, s.AviOverlayVertices(),
+            {s.AviOffsetX(), s.AviOffsetY(), s.AviScale(), s.AviFrameWidth(), s.AviFrameHeight()});
+        device_lost_wait::BackgroundRefreshed(app);
+        return;
+    }
+
     // The decoder context is owned by the app and closed at shutdown.
-    if (s.AviDrawDib() == nullptr)
+    if (!revision && s.AviDrawDib() == nullptr)
         s.AviDrawDib() = DrawDibOpen();
-    if (s.AviDrawDib() == nullptr) return;
+    if (!revision && s.AviDrawDib() == nullptr) return;
 
     auto* header = static_cast<LPBITMAPINFOHEADER>(bits);
     DWORD paletteColors = header->biClrUsed;
@@ -329,13 +343,26 @@ void AviBgOverlayRefresh(MMDApp* app) {
         pixelOffset += 3 * sizeof(DWORD);
 
     IDirect3DSurface9* surface = s.AviBackgroundSurface();
-    HDC hdc = nullptr;
-    if (FAILED(surface->GetDC(&hdc))) return;
-    const BOOL drawn = DrawDibDraw(static_cast<HDRAWDIB>(s.AviDrawDib()), hdc,
-        0, 0, -1, -1, header, static_cast<unsigned char*>(bits) + pixelOffset,
-        0, 0, -1, -1, 0);
-    surface->ReleaseDC(hdc); // The surface owns this DC; do not DeleteDC it.
-    if (!drawn) return;
+    if (revision) {
+        // Media Foundation already supplies RGB32. Avoid the GDI conversion
+        // and GetDC synchronization for every full-resolution video frame.
+        D3DLOCKED_RECT locked{};
+        if (FAILED(surface->LockRect(&locked, nullptr, 0))) return;
+        const auto* pixels = static_cast<unsigned char*>(bits) + pixelOffset;
+        for (int y = 0; y < header->biHeight; ++y)
+            std::memcpy(static_cast<unsigned char*>(locked.pBits) + size_t(y) * locked.Pitch,
+                        pixels + size_t(header->biHeight - 1 - y) * header->biWidth * 4,
+                        size_t(header->biWidth) * 4);
+        surface->UnlockRect();
+    } else {
+        HDC hdc = nullptr;
+        if (FAILED(surface->GetDC(&hdc))) return;
+        const BOOL drawn = DrawDibDraw(static_cast<HDRAWDIB>(s.AviDrawDib()), hdc,
+            0, 0, -1, -1, header, static_cast<unsigned char*>(bits) + pixelOffset,
+            0, 0, -1, -1, 0);
+        surface->ReleaseDC(hdc);
+        if (!drawn) return;
+    }
 
     IDirect3DTexture9* texture = s.AviBackgroundTexture();
     IDirect3DSurface9* texSurface = nullptr;
@@ -348,7 +375,10 @@ void AviBgOverlayRefresh(MMDApp* app) {
         uploaded = device->StretchRect(surface, nullptr, texSurface, nullptr,
                                         D3DTEXF_NONE);            // 0x416CB7
     texSurface->Release();
-    if (SUCCEEDED(uploaded)) device_lost_wait::BackgroundRefreshed(app);
+    if (SUCCEEDED(uploaded)) {
+        if (revision) texture->SetPrivateData(kVideoUploadRevision, &revision, sizeof(revision), 0);
+        device_lost_wait::BackgroundRefreshed(app);
+    }
     // (the original clears its stack slot after the release - 0x416CC7)
 
     RefreshOverlayVertexBuffer(

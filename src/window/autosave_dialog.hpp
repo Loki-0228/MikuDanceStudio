@@ -1,0 +1,9 @@
+#pragma once
+#include "mikudancestudio/autosave.hpp"
+namespace mikudancestudio::autosave {
+inline constexpr int kDialog = 9120;
+enum Control { Folder = 9121, Browse, Interval, Limit, Overwrite, FolderLabel,
+    IntervalLabel, LimitLabel, Explanation, Enabled };
+struct DialogContext { MMDApp* app; Settings value; };
+INT_PTR CALLBACK DialogProc(HWND, UINT, WPARAM, LPARAM);
+}

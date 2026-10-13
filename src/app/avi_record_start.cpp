@@ -28,6 +28,7 @@
 // ===========================================================================
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/wic_mov_recorder.hpp"
 #include <Windows.h>
 #include <d3d9.h>
@@ -243,6 +244,10 @@ void RecordStartTail(MMDApp* app) {
 // (0x45EB7E..0x45EBCA and 0x46493D..0x464976).
 bool StartRecordGraph(MMDApp* app, std::int32_t outW, std::int32_t outH) {
     auto& s = *app;
+    if (image_sequence::Active(app)) {
+        TeardownDShowGraph(s.Recorder());
+        return true;
+    }
     RecConfig config;
     std::memset(&config, 0, sizeof config);
     config.size = 0x28;
@@ -288,7 +293,7 @@ bool StartRecordGraph(MMDApp* app, std::int32_t outW, std::int32_t outH) {
 // VA 0x0045E820 - windowed AVI record start.
 void StartAviRecordWindow(MMDApp* app) {
     auto& s = *app;
-    if (!ProbeWritable(
+    if (!image_sequence::Active(app) && !ProbeWritable(
             s.AviOutputPath())) {                               // 0x45E849
         const HWND main = static_cast<HWND>(s.state.hwnd);
         MessageBoxA(main, s.EnglishUI() != 0 ? kMsgSaveFailEn
@@ -334,6 +339,9 @@ void StartAviRecordWindow(MMDApp* app) {
                     0);                                         // 0x45EA14
         return;
     }
+    if (image_sequence::Active(app))
+        SetWindowTextW(recWnd, image_sequence::Text(app, L"正在输出图片序列…",
+            L"Exporting image sequence…", L"連番画像を出力中…"));
     ShowWindow(recWnd, SW_SHOW);                               // 0x45EA38
     UpdateWindow(recWnd);
 

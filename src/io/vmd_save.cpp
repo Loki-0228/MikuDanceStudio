@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
@@ -510,6 +511,13 @@ void SaveVmdFile(const wchar_t* path) {
         }
     }
 
+    if (!writeFailed && !cameraMode && model != nullptr) {
+        std::vector<std::uint8_t> block;std::string error;
+        if(!bone_curve::CaptureVmd(model,minFrame,block,error)){
+            writeFailed=true;
+            MessageBoxW(static_cast<HWND>(s.Hwnd()),L"自由曲线的骨骼需要全选关键帧后导出 VMD；原文件未更改。",L"VMD",MB_OK|MB_ICONWARNING);
+        }else if(!block.empty())Wr(fd,block.data(),static_cast<unsigned int>(block.size()));
+    }
     if (!writeFailed && !cameraMode && model != nullptr) {
         bone_scale_io::VmdExtension extension;
         bone_scale_io::CaptureExtension(model, minFrame, extension);

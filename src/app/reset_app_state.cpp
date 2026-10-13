@@ -298,7 +298,7 @@ void ResetAppState(MMDApp* app) {
     SendMessageA(GetDlgItem(hwnd, panel::kAddBlendCheckbox), BM_CLICK, 0, 0);
     SendMessageA(GetDlgItem(hwnd, panel::kAccessoryAddBlendCheckbox), BM_CLICK, 0, 0);
     ReplaceEditText(hwnd, 417, "0");                              // 0x44F01D
-    static const int kDisable[] = {430, 400, 401, 497, 498, 421, 422};
+    static const int kDisable[] = {430, 400, 401, 497, 498, 421, 422, panel::kForcePasteButton};
     for (int id : kDisable)
         EnableWindow(GetDlgItem(hwnd, id), FALSE);
     {

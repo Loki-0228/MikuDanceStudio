@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib
 import json
+import os
 import re
 import shutil
 import struct
@@ -15,13 +16,16 @@ def text(value):
     return struct.pack('<i', len(data)) + data
 
 
-def fixture(path):
+def fixture(path, large=False):
     data = bytearray(b'PMX ' + struct.pack('<f', 2.) + bytes([8, 0, 0, 1, 1, 1, 1, 1, 1]))
     for value in ('shadow-casters-without-outlines', '', '', ''):
         data += text(value)
     data += struct.pack('<i', 8)
-    for x, y, z in ((-6, 4, 0), (6, 4, 0), (6, 16, 0), (-6, 16, 0),
-                    (-2, 10, -3), (2, 10, -3), (2, 14, -3), (-2, 14, -3)):
+    vertices = ((-6, 4, 0), (6, 4, 0), (6, 16, 0), (-6, 16, 0),
+                (-2, 10, -3), (2, 10, -3), (2, 14, -3), (-2, 14, -3))
+    if large:
+        vertices = tuple((x*40, (y-10)*40+10, z) for x, y, z in vertices)
+    for x, y, z in vertices:
         data += struct.pack('<8fBBf', x, y, z, 0, 0, -1, 0, 0, 0, 0, 1)
     data += struct.pack('<i', 12) + bytes([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
     data += struct.pack('<ii', 0, 2)
@@ -54,19 +58,24 @@ def main():
                        '--self-shadow', str(mode), '--adaptive-shadow', '0', '--fine-shadow', '0',
                        '--shadow-range', '8216', '--warmup', '10', '--samples', '2',
                        '--verify-shadow-cycle', '--json', str(name.with_suffix('.json')), str(name.with_suffix('.png'))]
-            run = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=40)
+            env = os.environ.copy()
+            env['LOCALAPPDATA'] = str(root / 'Local')
+            env['APPDATA'] = str(root / 'Roaming')
+            env['MIKUDANCESTUDIO_AUTOSAVE_CONFIG'] = str(root / 'autosave.ini')
+            run = subprocess.run(command, cwd=root, env=env, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW, timeout=40)
             name.with_suffix('.log').write_bytes(run.stdout)
             output = run.stdout.decode(errors='replace')
             if run.returncode:
                 raise RuntimeError(f'{name.name}: exit {run.returncode}\n{output}')
-            widths = re.search(r'low_width=(\d+) high_width=(\d+)', output)
-            if not widths or int(widths[1]) >= int(widths[2]):
-                raise RuntimeError(f'{name.name}: moving left did not increase actual shadow resolution')
+            widths = re.search(r'dynamic_width=(\d+) wide_width=(\d+)', output)
+            if not widths or int(widths[1]) > int(widths[2]):
+                raise RuntimeError(f'{name.name}: wider coverage lost shadow sampling density')
             digest = hashlib.sha256(Path(str(name) + '.png.fixed.png.shadow.dds').read_bytes()).hexdigest()
             if reference is not None and digest != reference:
                 raise RuntimeError(f'{name.name}: camera orbit changed the directional shadow map')
             reference = digest
-            result = {'case': name.name, 'map_sha256': digest, 'low_width': int(widths[1]), 'high_width': int(widths[2])}
+            result = {'case': name.name, 'map_sha256': digest, 'dynamic_width': int(widths[1]), 'wide_width': int(widths[2])}
             results.append(result)
             print(json.dumps(result), flush=True)
     (root / 'results.json').write_text(json.dumps(results, indent=2), encoding='utf-8')

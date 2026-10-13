@@ -219,7 +219,7 @@ public:
 
     bool SceneMutationInProgress() const { return m_sceneMutationDepth != 0; }
     bool& AdaptiveShadowResolution() { return m_adaptiveShadowResolution; }
-    int& DynamicShadowPrecision() { return m_dynamicShadowPrecision; }
+    bool& ShadowFilterEnhanced() { return m_shadowFilterEnhanced; }
     unsigned& ShadowResolutionLimit() { return m_shadowResolutionLimit; }
 
     pmm_settings::State& PmmProjectSettings() { return m_pmmProjectSettings; }
@@ -1524,6 +1524,14 @@ public:
         double percent = 100.0;
     } viewportRender;
 
+    // Session-only UI geometry; never part of the PMM/legacy state blob.
+    struct BottomPanelSizing {
+        int extra[9]{};
+        int dragging = -1;
+        int startX = 0;
+        int startExtra = 0;
+    } bottomPanelSizing;
+
 private:
     friend class ScopedSceneMutation;
     unsigned int m_sceneMutationDepth = 0;
@@ -1531,7 +1539,7 @@ private:
     pmm_settings::State m_pmmProjectSettings;
     bool m_transparentMaterialIndexOrderDirty = false;
     bool m_adaptiveShadowResolution = false;
-    int m_dynamicShadowPrecision = 5000;
+    bool m_shadowFilterEnhanced = false;
     unsigned m_shadowResolutionLimit = 4096;
     TransparentSortPrecision m_transparentMaterialSortPrecision = kDefaultTransparentSortPrecision;
 

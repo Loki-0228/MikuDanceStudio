@@ -115,6 +115,7 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/global_key_layout.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/recent_projects.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/scene_ownership.hpp"
 #include "mikudancestudio/bone_key_pool.hpp"
@@ -3331,6 +3332,7 @@ void LoadSceneV2(MMDApp* app, int fd) {  // was Sub450000, VA 0x00450000
     LoadSceneV2_SuccessTail(ctx, workspaces, modelCount);    // 0x458120..0x458F53
     native_mesh::ProjectOpened(app, app->EnvFileName());
     mmv4mms::ProjectOpened(app, app->EnvFileName());
+    recent_projects::Record(app, app->EnvFileName());
 }
 
 }  // namespace mikudancestudio

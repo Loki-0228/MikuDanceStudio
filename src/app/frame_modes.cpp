@@ -417,9 +417,9 @@ void RestoreViewportToolCursor(MMDApp* app, int operation) {
         view, scale, viewport_corner_settings::Current());
     POINT point{};
     if (operation == 1 || operation == 2) {
-        HWND mainWindow = app->state.hwnd;
+        HWND window = ViewportWindow(app);
         RECT client{};
-        GetClientRect(mainWindow, &client);
+        GetClientRect(window, &client);
         point.x = client.right - (operation == 1 ? 48 : 18);
         point.y = view.top - 12;
     } else if (operation >= 22 && operation <= 25) {
@@ -439,7 +439,11 @@ void RestoreViewportToolCursor(MMDApp* app, int operation) {
         // centres on 105, the move row at bottom-80..-50 on 65.
         point.y = hud.y - static_cast<int>((upper ? 105.0f : 65.0f) * scale);
     }
-    WarpCursor(app, point);
+    // Capture loss can be caused by a dialog or an OS resize operation. Do
+    // not drag the pointer back out of that window when cancelling our tool.
+    if (GetCapture() == ViewportWindow(app) &&
+        GetForegroundWindow() == ViewportWindow(app))
+        WarpCursor(app, point);
     while (ShowCursor(TRUE) < 0) {}
 }
 
@@ -583,10 +587,8 @@ void BeginOrEndViewportToolDrag(MMDApp* app, int operation) {
         // must not run it again. See g_viewportPressHandled.
         g_viewportPressHandled = true;
         if (operation == 1 || operation == 2) {
-            // Header gestures start at the press, without recentering the cursor.
-            app->PreviousMouseX() = app->MouseX();
-            app->PreviousMouseY() = app->MouseY();
-            app->ViewToolDragOperation() = static_cast<ViewportToolAction>(operation);
+            // Zoom and pan use the same unlimited relative gesture as the HUD.
+            BeginCenteredDrag(app, operation);
             return;
         }
         static constexpr std::uint8_t kDragMode[30] = {
@@ -680,6 +682,7 @@ void BeginOrEndViewportToolDrag(MMDApp* app, int operation) {
             static_cast<int>(app->ViewToolDragOperation());
         const int mode = static_cast<int>(app->InteractionDragMode());
         if (viewOperation == 1 || viewOperation == 2) {
+            RestoreViewportToolCursor(app, viewOperation);
             app->ViewToolDragOperation() = ViewportToolAction::None;
         }
         if (mode != 0) {
@@ -708,10 +711,11 @@ void BeginOrEndViewportToolDrag(MMDApp* app, int operation) {
 
 bool OwnsCenteredViewportDrag(MMDApp* app) {
     const int operation = static_cast<int>(app->ViewToolDragOperation());
-    return app->LeftMouseButtonHeld() &&
-           operation >= static_cast<int>(ViewportToolAction::TransformAxisX) &&
-           operation <= static_cast<int>(ViewportToolAction::ScaleZ) &&
-           operation != static_cast<int>(ViewportToolAction::CycleCoordinateSystem);
+    const bool centered = operation == 1 || operation == 2 ||
+        (operation >= static_cast<int>(ViewportToolAction::TransformAxisX) &&
+         operation <= static_cast<int>(ViewportToolAction::ScaleZ) &&
+         operation != static_cast<int>(ViewportToolAction::CycleCoordinateSystem));
+    return app->LeftMouseButtonHeld() && centered;
 }
 
 void ApplyCenteredDragCursorSample(MMDApp* app, int x, int y) {
@@ -723,6 +727,8 @@ void ApplyCenteredDragCursorSample(MMDApp* app, int x, int y) {
 }
 
 void RecentreCenteredDragCursor(MMDApp* app) {
+    const HWND owner = ViewportWindow(app);
+    if (owner && (GetCapture() != owner || GetForegroundWindow() != owner)) return;
     // While one of the six operation buttons owns the drag, a pointer that
     // leaves the viewport is warped back to the middle of it, so the gesture
     // has no vertical (or horizontal) limit - that is what lets the original
@@ -741,26 +747,17 @@ void RecentreCenteredDragCursor(MMDApp* app) {
     // re-centring on it would fight that warp.
     if (app->state.mouseJumped != 0)
         return;
-    const int operation = static_cast<int>(app->ViewToolDragOperation());
-    // The centred-drag operations are 9..20 plus the scale row's 22..25; the
-    // coordinate-strip toggle (21) is a click, never a drag, and must not be
-    // re-centred.
-    if (operation < static_cast<int>(ViewportToolAction::TransformAxisX) ||
-        operation == static_cast<int>(ViewportToolAction::CycleCoordinateSystem) ||
-        operation > static_cast<int>(ViewportToolAction::ScaleZ))
-        return;
-    if (!app->LeftMouseButtonHeld())
-        return;
+    if (!OwnsCenteredViewportDrag(app)) return;
     const RECT view = app->ViewportRect();
     POINT point{app->MouseX(), app->MouseY()};
     bool recentred = false;
-    if (point.x < view.left || point.x > view.right) {
+    if (point.x <= view.left || point.x >= view.right - 1) {
         app->MouseX() = (view.left + view.right) / 2;
         app->PreviousMouseX() = app->MouseX();
         point.x = app->MouseX();
         recentred = true;
     }
-    if (point.y < view.top || point.y > view.bottom) {
+    if (point.y <= view.top || point.y >= view.bottom - 1) {
         app->MouseY() = (view.top + view.bottom) / 2;
         app->PreviousMouseY() = app->MouseY();
         point.y = app->MouseY();
@@ -976,9 +973,14 @@ void MouseInteractionBegin(MMDApp* app) {
     if (active == nullptr)
         active = app->state.hwnd;
     app->ViewportInputActive() = static_cast<std::uint8_t>(
-        GetForegroundWindow() == active);
+        GetForegroundWindow() == active && IsWindowEnabled(active) &&
+        (!GetCapture() || GetCapture() == active));
     const int operation = ViewportToolAtPoint(app);
-    BeginOrEndViewportToolDrag(app, operation);
+    // Only a client-area mouse-down gives the viewport capture. A global
+    // button press on the title bar, window border or child must not start a
+    // tool at the last client coordinates and warp the cursor to its centre.
+    if (app->LeftMouseButtonState() != 1 || GetCapture() == active)
+        BeginOrEndViewportToolDrag(app, operation);
     if (app->ViewportInputActive() == 0)
         return;
 
@@ -1014,6 +1016,8 @@ void MouseInteractionBegin(MMDApp* app) {
             }
             ViewRefreshGate(app);
         }
+        if (viewMode == ViewportToolAction::CameraOrbit || viewMode == ViewportToolAction::CameraPan)
+            RecentreCenteredDragCursor(app);
     }
 
     // Right/middle-button camera drags (x86 0x470BF5..0x47133D) live in

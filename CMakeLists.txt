@@ -124,7 +124,7 @@ target_link_libraries(mikudancestudio_runtime_log PUBLIC user32)
 # Core static library: application state, math, startup chain, effect API.
 # ---------------------------------------------------------------------------
 add_library(mikudancestudio_animation_curve STATIC
-    src/animation/animation_curve.cpp src/animation/animation_retime.cpp)
+    src/animation/animation_curve.cpp src/animation/animation_curve_insert.cpp src/animation/animation_retime.cpp)
 target_include_directories(mikudancestudio_animation_curve PUBLIC include)
 add_library(mikudancestudio_curve_motion STATIC src/animation/animation_curve_motion.cpp)
 target_include_directories(mikudancestudio_curve_motion PUBLIC include)
@@ -163,6 +163,10 @@ target_link_libraries(frame_rate_correction_tests PRIVATE mikudancestudio_animat
 set_target_properties(frame_rate_correction_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 add_test(NAME frame_rate_correction_tests COMMAND frame_rate_correction_tests)
 add_executable(animation_curve_host_tests EXCLUDE_FROM_ALL tests/animation_curve_host_tests.cpp)
+add_executable(bone_curve_tests EXCLUDE_FROM_ALL tests/bone_curve_tests.cpp)
+target_link_libraries(bone_curve_tests PRIVATE mikudancestudio_core winmm dsound)
+set_target_properties(bone_curve_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+add_test(NAME bone_curve_tests COMMAND bone_curve_tests)
 target_link_libraries(animation_curve_host_tests PRIVATE mikudancestudio_core winmm dsound)
 set_target_properties(animation_curve_host_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 add_test(NAME animation_curve_host_tests COMMAND animation_curve_host_tests)
@@ -170,6 +174,10 @@ add_executable(animation_curve_editor_tests EXCLUDE_FROM_ALL tests/animation_cur
 target_link_libraries(animation_curve_editor_tests PRIVATE mikudancestudio_curve_editor)
 set_target_properties(animation_curve_editor_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
 add_test(NAME animation_curve_editor_tests COMMAND animation_curve_editor_tests)
+add_executable(animation_curve_sidebar_tests EXCLUDE_FROM_ALL tests/animation_curve_sidebar_tests.cpp)
+target_link_libraries(animation_curve_sidebar_tests PRIVATE mikudancestudio_curve_editor)
+set_target_properties(animation_curve_sidebar_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+add_test(NAME animation_curve_sidebar_tests COMMAND animation_curve_sidebar_tests)
 add_executable(animation_curve_motion_tests EXCLUDE_FROM_ALL tests/animation_curve_motion_tests.cpp)
 target_link_libraries(animation_curve_motion_tests PRIVATE mikudancestudio_curve_motion)
 set_target_properties(animation_curve_motion_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
@@ -211,6 +219,7 @@ add_library(mikudancestudio_core STATIC
     src/animation/native_frame_retime.cpp
     src/animation/frame_rate_correction.cpp
     src/animation/morph_curve.cpp
+    src/animation/bone_curve.cpp
     src/window/frame_rate_dialog.cpp
     src/window/animation_curve_host_ui.cpp
     src/render/native_mesh.cpp
@@ -290,6 +299,8 @@ add_library(mikudancestudio_core STATIC
     src/render/device_reset.cpp
     src/app/avi_record_start.cpp
     src/app/record_readback.cpp
+    src/media/image_sequence_export.cpp
+    src/window/image_sequence_dialog.cpp
     src/app/dshow_record_graph.cpp
     src/app/mf_h264_recorder.cpp
     src/model/model_init.cpp
@@ -308,6 +319,9 @@ add_library(mikudancestudio_core STATIC
     src/model/model_skinning.cpp
     src/model/skinning_backend.cpp
     src/window/skinning_menu.cpp
+    src/window/recent_projects.cpp
+    src/app/autosave.cpp
+    src/window/autosave_dialog.cpp
     src/window/viewport_render_scale_dialog.cpp
     src/render/viewport_render_scale.cpp
     src/app/viewport_corner_settings.cpp
@@ -385,6 +399,7 @@ add_library(mikudancestudio_core STATIC
     src/render/scene_font.cpp
     src/exports/effect_api.cpp
     src/exports/effect_names.cpp
+    src/exports/effect_paths.cpp
     src/exports/effect_apng.cpp
     src/unported/stubs.cpp
 )
@@ -392,7 +407,7 @@ if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
     get_target_property(MMD_ORIGINAL_CORE_SOURCES mikudancestudio_core SOURCES)
     list(REMOVE_ITEM MMD_ORIGINAL_CORE_SOURCES
         src/model/bone_scale.cpp src/physics/physics_scale.cpp
-        src/animation/animation_curve_host.cpp src/animation/morph_curve.cpp
+        src/animation/animation_curve_host.cpp src/animation/morph_curve.cpp src/animation/bone_curve.cpp
         src/window/animation_curve_host_ui.cpp src/window/frame_rate_dialog.cpp
         src/animation/frame_rate_correction.cpp src/animation/native_frame_retime.cpp
         src/window/physics_bake_dialog.cpp src/physics/physics_bake.cpp
@@ -822,6 +837,18 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(video_export_range_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_executable(autosave_tests EXCLUDE_FROM_ALL
+        tests/autosave_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(autosave_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    target_link_options(autosave_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(autosave_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_executable(image_sequence_tests EXCLUDE_FROM_ALL
+        tests/image_sequence_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(image_sequence_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    target_link_options(image_sequence_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(image_sequence_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     # Run explicitly on a private desktop; no device or video output is needed.
     add_executable(physics_editor_encoding_tests EXCLUDE_FROM_ALL
         tests/physics_editor_encoding_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
@@ -995,6 +1022,12 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/media/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/media/symbols/$<CONFIG>"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/media/$<CONFIG>")
+    add_executable(bake_playback_tests EXCLUDE_FROM_ALL tests/bake_playback_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
+    target_link_libraries(bake_playback_tests PRIVATE mikudancestudio_core winmm dsound)
+    target_link_options(bake_playback_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    set_target_properties(bake_playback_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/bake-playback/$<CONFIG>")
     add_executable(lookup_cache_tests EXCLUDE_FROM_ALL tests/lookup_cache_tests.cpp)
     target_include_directories(lookup_cache_tests PRIVATE include)
     target_compile_features(lookup_cache_tests PRIVATE cxx_std_17)
@@ -1240,6 +1273,11 @@ if(NOT MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
 endif()
 
 if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
+    add_executable(sidebar_resize_tests EXCLUDE_FROM_ALL tests/sidebar_resize_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(sidebar_resize_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(sidebar_resize_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(sidebar_resize_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/sidebar/$<CONFIG>")
     add_executable(display_compatibility_tests EXCLUDE_FROM_ALL tests/display_compatibility_tests.cpp)
     if(NOT MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
         add_executable(mmv_native_shadow_bridge_tests EXCLUDE_FROM_ALL tests/mmv_native_shadow_bridge_tests.cpp
@@ -1260,6 +1298,14 @@ if(MIKUDANCESTUDIO_BUILD_UI_TESTS)
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/lib/$<CONFIG>"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/symbols/$<CONFIG>"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-display/$<CONFIG>")
+    add_executable(mme_shadow_filter_tests EXCLUDE_FROM_ALL tests/mme_shadow_filter_tests.cpp
+        res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
+    target_link_options(mme_shadow_filter_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
+    target_link_libraries(mme_shadow_filter_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
+    set_target_properties(mme_shadow_filter_tests PROPERTIES OUTPUT_NAME "MikuMikuDance" ENABLE_EXPORTS ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-shadow-filter/lib/$<CONFIG>"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-shadow-filter/symbols/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/mme-shadow-filter/$<CONFIG>")
     add_executable(mme_reassign_tests EXCLUDE_FROM_ALL tests/mme_reassign_tests.cpp
         res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES} exports/MikuMikuDance.def)
     target_link_options(mme_reassign_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")

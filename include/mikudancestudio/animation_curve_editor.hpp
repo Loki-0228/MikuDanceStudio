@@ -95,6 +95,12 @@ struct Source {
     std::function<std::vector<int>(const std::string&)> readKeySelection;
     std::function<void(const std::string&, const std::vector<int>&)> writeKeySelection;
 };
+struct Theme {
+    // COLORREF values in MMD's in-memory order, already parsed by the host.
+    std::array<std::uint32_t,35> colors{};
+    std::uint32_t text=0;
+    bool enabled=false;
+};
 struct Session {
     std::string id;
     std::vector<Source> sources;
@@ -104,6 +110,7 @@ struct Session {
     std::function<void(int)> seek;
     std::function<bool()> isPlaying;
     std::function<void(bool)> setPlaying;
+    Theme theme;
 };
 // Modeless Win32 window. Background tests may create it hidden.
 void* Open(void* owner, Session session, bool visible = true);

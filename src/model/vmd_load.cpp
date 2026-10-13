@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // VA 0x00434B60 - VMD motion file loader  (0x147F bytes)
 // ===========================================================================
@@ -234,7 +235,7 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
     // still leave the model and global tracks untouched.
 #if !MMD_ORIGINAL_PROFILE
     std::vector<accessory_motion_io::Track> accessoryTracks;
-    std::vector<std::uint8_t> morphBlock;
+    std::vector<std::uint8_t> morphBlock,boneCurveBlock;
     bone_scale_io::VmdExtension scaleExtension;
     bool hasScaleExtension = false;
     try {
@@ -253,6 +254,8 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
                     tailStart += total;
                 }
             }
+            const auto boneBytes=bone_curve::VmdBlockSize(input.Data(tailStart),input.Size()-tailStart);
+            if(boneBytes){boneCurveBlock.assign(input.Data(tailStart),input.Data(tailStart)+boneBytes);tailStart+=boneBytes;}
             wchar_t widePath[MAX_PATH]{};
             if (!wideFileName) MultiByteToWideChar(CP_ACP, 0, fileName, -1, widePath, MAX_PATH);
             hasScaleExtension = bone_scale_io::LoadVmdExtension(wideFileName ? wideFileName : widePath, scaleExtension,
@@ -673,6 +676,11 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
                               static_cast<int>(s.state.currentFrame));
     if (hasScaleExtension)
         bone_scale_io::ApplyImportedExtension(model, scaleExtension, s.state.currentFrame);
+    if(!boneCurveBlock.empty()){
+        std::string error;
+        if(!bone_curve::ApplyVmd(model,boneCurveBlock.data(),boneCurveBlock.size(),int(s.state.currentFrame),error))
+            MotionMessageBox(hwnd,language,L"自由カーブは空のボーントラックに読み込んでください。標準キーのみ読み込みました。",L"Free curves require empty bone tracks. Only the standard keys were imported.",L"自由曲线需要导入空的骨骼轨道，本次只读取了标准关键帧。",MB_OK|MB_ICONWARNING);
+    }
 #endif
 
     _close(fileHandle);

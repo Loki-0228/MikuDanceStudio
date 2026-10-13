@@ -97,7 +97,6 @@ constexpr int kColPitch = 14;     // 0x0E  hover column pitch (bands)
 constexpr int kGridX0 = 94;       // 0x5E  first hover row x
 constexpr int kColY0 = 209;       // 0xD1  first hover column y (display)
 constexpr int kColY0Bone = 153;   // 0x99  first hover column y (bone-edit)
-constexpr int kSidebarMin = 250;  // 0xFA  sidebar drag minimum
 
 
 // ---------------------------------------------------------------------------
@@ -368,33 +367,12 @@ void HandleMouseMove(std::uint32_t lParam, int mouseY) {
                                       static_cast<INT_PTR>(0x7F84))));  // IDC_SIZEWE
         }
 
-        // --- 3. sidebar drag (0x444E54) ------------------------------------
+        // --- 3. sidebar drag ---------------------------------------------
+        // Keep the last pointer position, but leave every control and the
+        // viewport in place until WM_LBUTTONUP commits the new width.
         if (app->SidebarResizeDragging() != 0) {
-            const int x = app->MouseX();
-            app->SidebarWidth() = x;
-            if (x < kSidebarMin)
-                app->SidebarWidth() = kSidebarMin;
-            if (rc.right - 5 < app->SidebarWidth())
-                app->SidebarWidth() = rc.right - 5;
-            app->SidebarRatio() = static_cast<float>(
-                static_cast<double>(app->SidebarWidth()) /
-                static_cast<double>(rc.right));
-            RelayoutSidebarControls(app);
-            PanelPaint(app);
-            const int sidebar = app->SidebarWidth();
-            HWND hwnd = static_cast<HWND>(app->Hwnd());
-            rc.bottom -= 158;
-            rc.left = sidebar - 19;
-            InvalidateRect(hwnd, &rc, FALSE);
-            rc.right = sidebar;
-            rc.left = 0;
-            rc.top = rc.bottom - 90;
-            InvalidateRect(hwnd, &rc, FALSE);
-            rc.left = 0;
-            rc.top = 0;
-            rc.right = sidebar;
-            rc.bottom = 145;
-            InvalidateRect(hwnd, &rc, FALSE);
+            SetCursor(LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_SIZEWE)));
+            return;
         }
         if (app->ViewportToolHovered() == 1) {
             SetCursor(LoadCursorA(nullptr,

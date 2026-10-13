@@ -754,14 +754,25 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
 
     // ---- 556: checkbox 0x22C (quality / BM_GETCHECK probe control) ------
 #if !MMD_ORIGINAL_PROFILE
-    case panel::kAdaptiveShadowCheckbox:
+    case panel::kShadowFilterCheckbox: {
+        app->ShadowFilterEnhanced() = SendMessageW(GetDlgItem(hwnd, panel::kShadowFilterCheckbox),
+            BM_GETCHECK, 0, 0) == BST_CHECKED;
+        SaveShadowResolutionPreference(app);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        PostViewRefresh(app);
+        break;
+    }
+    case panel::kAdaptiveShadowCheckbox: {
         app->AdaptiveShadowResolution() = SendMessageW(GetDlgItem(hwnd, panel::kAdaptiveShadowCheckbox),
             BM_GETCHECK, 0, 0) == BST_CHECKED;
+        // Only the allocation policy changes. Coverage and its keyframed
+        // fractional value remain shared by both modes.
         SaveShadowResolutionPreference(app);
         SyncSelfShadowControls(app);
         InvalidateRect(hwnd, nullptr, FALSE);
         PostViewRefresh(app);
         break;
+    }
 #endif
     case 556: {  // 0x48DF5D
         // The checked state of 0x22C is probed by HandleNotify (ui_notify.cpp
@@ -857,7 +868,6 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
         app->state.physicsInterval = static_cast<float>((10000.0 - double(v)) / 100000.0);
 #else
         SetShadowSliderPosition(app, static_cast<int>(v));
-        if (app->AdaptiveShadowResolution()) SaveShadowResolutionPreference(app);
 #endif
         SendMessageA(GetDlgItem(hwnd, panel::kSelfShadowRangeSlider), TBM_SETPOS, 1,
                      static_cast<LPARAM>(static_cast<std::int32_t>(v)));

@@ -162,6 +162,14 @@
 #include <string>
 #include <vector>
 
+#include "curve_editor_theme.hpp"
+#include "curve_editor_segments.hpp"
+#include "curve_editor_scrub.hpp"
+#include "curve_editor_axis.hpp"
+#include "curve_editor_channel_scroll.hpp"
+#include "ui_control_layout.hpp"
+
+
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "user32.lib")
@@ -190,7 +198,7 @@ constexpr int kStatusHeight = 20;
 constexpr int kHintHeight = 20;
 constexpr int kChannelWidth = 210;
 constexpr int kBarThickness = 36;   // time bar at the bottom, value bar at the right
-constexpr int kMmdSquare = 138;
+constexpr int kMmdSquare = 168;
 constexpr int kMmdColumn = 340;
 constexpr int kHelpHeight = 96;
 constexpr int kMinimumClientWidth = 820;
@@ -213,10 +221,12 @@ enum : int {
     kIdReadMotion = 1003, kIdWriteMotion = 1004,
     kIdViewLabel = 1006, kIdViewCombo = 1007, kIdToolLabel = 1008, kIdToolCombo = 1009,
     kIdFitAll = 1010, kIdFitRange = 1011, kIdShortcutToggle = 1012, kIdShortcutText = 1013,
-    kIdChannelLabel = 1014, kIdChannelList = 1015, kIdChannelAll = 1016,
+    kIdChannelLabel = 1014, kIdChannelList = 1015, kIdChannelAll = 1016, kIdChannelInvert = 1017,
     kIdCanvas = 1020, kIdPlay = 1021, kIdPreviousFrame = 1022, kIdNextFrame = 1023,
     kIdTimelineFrame = 1024, kIdSeekFrame = 1025,
+    kIdPreviousKey = 1026, kIdNextKey = 1027,
     kIdMmdLabel = 1030, kIdMmdPanel = 1031, kIdMmdReadout = 1032,
+    kIdMmdX1 = 1096, kIdMmdY1 = 1097, kIdMmdX2 = 1098, kIdMmdY2 = 1099,
     kIdFrameLabel = 1040, kIdFrameEdit = 1041,
     kIdValueLabel = 1042, kIdValueEdit = 1043,
     kIdInterpolationLabel = 1044, kIdInterpolationCombo = 1045,
@@ -235,6 +245,7 @@ enum : int {
     kIdCompareLabel = 1081, kIdCompareSameGroup = 1082,
     kIdCompareFilter = 1083,
     kIdHoverHint = 1085, kIdCompareAllGroups = 1086, kIdCompareFree = 1087,
+    kIdMouseReadout = 1095,
 };
 
 // Where the span a filter run uses comes from.
@@ -274,7 +285,7 @@ enum Str {
     StrTitle, StrSource, StrReadMotion, StrWriteMotion,
     StrView, StrViewValue, StrViewSpeed, StrTool, StrToolSelect, StrToolPan,
     StrFitAll, StrFitRange, StrShortcuts, StrShortcutsText,
-    StrChannels, StrSelectAll, StrMmdTitle, StrKeyFrame, StrKeyValue,
+    StrChannels, StrSelectAll, StrInvertSelection, StrMmdTitle, StrKeyFrame, StrKeyValue,
     StrInterpolation, StrTangent, StrInSlope, StrOutSlope, StrInWeight, StrOutWeight,
     StrAddKey, StrDeleteKey, StrApply, StrUndo, StrRedo,
     StrBakeFirst, StrBakeLast, StrBakeStep, StrBakeRun,
@@ -297,13 +308,14 @@ enum Str {
     StrChannelShown, StrChannelHidden, StrActiveCurve,
     StrHintChannelList, StrHintCompareMode, StrHintCompareFilter,
     StrHintAddKey, StrHintDeleteKey, StrHintApplyKey,
-    StrHintCanvas, StrHintMmdHandles, StrHintTimeBar, StrHintValueBar
+    StrHintCanvas, StrHintMmdHandles, StrHintTimeBar, StrHintValueBar, StrHintNavigation
 };
 
 const wchar_t *T(unsigned language, Str id) {
     const bool zh = language == 2, en = language == 1;
     switch (id) {
     case StrTitle: return zh ? L"曲线编辑器" : en ? L"Curve editor" : L"カーブエディター";
+    case StrInvertSelection: return zh ? L"反选" : en ? L"Invert" : L"反転";
     case StrSource: return zh ? L"源" : en ? L"Source" : L"ソース";
     case StrReadMotion: return zh ? L"读取动作" : en ? L"Read motion" : L"モーション読込";
     case StrWriteMotion: return zh ? L"写入动作" : en ? L"Write motion" : L"モーション書出";
@@ -452,25 +464,29 @@ const wchar_t *T(unsigned language, Str id) {
                   : en ? L"Delete key: removes the selected keys; undo restores them."
                        : L"キー削除：選択中のキーを削除します。元に戻すで復元できます。";
     case StrHintApplyKey:
-        return zh ? L"应用：把帧号、数值、插值、切线和权重写入选中的关键帧。"
-                  : en ? L"Apply: writes the frame, value, interpolation, tangents and weights onto the selected key."
-                       : L"適用：フレーム・値・補間・接線・重みを選択キーに書き込みます。";
+        return zh ? L"应用（Enter，同主页关键帧注册）：把帧号、数值、插值、切线和权重写入选中的关键帧，可撤销。"
+                  : en ? L"Apply (Enter, like keyframe registration): writes the parameters onto the selected key; undo restores the previous state."
+                       : L"適用（Enter、キー登録と共通）：選択キーにパラメーターを書き込みます。元に戻すで復元できます。";
     case StrHintCanvas:
         return zh ? L"画布：单击选中关键帧，拖动移动，空白拖动框选；选中关键帧的圆形手柄可拖动调整曲线；Alt+单击关键帧在线性与双侧贝塞尔之间切换，Alt+单击手柄拉直该侧。滚轮纵移，Shift 横移，Alt 横缩，Ctrl 纵缩，Home 全部显示，F 区间显示，H/V 切换平移与选择。"
                   : en ? L"Canvas: click a key to select it, drag to move it, drag empty space to box-select; drag the round handles of selected keys to shape the curve; Alt-click a key to toggle linear / two-sided Bezier, Alt-click a handle to straighten that side. Wheel pans, Shift pans sideways, Alt zooms time, Ctrl zooms value, Home fits all, F fits the range, H and V pick the pan or select tool."
                        : L"キャンバス：キーをクリックで選択、ドラッグで移動、空白ドラッグで範囲選択。選択キーの丸いハンドルをドラッグでカーブ調整。Alt+クリックでキーを線形／両側ベジェ切替、ハンドルを Alt+クリックでその側を直線化。ホイール縦移動、Shift 横移動、Alt 時間ズーム、Ctrl 値ズーム、Home 全体表示、F 範囲表示、H/V でパンと選択を切替。";
     case StrHintMmdHandles:
-        return zh ? L"原版手柄：拖动红色手柄调整 0–127 插值曲线，x1/y1 是起点手柄，x2/y2 是终点手柄。"
-                  : en ? L"MMD handles: drag the red handles to shape the 0-127 interpolation; x1/y1 belong to the start key, x2/y2 to the end key."
-                       : L"0–127 ハンドル：赤いハンドルをドラッグして補間を調整します。x1/y1 が始点、x2/y2 が終点です。";
+        return zh ? L"控制点：拖动手柄同步坐标；输入整数后按 Enter 更新，可撤销。横坐标 1–126，纵坐标 0–127，起始点横坐标须小于终止点。"
+                  : en ? L"Control points: drag handles to update coordinates, or enter integers and press Enter. X: 1-126, Y: 0-127; start X must be less than end X. Undo is available."
+                       : L"制御点：ドラッグで座標を更新、整数入力後 Enter で適用。X: 1–126、Y: 0–127、始点 X < 終点 X。元に戻すも可能です。";
+    case StrHintNavigation:
+        return zh ? L"帧导航：从左至右为上一关键帧、上一帧、下一帧、下一关键帧。关键帧跳转跟随当前通道。"
+                  : en ? L"Navigation: previous key, previous frame, next frame, next key. Key navigation uses the active channel."
+                       : L"移動：前のキー、前のフレーム、次のフレーム、次のキー。キー移動は現在のチャンネルが対象です。";
     case StrHintTimeBar:
-        return zh ? L"时间条（横向）：拖动中央平移时间，拖动两端缩放时间；单击中段或两端后方向键同样有效，Shift 步长十倍。"
-                  : en ? L"Time bar (horizontal): drag the middle to pan time and the ends to zoom; after clicking a segment the arrow keys do the same, ten times further with Shift."
-                       : L"時間バー（横）：中央で移動、両端でズーム。クリック後は方向キーでも同じ操作ができ、Shift で 10 倍です。";
+        return zh ? L"时间条：双击将滑块中心移到点击位置，缩放不变。拖中央平移，拖两端缩放；方向键同样有效，Shift 步长十倍。"
+                  : en ? L"Time bar: double-click to centre the thumb here without zooming. Drag the middle to pan, ends to zoom; arrow keys do the same, Shift moves ten times further."
+                       : L"時間バー：ダブルクリック位置へ中央を移動（倍率維持）。中央で移動、両端でズーム。方向キーも使用可、Shift で 10 倍。";
     case StrHintValueBar:
-        return zh ? L"数值条（纵向）：拖动中央平移数值，拖动两端缩放数值；单击中段或两端后方向键同样有效，Shift 步长十倍。"
-                  : en ? L"Value bar (vertical): drag the middle to pan values and the ends to zoom; after clicking a segment the arrow keys do the same, ten times further with Shift."
-                       : L"値バー（縦）：中央で移動、両端でズーム。クリック後は方向キーでも同じ操作ができ、Shift で 10 倍です。";
+        return zh ? L"数值条：双击将滑块中心移到点击位置，缩放不变。拖中央平移，拖两端缩放；方向键同样有效，Shift 步长十倍。"
+                  : en ? L"Value bar: double-click to centre the thumb here without zooming. Drag the middle to pan, ends to zoom; arrow keys do the same, Shift moves ten times further."
+                       : L"値バー：ダブルクリック位置へ中央を移動（倍率維持）。中央で移動、両端でズーム。方向キーも使用可、Shift で 10 倍。";
     }
     return L"";
 }
@@ -660,8 +676,14 @@ struct Editor {
     bool rebuildingChannels = false;
     std::string channelTreeSource;
     std::wstring channelTreeShape;
+    int channelWidth = kChannelWidth; // Logical pixels; retained across window resizing.
+    bool resizingChannels = false;
+    int pendingChannelWidth = kChannelWidth;
+    bool deferLayoutPaint = false;
 
     HFONT font = nullptr;
+    HBRUSH themeShell = nullptr;
+    bool advancedExpanded = true;
     int dpi = 96;
     bool helpExpanded = false;
 
@@ -675,6 +697,22 @@ struct Editor {
     RECT plot = {};
     RECT timeBar = {};
     RECT valueBar = {};
+    POINT mousePoint = {};
+    bool mouseInPlot = false;
+    // Preserve the displayed overview after a double click, until the view
+    // changes again. Otherwise auto-padding would move the thumb a second time.
+    struct CenteredBar {
+        bool valid=false;
+        int mode=0;
+        double low=0,high=1,start=0,end=1;
+        bool Matches(double first,double last) const {
+            // ClampView reconstructs endpoints around their centre; tolerate
+            // its rounding only, not a meaningful navigation change.
+            const auto same=[](double a,double b){return std::abs(a-b)<=
+                8*std::numeric_limits<double>::epsilon()*std::max({1.0,std::abs(a),std::abs(b)});};
+            return valid && same(start,first) && same(end,last);
+        }
+    } centeredTime,centeredValue;
 
     Drag drag = Drag::None;
     POINT dragOrigin = {};
@@ -700,6 +738,7 @@ struct Editor {
     std::array<double, 4> mmdControls = {{0, 0, 0, 0}};
     int mmdEndKey = 0;
     int mmdDragHandle = -1;
+    bool mmdFollowPlayhead = false;
 
     // Range-bar keyboard focus: 0 = none, 1 = time bar, 2 = value bar, with the
     // clicked segment in barZone (0 = centre pan, 1 = low edge, 2 = high edge).
@@ -795,6 +834,8 @@ void LayoutEditor(Editor &editor);
 void RefreshEditorsUi(Editor &editor);
 void InvalidateCanvas(Editor &editor);
 void UpdateMmdPanel(Editor &editor);
+void ApplyMmdCoordinateFields(Editor &editor);
+void OnPlayheadTimer(Editor &editor);
 void FitAll(Editor &editor);
 void ApplyLanguage(Editor &editor);
 void PopulateChannels(Editor &editor);
@@ -824,6 +865,8 @@ int HintForControl(int id) {
     case kIdAddKey: return StrHintAddKey;
     case kIdDeleteKey: return StrHintDeleteKey;
     case kIdApplyKey: return StrHintApplyKey;
+    case kIdMmdX1: case kIdMmdY1: case kIdMmdX2: case kIdMmdY2: return StrHintMmdHandles;
+    case kIdPreviousKey: case kIdPreviousFrame: case kIdNextFrame: case kIdNextKey: return StrHintNavigation;
     default: return -1;
     }
 }
@@ -852,6 +895,7 @@ void ApplyHoverHintText(Editor &editor) {
 }
 
 void SetHoverHint(Editor &editor, int hint) {
+    if(hint==StrHintCanvas)hint=-1;
     if (editor.hoverHint == hint) return;
     editor.hoverHint = hint;
     ApplyHoverHintText(editor);
@@ -1466,22 +1510,45 @@ void CanvasMetrics(Editor &editor) {
     if (!editor.canvas) return;
     RECT client = {};
     GetClientRect(editor.canvas, &client);
-    const int margin = Scale(4, editor.dpi);
     const int bar = Scale(kBarThickness, editor.dpi);
-    editor.timeBar.left = client.left;
-    editor.timeBar.top = client.bottom - bar;
-    editor.timeBar.right = client.right;
-    editor.timeBar.bottom = client.bottom;
-    editor.valueBar.left = client.right - bar;
-    editor.valueBar.top = client.top;
-    editor.valueBar.right = client.right;
-    editor.valueBar.bottom = client.bottom - bar;
-    editor.plot.left = client.left + margin;
-    editor.plot.top = client.top + margin;
-    editor.plot.right = client.right - bar - margin;
-    editor.plot.bottom = client.bottom - bar - margin;
+    editor.plot.left = client.left + Scale(46, editor.dpi);
+    // Mouse coordinates share the existing status row; only the ruler remains here.
+    editor.plot.top = client.top + Scale(24, editor.dpi);
+    editor.plot.right = client.right - bar;
+    editor.plot.bottom = client.bottom - bar;
     if (editor.plot.right < editor.plot.left + 20) editor.plot.right = editor.plot.left + 20;
     if (editor.plot.bottom < editor.plot.top + 20) editor.plot.bottom = editor.plot.top + 20;
+    editor.timeBar = {editor.plot.left,editor.plot.bottom,editor.plot.right,client.bottom};
+    editor.valueBar = {editor.plot.right,editor.plot.top,client.right,editor.plot.bottom};
+}
+
+bool MouseCoordinates(Editor& editor,double& frame,double& value) {
+    return editor.mouseInPlot && PtInRect(&editor.plot,editor.mousePoint) &&
+        XToTime(editor,editor.mousePoint.x,frame) && YToValue(editor,editor.mousePoint.y,value) &&
+        std::isfinite(frame) && std::isfinite(value);
+}
+
+void RefreshMouseReadout(Editor& editor) {
+    const bool zh=editor.session.language==2,en=editor.session.language==1;
+    const wchar_t* mouse=zh?L"鼠标":en?L"Mouse":L"マウス";
+    const wchar_t* frameLabel=zh?L"帧":en?L"Frame":L"フレーム";
+    const wchar_t* valueLabel=T(editor.session.language,editor.viewMode==0?StrViewValue:StrViewSpeed);
+    double frame=0,value=0;
+    wchar_t text[256]{};
+    if(MouseCoordinates(editor,frame,value))
+        swprintf_s(text,L"%s    %s %.2f    %s %.3f",mouse,frameLabel,frame,valueLabel,value);
+    else
+        swprintf_s(text,L"%s    %s --    %s --",mouse,frameLabel,valueLabel);
+    if(HWND control=GetDlgItem(editor.window,kIdMouseReadout)) {
+        wchar_t previous[256]{};GetWindowTextW(control,previous,256);
+        if(wcscmp(previous,text)!=0)SetWindowTextW(control,text);
+    }
+}
+
+void UpdateMouseReadout(Editor& editor,POINT point,bool inside=true) {
+    editor.mousePoint=point;
+    editor.mouseInPlot=inside && PtInRect(&editor.plot,point);
+    RefreshMouseReadout(editor);
 }
 
 // ---------------------------------------------------------------------------
@@ -1513,14 +1580,21 @@ bool CurvePoints(Editor &editor, const Track &track, std::vector<POINT> &points)
 }
 
 COLORREF ChannelColour(const Channel&channel){
+    const auto separator=channel.id.find_last_of('/');
+    const std::string axis=separator==std::string::npos?channel.id:channel.id.substr(separator+1);
+    if(axis=="x"||axis=="rx"||axis=="sx")return curve_editor_theme::Curve(RGB(222,76,104));
+    if(axis=="y"||axis=="ry"||axis=="sy")return curve_editor_theme::Curve(RGB(116,161,43));
+    if(axis=="z"||axis=="rz"||axis=="sz")return curve_editor_theme::Curve(RGB(55,139,222));
+    if(axis=="distance")return curve_editor_theme::Curve(RGB(157,113,226));
+    if(axis=="fov")return curve_editor_theme::Curve(RGB(219,155,45));
     unsigned hash=2166136261u;
     for(unsigned char c:channel.id){hash^=c;hash*=16777619u;}
     // Scatter related channel IDs across the full hue circle while keeping
     // each channel's colour stable across refreshes and editor openings.
     hash^=hash>>16;hash*=0x7feb352du;hash^=hash>>15;hash*=0x846ca68bu;hash^=hash>>16;
     const double hue=double(hash&0xffffu)/65536.0*6.0;
-    const double saturation=0.78+double((hash>>16)&255u)/255.0*0.18;
-    const double value=0.94+double((hash>>24)&255u)/255.0*0.06;
+    const double saturation=0.56+double((hash>>16)&255u)/255.0*0.18;
+    const double value=0.76+double((hash>>24)&255u)/255.0*0.12;
     const double chroma=value*saturation;
     const double x=chroma*(1.0-std::fabs(std::fmod(hue,2.0)-1.0)),m=value-chroma;
     double r=0,g=0,b=0;
@@ -1542,11 +1616,17 @@ void DrawCurve(Editor &editor, HDC dc) {
     std::vector<POINT> points;
     if (!CurvePoints(editor, *track, points)) return;
     const auto&state=CurrentState(editor);
-    HPEN pen = CreatePen(PS_SOLID, 1, ChannelColour(state.channels[state.active]));
-    HGDIOBJ oldPen = SelectObject(dc, pen);
-    Polyline(dc, points.data(), static_cast<int>(points.size()));
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
+    const COLORREF colour=ChannelColour(state.channels[state.active]);
+    GdiFlush();
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+    graphics.SetClip(Gdiplus::Rect(editor.plot.left,editor.plot.top,
+                                  editor.plot.right-editor.plot.left,editor.plot.bottom-editor.plot.top));
+    std::vector<Gdiplus::Point> line;line.reserve(points.size());
+    for(const auto& point:points)line.emplace_back(point.x,point.y);
+    Gdiplus::Pen pen(Gdiplus::Color(255,GetRValue(colour),GetGValue(colour),GetBValue(colour)),1.6f);
+    graphics.DrawLines(&pen,line.data(),int(line.size()));
 }
 
 // The comparison curves are background: they are drawn before the main curve,
@@ -1564,7 +1644,7 @@ void DrawComparisonCurves(Editor &editor, HDC dc) {
     GdiFlush();      // commit earlier GDI drawing (grid) so it shows through
     Gdiplus::Graphics graphics(dc);
     graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
-    graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
     graphics.SetClip(Gdiplus::Rect(editor.plot.left, editor.plot.top,
                                    editor.plot.right - editor.plot.left,
@@ -1575,7 +1655,7 @@ void DrawComparisonCurves(Editor &editor, HDC dc) {
         if (index >= state.channels.size()) continue;
         if (!CurvePoints(editor, state.channels[index].track, points)) continue;
         const COLORREF colour=ChannelColour(state.channels[index]);
-        Gdiplus::Pen pen(Gdiplus::Color(64,GetRValue(colour),GetGValue(colour),GetBValue(colour)),1.0f);
+        Gdiplus::Pen pen(Gdiplus::Color(172,GetRValue(colour),GetGValue(colour),GetBValue(colour)),1.2f);
         line.clear();
         line.reserve(points.size());
         for (const POINT &point : points)
@@ -1586,8 +1666,9 @@ void DrawComparisonCurves(Editor &editor, HDC dc) {
 
 void DrawGrid(Editor &editor, HDC dc) {
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
-    HPEN grid = CreatePen(PS_DOT, 1, RGB(200, 200, 200));
+    SetTextColor(dc, curve_editor_theme::muted);
+    HPEN grid = CreatePen(PS_SOLID, 1, curve_editor_theme::grid);
+    HPEN zero = CreatePen(PS_SOLID, 1, curve_editor_theme::zero);
     HGDIOBJ oldPen = SelectObject(dc, grid);
 
     // Grid lines are counted by integer index, never by `x += step`: far from the
@@ -1607,11 +1688,12 @@ void DrawGrid(Editor &editor, HDC dc) {
             double y = 0;
             if (!ValueToY(editor, value, y)) continue;
             const int row = static_cast<int>(std::lround(y));
+            SelectObject(dc,value==0?zero:grid);
             MoveToEx(dc, editor.plot.left, row, nullptr);
             LineTo(dc, editor.plot.right, row);
             const std::wstring label = FormatNumber(value);
-            RECT text = {editor.plot.left + 2, row + 1, editor.plot.left + 70, row + 14};
-            DrawTextW(dc, label.c_str(), -1, &text, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
+            RECT text = {Scale(2,editor.dpi),row-Scale(7,editor.dpi),editor.plot.left-Scale(7,editor.dpi),row+Scale(8,editor.dpi)};
+            DrawTextW(dc, label.c_str(), -1, &text, DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX);
         }
     }
     if (editor.timeEnd > editor.timeStart && std::isfinite(editor.timeStart) &&
@@ -1626,15 +1708,17 @@ void DrawGrid(Editor &editor, HDC dc) {
             double x = 0;
             if (!TimeToX(editor, frame, x)) continue;
             const int column = static_cast<int>(std::lround(x));
+            SelectObject(dc,frame==0?zero:grid);
             MoveToEx(dc, column, editor.plot.top, nullptr);
             LineTo(dc, column, editor.plot.bottom);
             const std::wstring label = FormatInteger(static_cast<long long>(std::llround(frame)));
-            RECT text = {column + 2, editor.plot.bottom - 14, column + 60, editor.plot.bottom - 1};
-            DrawTextW(dc, label.c_str(), -1, &text, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
+            RECT text = {column-Scale(20,editor.dpi),editor.plot.top-Scale(19,editor.dpi),column+Scale(20,editor.dpi),editor.plot.top-Scale(2,editor.dpi)};
+            DrawTextW(dc, label.c_str(), -1, &text, DT_CENTER | DT_SINGLELINE | DT_NOPREFIX);
         }
     }
     SelectObject(dc, oldPen);
     DeleteObject(grid);
+    DeleteObject(zero);
 }
 
 void DrawKeys(Editor &editor, HDC dc) {
@@ -1642,30 +1726,30 @@ void DrawKeys(Editor &editor, HDC dc) {
     if (state.channels.empty()) return;
     if (!ActiveChannelVisible(editor)) return;
     const Track &track = state.channels[state.active].track;
-    const int size = Scale(kHandleSize, editor.dpi);
-    const int half = size / 2;
+    const float radius=float(Scale(kHandleSize,editor.dpi))/2.0f;
+    const COLORREF colour=ChannelColour(state.channels[state.active]);
+    GdiFlush();Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    graphics.SetClip(Gdiplus::Rect(editor.plot.left-Scale(4,editor.dpi),editor.plot.top-Scale(4,editor.dpi),
+        editor.plot.right-editor.plot.left+Scale(8,editor.dpi),editor.plot.bottom-editor.plot.top+Scale(8,editor.dpi)));
+    Gdiplus::Pen outline(Gdiplus::Color(255,GetRValue(colour),GetGValue(colour),GetBValue(colour)),1.4f);
+    Gdiplus::Pen selectedOutline(Gdiplus::Color(255,204,145,19),1.2f);
+    Gdiplus::SolidBrush paper(Gdiplus::Color(255,GetRValue(curve_editor_theme::paper),GetGValue(curve_editor_theme::paper),GetBValue(curve_editor_theme::paper)));
+    Gdiplus::SolidBrush selectedFill(Gdiplus::Color(255,255,210,69));
+    Gdiplus::Pen hoverOutline(Gdiplus::Color(255,80,101,133),1.0f);
     for (std::size_t index = 0; index < track.keys.size(); ++index) {
         const POINT centre = KeyPoint(editor, index);
         if (centre.x < 0) continue;
         const bool selected = state.selection.count(index) != 0;
-        RECT box = {centre.x - half, centre.y - half, centre.x + half + 1, centre.y + half + 1};
-        if (selected) {
-            HBRUSH brush = CreateSolidBrush(RGB(255, 196, 64));
-            FillRect(dc, &box, brush);
-            DeleteObject(brush);
-        }
-        HBRUSH frameBrush = CreateSolidBrush(selected ? RGB(24, 24, 24) : RGB(48, 48, 48));
-        FrameRect(dc, &box, frameBrush);
-        DeleteObject(frameBrush);
+        const Gdiplus::RectF shape(float(centre.x)-radius,float(centre.y)-radius,radius*2,radius*2);
+        graphics.FillEllipse(selected?&selectedFill:&paper,shape);
+        graphics.DrawEllipse(selected?&selectedOutline:&outline,shape);
     }
     if (editor.hoverKey >= 0 && static_cast<std::size_t>(editor.hoverKey) < track.keys.size() &&
         !state.selection.count(static_cast<std::size_t>(editor.hoverKey))) {
         const POINT centre = KeyPoint(editor, static_cast<std::size_t>(editor.hoverKey));
         if (centre.x >= 0) {
-            RECT box = {centre.x - half - 1, centre.y - half - 1, centre.x + half + 2, centre.y + half + 2};
-            HBRUSH brush = CreateSolidBrush(RGB(120, 120, 120));
-            FrameRect(dc, &box, brush);
-            DeleteObject(brush);
+            graphics.DrawEllipse(&hoverOutline,float(centre.x)-radius-2,float(centre.y)-radius-2,radius*2+4,radius*2+4);
         }
     }
 }
@@ -1679,8 +1763,8 @@ void DrawTangents(Editor &editor, HDC dc) {
     // Each selected key shows the handle of every curved side: a line from the
     // key and a round grip.  Drag a grip to shape that side; Alt-click it to
     // straighten the side.
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(150, 60, 160));
-    HBRUSH fill = CreateSolidBrush(RGB(230, 200, 240));
+    HPEN pen = CreatePen(PS_SOLID, 1, curve_editor_theme::arm);
+    HBRUSH fill = CreateSolidBrush(curve_editor_theme::paper);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, fill);
     const int radius = std::max(3, Scale(kHandleSize, editor.dpi) / 2);
@@ -1709,12 +1793,21 @@ void DrawPlayhead(Editor &editor, HDC dc) {
     double x = 0;
     if (!TimeToX(editor, frame, x)) return;
     if (x < editor.plot.left || x > editor.plot.right) return;
-    HPEN pen = CreatePen(PS_DOT, 1, RGB(200, 40, 40));
+    HPEN pen = CreatePen(PS_SOLID, 1, curve_editor_theme::accent);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     MoveToEx(dc, static_cast<int>(std::lround(x)), editor.plot.top, nullptr);
     LineTo(dc, static_cast<int>(std::lround(x)), editor.plot.bottom);
     SelectObject(dc, oldPen);
     DeleteObject(pen);
+    const std::wstring caption=FormatInteger(static_cast<long long>(std::llround(frame)));
+    SIZE size{};GetTextExtentPoint32W(dc,caption.c_str(),int(caption.size()),&size);
+    const int width=std::max(Scale(20,editor.dpi),int(size.cx)+Scale(8,editor.dpi));
+    const int left=std::clamp(int(std::lround(x))-width/2,int(editor.plot.left),int(editor.plot.right)-width);
+    RECT flag={left,editor.plot.top-Scale(20,editor.dpi),left+width,editor.plot.top-Scale(2,editor.dpi)};
+    HBRUSH fill=CreateSolidBrush(curve_editor_theme::accent);FillRect(dc,&flag,fill);DeleteObject(fill);
+    const COLORREF previous=SetTextColor(dc,curve_editor_theme::accentText);SetBkMode(dc,TRANSPARENT);
+    DrawTextW(dc,caption.c_str(),-1,&flag,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+    SetTextColor(dc,previous);
 }
 
 struct BarRange {
@@ -1726,6 +1819,9 @@ BarRange TimeBarRange(const Editor &editor) {
     if (editor.drag == Drag::TimeBarPan || editor.drag == Drag::TimeBarZoomLow ||
         editor.drag == Drag::TimeBarZoomHigh)
         return {editor.savedBarLow, editor.savedBarHigh};
+    const auto& centered=editor.centeredTime;
+    if(centered.Matches(editor.timeStart,editor.timeEnd))
+        return {centered.low,centered.high};
     double low = editor.timeStart, high = editor.timeEnd;
     const TrackExtent extent = VisibleExtent(const_cast<Editor &>(editor));
     if (extent.valid) {
@@ -1745,6 +1841,9 @@ BarRange ValueBarRange(const Editor &editor) {
         return {editor.savedBarLow, editor.savedBarHigh};
     double low = 0, high = 0;
     ValueRange(editor, low, high);
+    const auto& centered=editor.centeredValue;
+    if(centered.mode==editor.viewMode && centered.Matches(low,high))
+        return {centered.low,centered.high};
     const TrackExtent extent = VisibleExtent(const_cast<Editor &>(editor));
     if (extent.valid) {
         low = std::min(low, editor.viewMode == 0 ? extent.low : extent.speedLow);
@@ -1828,10 +1927,10 @@ void DrawBarTicks(Editor& editor,HDC dc,bool time){
     double minor=major/5.0;
     if(time&&minor<1.0)minor=major;
     const double begin=std::ceil(range.fullLow/minor),end=std::floor(range.fullHigh/minor);
-    HPEN pen=CreatePen(PS_SOLID,1,RGB(90,90,90));
-    SelectObject(dc,pen);SetTextColor(dc,RGB(60,60,60));SetBkMode(dc,TRANSPARENT);
+    HPEN pen=CreatePen(PS_SOLID,1,curve_editor_theme::border);
+    SelectObject(dc,pen);SetTextColor(dc,curve_editor_theme::muted);SetBkMode(dc,TRANSPARENT);
     HFONT vertical=nullptr;
-    if(!time){font.lfEscapement=font.lfOrientation=900;vertical=CreateFontIndirectW(&font);if(vertical)SelectObject(dc,vertical);}
+    if(!time){font.lfEscapement=font.lfOrientation=900;vertical=CreateFontIndirectW(&font);if(vertical)SelectObject(dc,vertical);SetTextAlign(dc,TA_LEFT|TA_BASELINE);}
     // Bound every floating-point loop, including tiny or extreme value spans.
     for(int tick=0;tick<192;++tick){
         const double index=begin+tick;
@@ -1841,7 +1940,7 @@ void DrawBarTicks(Editor& editor,HDC dc,bool time){
         const int position=int(std::lround(MapToBar(value,range.fullLow,range.fullHigh,time?first:last,time?last:first)));
         const int size=Scale(primary?4:2,editor.dpi);
         if(time){
-            const int y=bar.top+Scale(21,editor.dpi);
+            const int y=bar.top+Scale(18,editor.dpi);
             MoveToEx(dc,position,y,nullptr);LineTo(dc,position,y+size);
         }else{
             const int x=bar.left+Scale(21,editor.dpi);
@@ -1851,7 +1950,7 @@ void DrawBarTicks(Editor& editor,HDC dc,bool time){
         const std::wstring label=time?FormatInteger(static_cast<long long>(std::lround(value))):FormatNumber(value);
         SIZE sizeText{};GetTextExtentPoint32W(dc,label.c_str(),int(label.size()),&sizeText);
         if(time){
-            RECT text={std::max(first,std::min(position-int(sizeText.cx)/2,last-int(sizeText.cx))),bar.top+Scale(25,editor.dpi),last,bar.bottom};
+            RECT text={std::max(first,std::min(position-int(sizeText.cx)/2,last-int(sizeText.cx))),bar.top+Scale(22,editor.dpi),last,bar.bottom};
             DrawTextW(dc,label.c_str(),int(label.size()),&text,DT_LEFT|DT_SINGLELINE|DT_NOPREFIX);
         }else{
             const int half=int(sizeText.cx)/2;
@@ -1867,9 +1966,8 @@ void DrawBarTicks(Editor& editor,HDC dc,bool time){
 void DrawTimeBar(Editor &editor, HDC dc) {
     const RECT &bar = editor.timeBar;
     RECT inner = bar;
-    InflateRect(&inner, -Scale(2, editor.dpi), -Scale(3, editor.dpi));
     inner.bottom=inner.top+Scale(16,editor.dpi);
-    HBRUSH back = CreateSolidBrush(RGB(232, 232, 232));
+    HBRUSH back = CreateSolidBrush(curve_editor_theme::track);
     FillRect(dc, &inner, back);
     DeleteObject(back);
     FrameRect(dc, &inner, GetSysColorBrush(COLOR_3DSHADOW));
@@ -1880,14 +1978,14 @@ void DrawTimeBar(Editor &editor, HDC dc) {
     const int left = static_cast<int>(std::lround(MapToBar(editor.timeStart, range.fullLow, range.fullHigh, first, last)));
     const int right = static_cast<int>(std::lround(MapToBar(editor.timeEnd, range.fullLow, range.fullHigh, first, last)));
     RECT window = {left, inner.top + 1, std::max(right, left + 2), inner.bottom - 1};
-    HBRUSH fill = CreateSolidBrush(RGB(176, 176, 176));
+    HBRUSH fill = CreateSolidBrush(curve_editor_theme::selection);
     FillRect(dc, &window, fill);
     DeleteObject(fill);
     FrameRect(dc, &window, GetSysColorBrush(COLOR_3DSHADOW));
     const int grip = Scale(kGripSize, editor.dpi);
     RECT lowGrip = {window.left - grip / 2, window.top, window.left + grip / 2 + 1, window.bottom + 1};
     RECT highGrip = {window.right - grip / 2, window.top, window.right + grip / 2 + 1, window.bottom + 1};
-    HBRUSH gripBrush = CreateSolidBrush(RGB(70, 70, 70));
+    HBRUSH gripBrush = CreateSolidBrush(curve_editor_theme::grip);
     FillRect(dc, &lowGrip, gripBrush);
     FillRect(dc, &highGrip, gripBrush);
     DeleteObject(gripBrush);
@@ -1897,9 +1995,8 @@ void DrawTimeBar(Editor &editor, HDC dc) {
 void DrawValueBar(Editor &editor, HDC dc) {
     const RECT &bar = editor.valueBar;
     RECT inner = bar;
-    InflateRect(&inner, -Scale(3, editor.dpi), -Scale(2, editor.dpi));
     inner.right=inner.left+Scale(16,editor.dpi);
-    HBRUSH back = CreateSolidBrush(RGB(232, 232, 232));
+    HBRUSH back = CreateSolidBrush(curve_editor_theme::track);
     FillRect(dc, &inner, back);
     DeleteObject(back);
     FrameRect(dc, &inner, GetSysColorBrush(COLOR_3DSHADOW));
@@ -1909,14 +2006,14 @@ void DrawValueBar(Editor &editor, HDC dc) {
     int top = 0, bottom = 0;
     ValueBarEdges(editor, top, bottom);
     RECT window = {inner.left + 1, top, inner.right - 1, std::max(bottom, top + 2)};
-    HBRUSH fill = CreateSolidBrush(RGB(176, 176, 176));
+    HBRUSH fill = CreateSolidBrush(curve_editor_theme::selection);
     FillRect(dc, &window, fill);
     DeleteObject(fill);
     FrameRect(dc, &window, GetSysColorBrush(COLOR_3DSHADOW));
     const int grip = Scale(kGripSize, editor.dpi);
     RECT lowGrip = {window.left, window.bottom - grip / 2, window.right + 1, window.bottom + grip / 2 + 1};
     RECT highGrip = {window.left, window.top - grip / 2, window.right + 1, window.top + grip / 2 + 1};
-    HBRUSH gripBrush = CreateSolidBrush(RGB(70, 70, 70));
+    HBRUSH gripBrush = CreateSolidBrush(curve_editor_theme::grip);
     FillRect(dc, &lowGrip, gripBrush);
     FillRect(dc, &highGrip, gripBrush);
     DeleteObject(gripBrush);
@@ -1926,11 +2023,13 @@ void DrawValueBar(Editor &editor, HDC dc) {
 void PaintCanvas(Editor &editor, HDC dc) {
     RECT client = {};
     GetClientRect(editor.canvas, &client);
-    HBRUSH background = CreateSolidBrush(GetSysColor(COLOR_WINDOW));
+    // The complete axis surround follows the ruler theme, including corners.
+    HBRUSH background = CreateSolidBrush(curve_editor_theme::ruler);
     FillRect(dc, &client, background);
     DeleteObject(background);
     CanvasMetrics(editor);
 
+    curve_editor_theme::Fill(dc,editor.plot,curve_editor_theme::paper);
     HGDIOBJ oldFont = SelectObject(dc, editor.font ? editor.font : GetStockObject(DEFAULT_GUI_FONT));
     DrawGrid(editor, dc);
     DrawComparisonCurves(editor, dc);
@@ -1945,7 +2044,7 @@ void PaintCanvas(Editor &editor, HDC dc) {
     else if (!track || track->keys.empty()) notice = T(editor.session.language, StrNoKeys);
     else if (editor.viewMode == 1 && track->discrete) notice = T(editor.session.language, StrDiscreteNoSpeed);
     if (!notice.empty()) {
-        SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
+        SetTextColor(dc, curve_editor_theme::muted);
         RECT text = editor.plot;
         text.left += Scale(6, editor.dpi);
         text.top += Scale(6, editor.dpi);
@@ -1983,11 +2082,18 @@ void ComputeMmdControls(Editor &editor) {
         return;
     }
     const Track &track = state.channels[state.active].track;
-    if (state.selection.empty()) {
+    if (state.selection.empty() && !editor.mmdFollowPlayhead) {
         editor.mmdReason = T(editor.session.language, StrNoSelection);
         return;
     }
-    const std::size_t endKey = ActiveKeyIndex(editor);
+    std::size_t endKey = ActiveKeyIndex(editor);
+    if(editor.mmdFollowPlayhead && track.keys.size()>1 && editor.session.currentFrame){
+        const double frame=editor.session.currentFrame();
+        if(std::isfinite(frame)){
+            auto at=std::lower_bound(track.keys.begin()+1,track.keys.end(),frame,[](const Key& key,double f){return key.frame<f;});
+            endKey=at==track.keys.end()?track.keys.size()-1:std::size_t(at-track.keys.begin());
+        }
+    }
     if (endKey == 0 || endKey >= track.keys.size()) {
         editor.mmdReason = T(editor.session.language, StrMmdNoInterval);
         return;
@@ -2044,7 +2150,7 @@ void ComputeMmdControls(Editor &editor) {
 void PaintMmd(Editor &editor, HDC dc) {
     RECT client = {};
     GetClientRect(editor.mmd, &client);
-    HBRUSH background = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
+    HBRUSH background = CreateSolidBrush(curve_editor_theme::shell);
     FillRect(dc, &client, background);
     DeleteObject(background);
     HGDIOBJ oldFont = SelectObject(dc, editor.font ? editor.font : GetStockObject(DEFAULT_GUI_FONT));
@@ -2055,7 +2161,7 @@ void PaintMmd(Editor &editor, HDC dc) {
     square.right = square.left + side;
     square.bottom = square.top + side;
 
-    HBRUSH paper = CreateSolidBrush(RGB(255, 255, 255));
+    HBRUSH paper = CreateSolidBrush(curve_editor_theme::paper);
     FillRect(dc, &square, paper);
     DeleteObject(paper);
     if (editor.mmdEnabled) {
@@ -2067,7 +2173,7 @@ void PaintMmd(Editor &editor, HDC dc) {
         return POINT{square.left + static_cast<LONG>(std::lround(u / 127.0 * side)),
                      square.bottom - static_cast<LONG>(std::lround(v / 127.0 * side))};
     };
-    HPEN diagonal = CreatePen(PS_DOT, 1, RGB(200, 200, 200));
+    HPEN diagonal = CreatePen(PS_SOLID, 1, curve_editor_theme::grid);
     HGDIOBJ oldPen = SelectObject(dc, diagonal);
     // "far" is a legacy Windows macro, so the second point needs its own name.
     const POINT origin = toPoint(0, 0);
@@ -2086,7 +2192,7 @@ void PaintMmd(Editor &editor, HDC dc) {
         const auto&state=CurrentState(editor);
         HPEN curve = CreatePen(PS_SOLID, 1, editor.mmdEnabled&&state.active<state.channels.size() ? ChannelColour(state.channels[state.active]) : RGB(140, 140, 140));
         oldPen = SelectObject(dc, curve);
-        HPEN handlePen = CreatePen(PS_SOLID, 1, RGB(160, 160, 160));
+        HPEN handlePen = CreatePen(PS_SOLID, 1, curve_editor_theme::arm);
         HGDIOBJ previous = SelectObject(dc, handlePen);
         MoveToEx(dc, p0.x, p0.y, nullptr);
         LineTo(dc, p1.x, p1.y);
@@ -2102,13 +2208,13 @@ void PaintMmd(Editor &editor, HDC dc) {
         const POINT handles[2] = {p1, p2};
         for (const POINT &handle : handles) {
             RECT box = {handle.x - half, handle.y - half, handle.x + half + 1, handle.y + half + 1};
-            HBRUSH brush = CreateSolidBrush(RGB(255, 96, 96));
+            HBRUSH brush = CreateSolidBrush(RGB(255,210,69));
             FillRect(dc, &box, brush);
             DeleteObject(brush);
             FrameRect(dc, &box, GetSysColorBrush(COLOR_3DSHADOW));
         }
     } else {
-        SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
+        SetTextColor(dc, curve_editor_theme::muted);
         RECT text = square;
         text.left += Scale(4, editor.dpi);
         text.top += Scale(4, editor.dpi);
@@ -2136,14 +2242,22 @@ void UpdateWindowTitle(Editor &editor) {
     SetWindowTextW(editor.window, title.c_str());
 }
 
+void SyncMmdCoordinateFields(Editor &editor) {
+    const int ids[]={kIdMmdX1,kIdMmdY1,kIdMmdX2,kIdMmdY2};
+    for(int i=0;i<4;++i)
+        SetControlText(editor.window,ids[i],editor.mmdEnabled?FormatNumber(editor.mmdControls[i]):L"");
+}
+
 void UpdateMmdPanel(Editor &editor) {
     ComputeMmdControls(editor);
+    SyncMmdCoordinateFields(editor);
     std::wstring readout;
     if (editor.mmdEnabled) {
-        readout = L"x1 " + FormatNumber(editor.mmdControls[0]) + L", y1 " + FormatNumber(editor.mmdControls[1]) +
-                  L", x2 " + FormatNumber(editor.mmdControls[2]) + L", y2 " + FormatNumber(editor.mmdControls[3]);
-        if (editor.mmdEndKey > 0) readout += L"\r\n" + std::wstring(T(editor.session.language, StrKeyFrame)) + L" " +
-                                             FormatInteger(editor.mmdEndKey);
+        if (const Track* track=ActiveTrack(editor);track && editor.mmdEndKey>0 &&
+            std::size_t(editor.mmdEndKey)<track->keys.size())
+            readout=std::wstring(editor.session.language==2?L"区间 ":editor.session.language==1?L"Range ":L"区間 ")+
+                FormatInteger(track->keys[editor.mmdEndKey-1].frame)+L"–"+FormatInteger(track->keys[editor.mmdEndKey].frame)+
+                (editor.session.language==2?L" 帧":L"");
     } else {
         readout = editor.mmdReason;
     }
@@ -2345,7 +2459,7 @@ void UpdateEnabledState(Editor &editor) {
     }
     // Navigation and view selection only change what is on screen, so they stay
     // available for a source that can be read but not written.
-    for (int id : {kIdFitAll, kIdFitRange, kIdViewCombo, kIdToolCombo, kIdChannelList, kIdChannelAll}) {
+    for (int id : {kIdFitAll, kIdFitRange, kIdViewCombo, kIdToolCombo, kIdChannelList, kIdChannelAll, kIdChannelInvert}) {
         EnableWindow(GetDlgItem(editor.window, id), hasChannel ? TRUE : FALSE);
     }
     EnableWindow(GetDlgItem(editor.window, kIdDeleteKey), (writable && hasSelection) ? TRUE : FALSE);
@@ -2357,6 +2471,8 @@ void UpdateEnabledState(Editor &editor) {
         EnableWindow(editor.mmd, editor.mmdEnabled && writable ? TRUE : FALSE);
         InvalidateRect(editor.mmd, nullptr, FALSE);
     }
+    for(int id:{kIdMmdX1,kIdMmdY1,kIdMmdX2,kIdMmdY2})
+        EnableWindow(GetDlgItem(editor.window,id),editor.mmdEnabled && writable);
     // Comparison depends on what is on screen, never on the ability to write,
     // so a read-only source that offers comparison keeps the controls usable.
     UpdateCompareUi(editor);
@@ -2654,6 +2770,7 @@ void InvalidateCanvas(Editor &editor) {
     // Every view change repaints through here, so the view bounds hold for
     // the wheel, the range bars and their keys alike.
     ClampView(editor);
+    RefreshMouseReadout(editor);
     if (editor.canvas) InvalidateRect(editor.canvas, nullptr, FALSE);
 }
 
@@ -2729,11 +2846,29 @@ void SeekTimeline(Editor& editor,int frame){
     const bool playing=editor.session.isPlaying&&editor.session.isPlaying();
     if(!playing&&editor.session.currentFrame&&editor.session.currentFrame()==frame)return;
     if(editor.session.seek)editor.session.seek(frame);
+    editor.mmdFollowPlayhead=true;
+    UpdateMmdPanel(editor);
 }
 void SeekAtPoint(Editor& editor,POINT point){
     double frame=0;
     if(XToTime(editor,std::clamp(point.x,editor.plot.left,editor.plot.right),frame))
         SeekTimeline(editor,int(std::clamp(std::round(frame),0.0,double(kMaximumFrame))));
+}
+void SeekAdjacentKey(Editor& editor,bool next){
+    const Track* track=ActiveTrack(editor);
+    if(!track || track->keys.empty() || !editor.session.currentFrame || !editor.session.seek)return;
+    const double frame=editor.session.currentFrame();
+    if(!std::isfinite(frame))return;
+    if(next){
+        const auto it=std::upper_bound(track->keys.begin(),track->keys.end(),frame,
+            [](double value,const Key& key){return value<key.frame;});
+        if(it!=track->keys.end())SeekTimeline(editor,it->frame);
+    }else{
+        const auto it=std::lower_bound(track->keys.begin(),track->keys.end(),frame,
+            [](const Key& key,double value){return key.frame<value;});
+        if(it!=track->keys.begin())SeekTimeline(editor,std::prev(it)->frame);
+    }
+    OnPlayheadTimer(editor);
 }
 void OnPlayheadTimer(Editor &editor) {
     // A hidden editor does no work at all: no frame query, no repaint.
@@ -2749,6 +2884,7 @@ void OnPlayheadTimer(Editor &editor) {
     if (std::isfinite(editor.playheadFrame) && frame == editor.playheadFrame) return;
     editor.lastPlayheadFrame = editor.playheadFrame;
     editor.playheadFrame = frame;
+    if(editor.mmdDragHandle<0){editor.mmdFollowPlayhead=true;UpdateMmdPanel(editor);}
     ++editor.playheadInvalidations;
     InvalidatePlayhead(editor);
 }
@@ -2935,9 +3071,21 @@ void ApplyKeyFields(Editor &editor) {
 
 void SelectAllChannels(Editor &editor) {
     SourceState &state = CurrentState(editor);
-    for (Channel &channel : state.channels) channel.selected = true;
-    SyncSelectionToList(editor);
+    if(!EnterFreeForManualDisplay(editor))return;
+    for (Channel &channel : state.channels) channel.selected = !ComparisonSupported(editor)||curve_comparison::IsRegistered(channel.track);
+    SyncVisibilityToList(editor);UpdateCompareUi(editor);InvalidateCanvas(editor);
     SetStatus(editor, T(editor.session.language, StrReady), false);
+}
+
+void InvertChannels(Editor &editor) {
+    if(!EnterFreeForManualDisplay(editor))return;
+    SourceState& state=CurrentState(editor);
+    for(Channel& channel:state.channels){
+        channel.selected=!channel.selected;
+        if(ComparisonSupported(editor)&&!curve_comparison::IsRegistered(channel.track))channel.selected=false;
+    }
+    SyncVisibilityToList(editor);UpdateCompareUi(editor);InvalidateCanvas(editor);
+    SetStatus(editor,T(editor.session.language,StrReady),false);
 }
 
 void RunBake(Editor &editor) {
@@ -3259,7 +3407,7 @@ void SelectKeyRange(Editor &editor, const RECT &box, bool additive) {
 int TimeBarZone(Editor &editor, POINT point) {
     // 0 = pan, 1 = low (left/top) grip, 2 = high (right/bottom) grip, -1 = miss.
     const RECT &bar = editor.timeBar;
-    if (point.y < bar.top || point.y > bar.bottom) return -1;
+    if (!PtInRect(&bar,point)) return -1;
     RECT inner = bar;
     InflateRect(&inner, -Scale(2, editor.dpi), -Scale(3, editor.dpi));
     const BarRange range = TimeBarRange(editor);
@@ -3276,7 +3424,7 @@ int TimeBarZone(Editor &editor, POINT point) {
 
 int ValueBarZone(Editor &editor, POINT point) {
     const RECT &bar = editor.valueBar;
-    if (point.x < bar.left || point.x > bar.right) return -1;
+    if (!PtInRect(&bar,point)) return -1;
     RECT inner = bar;
     InflateRect(&inner, -Scale(3, editor.dpi), -Scale(2, editor.dpi));
     int top = 0, bottom = 0;
@@ -3288,6 +3436,33 @@ int ValueBarZone(Editor &editor, POINT point) {
     if (std::abs(point.y - top) <= grip) return 2;
     if (point.y > top && point.y < bottom) return 0;
     return -1;
+}
+
+bool CenterBarAtPoint(Editor& editor,POINT point) {
+    CanvasMetrics(editor);
+    const bool time=PtInRect(&editor.timeBar,point)!=FALSE;
+    if(!time && !PtInRect(&editor.valueBar,point))return false;
+    SetFocus(editor.canvas);
+    CancelDrag(editor);
+    const BarRange range=time?TimeBarRange(editor):ValueBarRange(editor);
+    int first=0,last=0;BarPixels(editor,time,first,last);
+    double low=editor.timeStart,high=editor.timeEnd;
+    if(!time)ValueRange(editor,low,high);
+    const double span=high-low;
+    if(!(span>0) || !std::isfinite(span) || !std::isfinite(range.fullHigh-range.fullLow))return true;
+    const double center=MapFromBar(time?point.x:point.y,
+        time?range.fullLow:range.fullHigh,time?range.fullHigh:range.fullLow,first,last);
+    // Clamp the translation, never either edge independently: span is invariant.
+    const double next=std::clamp(center-span*.5,range.fullLow,std::max(range.fullLow,range.fullHigh-span));
+    if(time){editor.timeStart=next;editor.timeEnd=next+span;}
+    else if(editor.viewMode==0){editor.valueLow=next;editor.valueHigh=next+span;}
+    else {editor.speedLow=next;editor.speedHigh=next+span;}
+    auto& centered=time?editor.centeredTime:editor.centeredValue;
+    centered={true,editor.viewMode,range.fullLow,range.fullHigh,next,next+span};
+    editor.barFocus=time?1:2;editor.barZone=0;
+    UpdateMouseReadout(editor,point);
+    InvalidateCanvas(editor);
+    return true;
 }
 
 void CanvasMouseDown(Editor &editor, UINT flags, POINT point) {
@@ -3731,13 +3906,15 @@ void BarArrowKey(Editor &editor, WPARAM key, bool shift) {
 // ---------------------------------------------------------------------------
 const int kTabOrder[] = {
     kIdSourceCombo, kIdReadMotion, kIdWriteMotion,
-    kIdViewCombo, kIdToolCombo, kIdFitAll, kIdFitRange, kIdShortcutToggle,
-    kIdPlay,kIdPreviousFrame,kIdNextFrame,kIdTimelineFrame,kIdSeekFrame,
+    kIdPreviousKey,kIdPreviousFrame,kIdNextFrame,kIdNextKey,kIdPlay,kIdTimelineFrame,kIdSeekFrame,
+    kIdViewCombo, kIdToolCombo, kIdFitAll, kIdFitRange,
     kIdCompareSameGroup, kIdCompareFree, kIdCompareAllGroups, kIdCompareFilter,
-    kIdChannelList, kIdChannelAll, kIdCanvas, kIdMmdPanel,
+    kIdChannelList, kIdChannelInvert, kIdChannelAll, kIdCanvas, kIdMmdPanel,
+    kIdMmdX1,kIdMmdY1,kIdMmdX2,kIdMmdY2,
     kIdFrameEdit, kIdValueEdit, kIdInterpolationCombo, kIdTangentCombo,
+    1090,
     kIdInSlopeEdit, kIdOutSlopeEdit, kIdInWeightEdit, kIdOutWeightEdit,
-    kIdAddKey, kIdDeleteKey, kIdApplyKey, kIdUndo, kIdRedo,
+    kIdApplyKey, kIdAddKey, kIdDeleteKey, kIdUndo, kIdRedo,
     kIdBakeFirstEdit, kIdBakeLastEdit, kIdBakeStepEdit, kIdBakeRun,
 };
 
@@ -3787,10 +3964,48 @@ Editor *EditorForChild(HWND hwnd) {
     return parent ? reinterpret_cast<Editor *>(GetWindowLongPtrW(parent, GWLP_USERDATA)) : nullptr;
 }
 
+void ApplyFromRegisterShortcut(Editor& editor,LPARAM keyData) {
+    // MMS PumpEnterRegisterFrame uses Enter, excludes Alt+Enter and held-key
+    // repeats. Keep this local to the curve editor's existing Apply operation.
+    if((keyData&(LPARAM(1)<<30)) || (keyData&(LPARAM(1)<<29)) ||
+       (GetKeyState(VK_MENU)&0x8000) || editor.drag!=Drag::None || editor.mmdDragHandle>=0)return;
+    if(IsWindowEnabled(GetDlgItem(editor.window,kIdApplyKey)))
+        SendMessageW(editor.window,WM_COMMAND,MAKEWPARAM(kIdApplyKey,BN_CLICKED),0);
+}
+
+void DeleteFromShortcut(Editor& editor,LPARAM keyData) {
+    if((keyData&(LPARAM(1)<<30)) || (keyData&(LPARAM(1)<<29)) ||
+       (GetKeyState(VK_MENU)&0x8000) || editor.drag!=Drag::None || editor.mmdDragHandle>=0)return;
+    if(IsWindowEnabled(GetDlgItem(editor.window,kIdDeleteKey)))
+        SendMessageW(editor.window,WM_COMMAND,MAKEWPARAM(kIdDeleteKey,BN_CLICKED),0);
+}
+
 // Shared by every subclassed control: Tab keeps moving the focus, hovering
 // explains the control in the hint line, and destruction drops the bookkeeping
 // entry.  Returns true when the message is fully answered by `result`.
 bool HandleChildMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, LRESULT &result) {
+    const int id=GetDlgCtrlID(hwnd);
+    if(message==WM_KEYDOWN && wparam==VK_DELETE){
+        wchar_t className[64]{};GetClassNameW(hwnd,className,64);
+        if(_wcsicmp(className,L"EDIT")!=0){
+            if(auto* editor=EditorForChild(hwnd))DeleteFromShortcut(*editor,lparam);
+            result=0;return true;
+        }
+    }
+    const bool coordinate=id>=kIdMmdX1&&id<=kIdMmdY2;
+    if(coordinate && message==WM_KEYDOWN && wparam==VK_RETURN){
+        if(!(lparam&(LPARAM(1)<<30)) && !(lparam&(LPARAM(1)<<29)) && !(GetKeyState(VK_MENU)&0x8000))
+            if(auto* editor=EditorForChild(hwnd))ApplyMmdCoordinateFields(*editor);
+        result=0;return true;
+    }
+    if(coordinate && message==WM_CHAR && wparam==L'\r'){result=0;return true;}
+    const bool parameter=id==kIdFrameEdit||id==kIdValueEdit||id==kIdInterpolationCombo||id==kIdTangentCombo||
+        id==kIdInSlopeEdit||id==kIdOutSlopeEdit||id==kIdInWeightEdit||id==kIdOutWeightEdit;
+    if(parameter && message==WM_KEYDOWN && wparam==VK_RETURN){
+        if(auto* editor=EditorForChild(hwnd))ApplyFromRegisterShortcut(*editor,lparam);
+        result=0;return true;
+    }
+    if(parameter && message==WM_CHAR && wparam==L'\r'){result=0;return true;}
     if(message==WM_KEYDOWN&&wparam==VK_RETURN&&GetDlgCtrlID(hwnd)==kIdTimelineFrame){
         SendMessageW(GetParent(hwnd),WM_COMMAND,MAKEWPARAM(kIdSeekFrame,BN_CLICKED),0);
         result=0;return true;
@@ -4036,7 +4251,43 @@ void MmdMouseMove(Editor &editor, POINT point) {
         editor.mmdControls[2] = std::floor(u + 0.5);
         editor.mmdControls[3] = std::floor(v + 0.5);
     }
+    SyncMmdCoordinateFields(editor);
     if (editor.mmd) InvalidateRect(editor.mmd, nullptr, FALSE);
+}
+
+void ApplyMmdCoordinateFields(Editor &editor) {
+    SourceState &state=CurrentState(editor);
+    if(!editor.mmdEnabled || !state.valid || !CurrentSource(editor).apply ||
+       editor.drag!=Drag::None || editor.mmdDragHandle>=0)return;
+    const std::size_t endKey=ActiveKeyIndex(editor);
+    const Track* track=ActiveTrack(editor);
+    if(!track || endKey==0 || endKey>=track->keys.size())return;
+    std::array<double,4> controls{};
+    const int ids[]={kIdMmdX1,kIdMmdY1,kIdMmdX2,kIdMmdY2};
+    for(int i=0;i<4;++i){
+        long long value=0;
+        if(!ParseIntegerText(ControlText(editor.window,ids[i]),value) || value<0 || value>127 ||
+           (i%2==0 && (value<1 || value>126))){
+            SetStatus(editor,L"控制点坐标需为整数：横坐标 1–126，纵坐标 0–127。",true);
+            SetFocus(GetDlgItem(editor.window,ids[i]));
+            SendMessageW(GetDlgItem(editor.window,ids[i]),EM_SETSEL,0,-1);
+            return;
+        }
+        controls[i]=double(value);
+    }
+    if(controls[0]>=controls[2]){
+        SetStatus(editor,L"起始点横坐标必须小于终止点横坐标，请调整后按 Enter。",true);
+        return;
+    }
+    std::vector<Channel> next=CopyChannels(editor);
+    std::string error;
+    if(!SetChannelControls(next[state.active],endKey,controls,error)){
+        SetStatus(editor,std::wstring(T(editor.session.language,StrApplyRejected))+Widen(error),true);
+        return;
+    }
+    if(CommitChannels(editor,std::move(next),T(editor.session.language,StrReady),true)){
+        UpdateKeyFields(editor);UpdateMmdPanel(editor);UpdateEnabledState(editor);
+    }
 }
 
 void MmdMouseUp(Editor &editor) {
@@ -4117,237 +4368,215 @@ int MeasureTextWidth(Editor &editor, const wchar_t *text) {
 }
 
 void MoveControl(Editor &editor, int id, int x, int y, int width, int height) {
-    if (HWND control = GetDlgItem(editor.window, id)) MoveWindow(control, x, y, width, height, TRUE);
+    ui::MoveLayoutControl(editor.window, id, x, y, width, height, editor.deferLayoutPaint);
+}
+
+int ChannelWidthLimit(const Editor& editor) {
+    RECT client{}; GetClientRect(editor.window, &client);
+    return std::max(180, std::min(440, MulDiv(client.right, 96, editor.dpi) - 24 - 8 - 560));
+}
+
+LRESULT CALLBACK ChannelSplitterProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR data) {
+    auto& editor = *reinterpret_cast<Editor*>(data);
+    auto setWidth = [&](int width) {
+        const int next = std::clamp(width, 180, ChannelWidthLimit(editor));
+        if (editor.channelWidth == next) return;
+        editor.channelWidth = next;
+        editor.deferLayoutPaint = true;
+        LayoutEditor(editor);
+        editor.deferLayoutPaint = false;
+        RedrawWindow(editor.window, nullptr, nullptr,
+            RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    };
+    switch (message) {
+    case WM_SETCURSOR: SetCursor(LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_SIZEWE))); return TRUE;
+    case WM_LBUTTONDOWN:
+        editor.pendingChannelWidth = editor.channelWidth;
+        editor.resizingChannels = true; SetFocus(hwnd); SetCapture(hwnd); return 0;
+    case WM_MOUSEMOVE:
+        if (editor.resizingChannels) {
+            POINT point{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}; MapWindowPoints(hwnd, editor.window, &point, 1);
+            editor.pendingChannelWidth = std::clamp(MulDiv(point.x, 96, editor.dpi) - 12 - 4, 180, ChannelWidthLimit(editor));
+            SetCursor(LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_SIZEWE)));
+        } return 0;
+    case WM_LBUTTONUP:
+        if (editor.resizingChannels) {
+            // Mouse-up may be newer than the last coalesced mouse move.
+            POINT point{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}; MapWindowPoints(hwnd, editor.window, &point, 1);
+            editor.pendingChannelWidth = std::clamp(MulDiv(point.x, 96, editor.dpi) - 12 - 4, 180, ChannelWidthLimit(editor));
+            editor.resizingChannels = false;
+            setWidth(editor.pendingChannelWidth);
+        }
+        if (GetCapture() == hwnd) ReleaseCapture(); return 0;
+    case WM_LBUTTONDBLCLK: setWidth(kChannelWidth); return 0;
+    case WM_CAPTURECHANGED: editor.resizingChannels = false; return 0;
+    case WM_CANCELMODE:
+        editor.resizingChannels = false;
+        if (GetCapture() == hwnd) ReleaseCapture(); return 0;
+    case WM_KEYDOWN:
+        if (wp == VK_ESCAPE && editor.resizingChannels) {SendMessageW(hwnd, WM_CANCELMODE, 0, 0); return 0;}
+        if (wp == VK_LEFT || wp == VK_RIGHT) {setWidth(editor.channelWidth + (wp == VK_LEFT ? -1 : 1) * ((GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 10)); return 0;}
+        if (wp == VK_HOME) {setWidth(kChannelWidth); return 0;}
+        break;
+    case WM_GETDLGCODE: return DLGC_WANTARROWS | DLGC_WANTCHARS;
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT:
+    case WM_PRINTCLIENT: {
+        PAINTSTRUCT ps{}; HDC dc = message == WM_PAINT ? BeginPaint(hwnd, &ps) : reinterpret_cast<HDC>(wp);
+        RECT r{}; GetClientRect(hwnd, &r); curve_editor_theme::Fill(dc, r, curve_editor_theme::shell);
+        // The left panel's right edge is draggable without a visible divider.
+        if (message == WM_PAINT) EndPaint(hwnd, &ps); return 0;
+    }
+    case WM_SETFOCUS:
+    case WM_KILLFOCUS: InvalidateRect(hwnd, nullptr, FALSE); break;
+    case WM_NCDESTROY: RemoveWindowSubclass(hwnd, ChannelSplitterProc, id); break;
+    }
+    LRESULT shared = 0;
+    if (HandleChildMessage(hwnd, message, wp, lp, shared)) return shared;
+    return DefSubclassProc(hwnd, message, wp, lp);
 }
 
 void LayoutEditor(Editor &editor) {
-    if (!editor.window) return;
-    // One labelled field: the static label and the box it names.
-    struct Field {
-        int label;
-        int control;
-        Str text;
+    if(!editor.window)return;
+    RECT client{};GetClientRect(editor.window,&client);
+    auto S=[&](int v){return Scale(v,editor.dpi);};
+    const int margin=S(12),gap=S(8),height=S(26),pitch=height+gap;
+    const int sidebar=S(std::clamp(editor.channelWidth,180,ChannelWidthLimit(editor)));
+    const int left=margin+sidebar+gap,right=client.right-margin;
+    const int width=right-left,label=S(48),fieldGap=S(16);
+    auto put=[&](int id,int x,int y,int w,int h){
+        HWND c=GetDlgItem(editor.window,id);
+        if(id==1002||id==1007||id==1009||id==1045||id==1047)
+            SendMessageW(c,CB_SETITEMHEIGHT,WPARAM(-1),S(20));
+        MoveControl(editor,id,x,y,w,h);
     };
-    RECT client = {};
-    GetClientRect(editor.window, &client);
-    const int margin = Scale(kMargin, editor.dpi);
-    const int gap = Scale(kGap, editor.dpi);
-    const int row = Scale(kRowHeight, editor.dpi);
-    const int button = Scale(kButtonHeight, editor.dpi);
-    const int statusHeight = Scale(kStatusHeight, editor.dpi);
-    const int hintHeight = Scale(kHintHeight, editor.dpi);
-
-    int y = margin;
-    // Row 1: source selector and the explicit motion actions.
-    {
-        const int labelWidth = MeasureTextWidth(editor, T(editor.session.language, StrSource)) + gap;
-        int x = margin;
-        MoveControl(editor, kIdSourceLabel, x, y + Scale(3, editor.dpi), labelWidth, row);
-        x += labelWidth + gap;
-        MoveControl(editor, kIdSourceCombo, x, y + Scale(1, editor.dpi), Scale(250, editor.dpi),
-                    row + Scale(4, editor.dpi));
-        x += Scale(250, editor.dpi) + gap;
-        const wchar_t *buttons[2] = {T(editor.session.language, StrReadMotion),
-                                     T(editor.session.language, StrWriteMotion)};
-        const int ids[2] = {kIdReadMotion, kIdWriteMotion};
-        for (int index = 0; index < 2; ++index) {
-            const int width = MeasureTextWidth(editor, buttons[index]) + gap * 2 + Scale(12, editor.dpi);
-            MoveControl(editor, ids[index], x, y, width, button);
-            x += width + gap;
-        }
-        y += row + gap;
-    }
-    // Row 2: view mode, tool, fitting and the shortcut help toggle.
-    {
-        int x = margin;
-        const std::wstring viewLabel = T(editor.session.language, StrView);
-        const int viewLabelWidth = MeasureTextWidth(editor, viewLabel.c_str()) + gap;
-        MoveControl(editor, kIdViewLabel, x, y + Scale(3, editor.dpi), viewLabelWidth, row);
-        x += viewLabelWidth + gap;
-        MoveControl(editor, kIdViewCombo, x, y + Scale(1, editor.dpi), Scale(110, editor.dpi), row + Scale(4, editor.dpi));
-        x += Scale(110, editor.dpi) + gap;
-        const std::wstring toolLabel = T(editor.session.language, StrTool);
-        const int toolLabelWidth = MeasureTextWidth(editor, toolLabel.c_str()) + gap;
-        MoveControl(editor, kIdToolLabel, x, y + Scale(3, editor.dpi), toolLabelWidth, row);
-        x += toolLabelWidth + gap;
-        MoveControl(editor, kIdToolCombo, x, y + Scale(1, editor.dpi), Scale(110, editor.dpi), row + Scale(4, editor.dpi));
-        x += Scale(110, editor.dpi) + gap;
-        const wchar_t *buttons[3] = {T(editor.session.language, StrFitAll), T(editor.session.language, StrFitRange),
-                                     T(editor.session.language, StrShortcuts)};
-        const int ids[3] = {kIdFitAll, kIdFitRange, kIdShortcutToggle};
-        for (int index = 0; index < 3; ++index) {
-            const int width = MeasureTextWidth(editor, buttons[index]) + gap * 2 + Scale(12, editor.dpi);
-            MoveControl(editor, ids[index], x, y, width, button);
-            x += width + gap;
-        }
-        y += row + gap;
-    }
-    const bool transport=editor.session.seek!=nullptr;
-    for(int id:{kIdPlay,kIdPreviousFrame,kIdNextFrame,kIdTimelineFrame,kIdSeekFrame})
-        ShowWindow(GetDlgItem(editor.window,id),transport?SW_SHOW:SW_HIDE);
+    auto tag=[&](int id,int x,int y,int w,int h){
+        HWND c=GetDlgItem(editor.window,id);
+        SetWindowLongPtrW(c,GWL_STYLE,GetWindowLongPtrW(c,GWL_STYLE)|SS_CENTERIMAGE);
+        put(id,x,y,w,h);
+    };
+    auto field=[&](int lid,int cid,int x,int y,int w){
+        tag(lid,x,y,label,height);put(cid,x+label+gap,y,w-label-gap,height);
+    };
+    // Toolbar groups stay fixed while the panel divider moves below them.
+    const int first=margin+S(40),second=margin+S(kChannelWidth)+gap,secondBox=second+S(40),group=S(160);
+    const int groupEnd=secondBox+group,action=groupEnd+S(16),actionWidth=S(client.right<900?76:88);
+    int y=margin;
+    tag(kIdSourceLabel,margin,y,S(32),height);
+    put(kIdSourceCombo,first,y,groupEnd-first,height);
+    put(kIdReadMotion,action,y,actionWidth,height);
+    put(kIdWriteMotion,action+actionWidth+gap,y,actionWidth,height);
+    y+=pitch;
+    tag(kIdViewLabel,margin,y,S(32),height);put(kIdViewCombo,first,y,group,height);
+    tag(kIdToolLabel,second,y,S(32),height);put(kIdToolCombo,secondBox,y,group,height);
+    put(kIdFitAll,action,y,actionWidth,height);
+    put(kIdFitRange,action+actionWidth+gap,y,actionWidth,height);
+    y+=pitch;
+    bool transport=editor.session.seek!=nullptr;
+    int x=first;
+    const int transportIds[]={kIdPreviousKey,kIdPreviousFrame,kIdNextFrame,kIdNextKey,kIdPlay,kIdTimelineFrame,kIdSeekFrame};
+    for(int id:transportIds)ShowWindow(GetDlgItem(editor.window,id),transport?SW_SHOW:SW_HIDE);
+    const int available=right-(action+2*actionWidth+gap)-S(16);
+    const int transportWidth=std::min(S(320),available),transportLeft=right-transportWidth;
+    ShowWindow(GetDlgItem(editor.window,kIdShortcutToggle),SW_HIDE);
     if(transport){
-        int x=margin;
-        for(int id:{kIdPlay,kIdPreviousFrame,kIdNextFrame,kIdTimelineFrame,kIdSeekFrame}){
-            const int width=Scale(id==kIdTimelineFrame?92:id==kIdPlay?74:64,editor.dpi);
-            MoveControl(editor,id,x,y,width,button);x+=width+gap;
-        }
+        const int playWidth=S(transportWidth<S(260)?56:72),stepGap=S(4);
+        const int navigationWidth=transportWidth-playWidth-gap,usable=navigationWidth-3*stepGap;
+        const int steps[]={kIdPreviousKey,kIdPreviousFrame,kIdNextFrame,kIdNextKey};
+        for(int i=0;i<4;++i)put(steps[i],transportLeft+usable*i/4+i*stepGap,margin,usable*(i+1)/4-usable*i/4,height);
+        put(kIdPlay,right-playWidth,margin,playWidth,height);
+        put(kIdTimelineFrame,transportLeft,margin+pitch,navigationWidth,height);
+        put(kIdSeekFrame,right-playWidth,margin+pitch,playWidth,height);
         EnableWindow(GetDlgItem(editor.window,kIdPlay),editor.session.setPlaying!=nullptr);
-        y+=row+gap;
     }
-    // Row 3: the comparison display.  It is laid out only for a source that
-    // declares comparison support, so every other source keeps exactly the rows
-    // above and the geometry it had before.  The row is placed last of the
-    // header rows, which leaves all existing controls where they were.
-    const int compareIds[4] = {kIdCompareLabel, kIdCompareSameGroup, kIdCompareFree, kIdCompareAllGroups};
-    if (ComparisonSupported(editor)) {
-        int x = margin;
-        const std::wstring compareLabel = T(editor.session.language, StrCompare);
-        const int labelWidth = MeasureTextWidth(editor, compareLabel.c_str()) + gap;
-        MoveControl(editor, kIdCompareLabel, x, y + Scale(3, editor.dpi), labelWidth, row);
-        x += labelWidth + gap;
-        // One segmented control: three equal-width push-like segments that touch
-        // each other, in the visual order same group - free - four groups.  The
-        // stored values stay 1 same group, 2 four groups and 3 free, so only the
-        // visual order is 1-3-2.
-        const int segmentIds[3] = {kIdCompareSameGroup, kIdCompareFree, kIdCompareAllGroups};
-        const Str segmentText[3] = {StrCompareSameGroup, StrCompareFree, StrCompareAllGroups};
-        int segmentWidth = Scale(48, editor.dpi);
-        for (int index = 0; index < 3; ++index) {
-            segmentWidth = std::max(segmentWidth,
-                                    MeasureTextWidth(editor, T(editor.session.language, segmentText[index])) +
-                                        gap * 2 + Scale(10, editor.dpi));
-        }
-        for (int index = 0; index < 3; ++index) {
-            MoveControl(editor, segmentIds[index], x + index * segmentWidth, y, segmentWidth, button);
-        }
-        x += 3 * segmentWidth + gap;
-        const int filterWidth =
-            MeasureTextWidth(editor, T(editor.session.language, StrCompareFilter)) + gap * 2 + Scale(12, editor.dpi);
-        MoveControl(editor, kIdCompareFilter, x, y, filterWidth, button);
-        for (int id : compareIds) ShowWindow(GetDlgItem(editor.window, id), SW_SHOW);
-        ShowWindow(GetDlgItem(editor.window, kIdCompareFilter), SW_SHOW);
-        y += row + gap;
-    } else {
-        for (int id : compareIds) ShowWindow(GetDlgItem(editor.window, id), SW_HIDE);
-        ShowWindow(GetDlgItem(editor.window, kIdCompareFilter), SW_HIDE);
-    }
+    bool compare=ComparisonSupported(editor);
+    for(int id:{kIdCompareLabel,kIdCompareSameGroup,kIdCompareFree,kIdCompareAllGroups,kIdCompareFilter})ShowWindow(GetDlgItem(editor.window,id),compare?SW_SHOW:SW_HIDE);
+    if(compare){tag(kIdCompareLabel,margin,y,S(32),height);x=first;for(int id:{kIdCompareSameGroup,kIdCompareFree,kIdCompareAllGroups}){put(id,x,y,S(104),height);x+=S(104);}put(kIdCompareFilter,x+gap,y,S(136),height);y+=pitch;}
 
-    const int statusTop = client.bottom - margin - statusHeight;
-    // The hint line sits directly above the status line: the transient hover
-    // text and the persistent status or error text never share a rectangle.
-    const int hintTop = statusTop - gap - hintHeight;
-    const int bakeTop = hintTop - gap - button;
-    const int stripTop = bakeTop - gap;
-    const int stripHeight = std::max(Scale(kMmdSquare, editor.dpi) + row + gap * 2,
-                                     4 * (row + gap) + button + gap);
-    const int stripContentTop = stripTop - stripHeight;
-    const int helpHeight = editor.helpExpanded ? Scale(kHelpHeight, editor.dpi) : 0;
-    const int helpTop = stripContentTop - (helpHeight ? helpHeight + gap : 0);
+    const int statusTop=client.bottom-margin-S(kStatusHeight);
+    const int hintTop=statusTop-gap-S(kHintHeight),bakeTop=hintTop-S(12)-height;
+    const int columns=width>=S(840)?4:2;
+    const int advancedRows=columns==4?1:2;
+    const int advancedHeight=std::max(S(36),advancedRows*pitch-gap);
+    const int actionOffset=3*pitch+S(30)+(editor.advancedExpanded?advancedHeight+gap:0);
+    const int coordinateBlock=2*pitch+S(32);
+    // Use the free space beside the baking row for the coordinate fields.
+    // This enlarges the square without needlessly shortening the main plot.
+    const int leftExtra=hintTop-gap-(bakeTop-S(12));
+    const int miniLimit=bakeTop-S(12)-y-S(100)-S(12)-coordinateBlock+leftExtra;
+    const int preferredMini=editor.advancedExpanded?std::clamp(sidebar-S(42),S(138),S(240)):S(148);
+    const int miniSide=std::min(preferredMini,std::max(S(100),miniLimit));
+    const int stripHeight=std::max(miniSide+coordinateBlock-leftExtra,actionOffset+height);
+    const int stripTop=bakeTop-S(12)-stripHeight;
+    const int helpHeight=0;
+    const int canvasBottom=stripTop-S(12)-(helpHeight?helpHeight+gap:0);
+    tag(kIdChannelLabel,margin,y,sidebar-2*S(48)-2*gap,height);
+    put(kIdChannelInvert,margin+sidebar-2*S(48)-gap,y,S(48),height);
+    put(kIdChannelAll,margin+sidebar-S(48),y,S(48),height);
+    put(kIdChannelList,margin,y+pitch,sidebar,std::max(height,canvasBottom-y-pitch));
+    curve_editor_channel_scroll::Layout(GetDlgItem(editor.window,kIdChannelList));
+    put(1111,margin+sidebar,y,gap,std::max(height,hintTop-y-gap));
+    put(kIdCanvas,left,y,width,std::max(S(100),canvasBottom-y));
+    ShowWindow(GetDlgItem(editor.window,kIdShortcutText),helpHeight?SW_SHOW:SW_HIDE);
+    if(helpHeight)put(kIdShortcutText,left,canvasBottom+gap,width,helpHeight);
 
-    // Left column: the channel list.
-    const int channelWidth = Scale(kChannelWidth, editor.dpi);
-    {
-        const int labelWidth = MeasureTextWidth(editor, T(editor.session.language, StrChannels)) + gap;
-        const int allWidth = MeasureTextWidth(editor, T(editor.session.language, StrSelectAll)) + gap * 2 + Scale(8, editor.dpi);
-        // The label stops one gap above the list, so the two never touch.
-        MoveControl(editor, kIdChannelLabel, margin, y + Scale(3, editor.dpi), labelWidth, row - Scale(3, editor.dpi));
-        MoveControl(editor, kIdChannelAll, margin + channelWidth - allWidth, y, allWidth, button);
-        const int listTop = y + row + gap;
-        MoveControl(editor, kIdChannelList, margin, listTop, channelWidth, std::max(row, stripContentTop - listTop));
+    ShowWindow(GetDlgItem(editor.window,kIdMmdLabel),SW_HIDE);
+    int side=miniSide,panelY=stripTop;
+    put(kIdMmdPanel,margin+(sidebar-side)/2,panelY,side,side);
+    const int coordinateY=panelY+side+gap;
+    for(int row=0;row<2;++row){
+        const int cy=coordinateY+row*pitch;
+        tag(1100+row*3,margin,cy,S(58),height);
+        const int input=(sidebar-S(90))/2;
+        put(kIdMmdX1+row*2,margin+S(58),cy,input,height);
+        tag(1101+row*3,margin+S(58)+input,cy,S(16),height);
+        put(kIdMmdY1+row*2,margin+S(74)+input,cy,input,height);
+        tag(1102+row*3,margin+S(74)+2*input,cy,S(16),height);
     }
-    // Right column: canvas, optional help text and the lower panels.
-    const int rightLeft = margin + channelWidth + gap;
-    const int rightRight = client.right - margin;
-    const int canvasHeight = std::max(row, helpTop - y);
-    MoveControl(editor, kIdCanvas, rightLeft, y, std::max(Scale(200, editor.dpi), rightRight - rightLeft), canvasHeight);
-    if (helpHeight) {
-        MoveControl(editor, kIdShortcutText, rightLeft, helpTop + gap, std::max(Scale(200, editor.dpi), rightRight - rightLeft),
-                    helpHeight);
-    }
-    if (editor.canvas) {
-        if (editor.helpExpanded)
-            ShowWindow(GetDlgItem(editor.window, kIdShortcutText), SW_SHOW);
-        else
-            ShowWindow(GetDlgItem(editor.window, kIdShortcutText), SW_HIDE);
-    }
+    put(kIdMmdReadout,margin,coordinateY+2*pitch,sidebar,S(24));
+    int half=(width-fieldGap)/2;
+    field(kIdFrameLabel,kIdFrameEdit,left,stripTop,half);
+    field(kIdValueLabel,kIdValueEdit,left+half+fieldGap,stripTop,width-half-fieldGap);
+    field(kIdInterpolationLabel,kIdInterpolationCombo,left,stripTop+pitch,width);
+    field(kIdTangentLabel,kIdTangentCombo,left,stripTop+2*pitch,width);
 
-    // MMD panel column.
-    {
-        const int mmdLeft = margin;
-        MoveControl(editor, kIdMmdLabel, mmdLeft, stripContentTop, Scale(kMmdColumn, editor.dpi) - gap, row);
-        const int panelTop = stripContentTop + row + gap;
-        const int side = Scale(kMmdSquare, editor.dpi);
-        MoveControl(editor, kIdMmdPanel, mmdLeft, panelTop, side, side);
-        const int readoutLeft = mmdLeft + side + gap;
-        MoveControl(editor, kIdMmdReadout, readoutLeft, panelTop,
-                    std::max(Scale(60, editor.dpi), Scale(kMmdColumn, editor.dpi) - side - gap * 2), side);
+    int moreY=stripTop+3*pitch;
+    SetControlText(editor.window,1090,editor.advancedExpanded?L"收起斜率与权重":L"展开斜率与权重");
+    put(1090,left,moreY,S(136),S(22));
+    SetControlText(editor.window,1094,editor.advancedExpanded?L"上下拖动 · Ctrl 精调 · Shift 快调 · Enter 应用":L"Enter 应用当前参数");
+    ShowWindow(GetDlgItem(editor.window,1094),SW_SHOW);
+    tag(1094,left+S(148),moreY,std::max(S(100),width-S(148)),S(22));
+    const int lids[]={kIdInSlopeLabel,kIdOutSlopeLabel,kIdInWeightLabel,kIdOutWeightLabel};
+    const int cids[]={kIdInSlopeEdit,kIdOutSlopeEdit,kIdInWeightEdit,kIdOutWeightEdit};
+    const int applyWidth=S(editor.session.language==1?60:32),fieldsRight=right-applyWidth-gap;
+    int cell=(fieldsRight-left-(columns-1)*fieldGap)/columns;
+    for(int i=0;i<4;++i){
+        ShowWindow(GetDlgItem(editor.window,lids[i]),editor.advancedExpanded?SW_SHOW:SW_HIDE);
+        ShowWindow(GetDlgItem(editor.window,cids[i]),editor.advancedExpanded?SW_SHOW:SW_HIDE);
+        int column=i%columns,row=i/columns,fx=left+column*(cell+fieldGap);
+        int fw=column==columns-1?fieldsRight-fx:cell;
+        const int rowOffset=advancedRows==1?(advancedHeight-height)/2:0;
+        field(lids[i],cids[i],fx,moreY+S(30)+row*pitch+rowOffset,fw);
     }
-    // Key and tangent fields: two columns, labels left of every box.
-    {
-        const int fieldsLeft = margin + Scale(kMmdColumn, editor.dpi) + gap;
-        const int fieldsWidth = std::max(Scale(240, editor.dpi), rightRight - fieldsLeft);
-        const int columnWidth = fieldsWidth / 2;
-        const Field leftFields[4] = {{kIdFrameLabel, kIdFrameEdit, StrKeyFrame},
-                                     {kIdValueLabel, kIdValueEdit, StrKeyValue},
-                                     {kIdInterpolationLabel, kIdInterpolationCombo, StrInterpolation},
-                                     {kIdTangentLabel, kIdTangentCombo, StrTangent}};
-        const Field rightFields[4] = {{kIdInSlopeLabel, kIdInSlopeEdit, StrInSlope},
-                                      {kIdOutSlopeLabel, kIdOutSlopeEdit, StrOutSlope},
-                                      {kIdInWeightLabel, kIdInWeightEdit, StrInWeight},
-                                      {kIdOutWeightLabel, kIdOutWeightEdit, StrOutWeight}};
-        int leftLabelWidth = 0, rightLabelWidth = 0;
-        for (int index = 0; index < 4; ++index) {
-            leftLabelWidth = std::max(leftLabelWidth, MeasureTextWidth(editor, T(editor.session.language, leftFields[index].text)));
-            rightLabelWidth = std::max(rightLabelWidth, MeasureTextWidth(editor, T(editor.session.language, rightFields[index].text)));
-        }
-        leftLabelWidth += gap;
-        rightLabelWidth += gap;
-        for (int index = 0; index < 4; ++index) {
-            const int rowY = stripContentTop + index * (row + gap);
-            MoveControl(editor, leftFields[index].label, fieldsLeft, rowY + Scale(3, editor.dpi), leftLabelWidth, row);
-            MoveControl(editor, leftFields[index].control, fieldsLeft + leftLabelWidth + gap, rowY + Scale(1, editor.dpi),
-                        std::max(Scale(50, editor.dpi), columnWidth - leftLabelWidth - gap * 2), row + Scale(4, editor.dpi));
-            const int rightX = fieldsLeft + columnWidth;
-            MoveControl(editor, rightFields[index].label, rightX, rowY + Scale(3, editor.dpi), rightLabelWidth, row);
-            MoveControl(editor, rightFields[index].control, rightX + rightLabelWidth + gap, rowY + Scale(1, editor.dpi),
-                        std::max(Scale(50, editor.dpi), fieldsWidth - columnWidth - rightLabelWidth - gap * 2),
-                        row + Scale(4, editor.dpi));
-        }
-        const int buttonsTop = stripContentTop + 4 * (row + gap);
-        const int buttonIds[5] = {kIdAddKey, kIdDeleteKey, kIdApplyKey, kIdUndo, kIdRedo};
-        const int buttonWidth = std::max(Scale(48, editor.dpi), (fieldsWidth - 4 * gap) / 5);
-        int x = fieldsLeft;
-        for (int index = 0; index < 5; ++index) {
-            MoveControl(editor, buttonIds[index], x, buttonsTop, buttonWidth, button);
-            x += buttonWidth + gap;
-        }
-    }
-    // Bake row and status.
-    {
-        int x = margin;
-        const Field bakeFields[3] = {{kIdBakeFirstLabel, kIdBakeFirstEdit, StrBakeFirst},
-                                     {kIdBakeLastLabel, kIdBakeLastEdit, StrBakeLast},
-                                     {kIdBakeStepLabel, kIdBakeStepEdit, StrBakeStep}};
-        for (int index = 0; index < 3; ++index) {
-            const int labelWidth = MeasureTextWidth(editor, T(editor.session.language, bakeFields[index].text)) + gap;
-            MoveControl(editor, bakeFields[index].label, x, bakeTop + Scale(3, editor.dpi), labelWidth, row);
-            x += labelWidth + gap;
-            MoveControl(editor, bakeFields[index].control, x, bakeTop + Scale(1, editor.dpi), Scale(76, editor.dpi),
-                        row + Scale(4, editor.dpi));
-            x += Scale(76, editor.dpi) + gap * 2;
-        }
-        const int runWidth = MeasureTextWidth(editor, T(editor.session.language, StrBakeRun)) + gap * 2 + Scale(16, editor.dpi);
-        MoveControl(editor, kIdBakeRun, x, bakeTop, runWidth, button);
-        MoveControl(editor, kIdHoverHint, margin, hintTop,
-                    std::max(Scale(100, editor.dpi), static_cast<int>(client.right) - margin * 2), hintHeight);
-        MoveControl(editor, kIdStatus, margin, statusTop, std::max(Scale(100, editor.dpi), static_cast<int>(client.right) - margin * 2), statusHeight);
-    }
-    if (editor.canvas) {
-        CanvasMetrics(editor);
-        InvalidateCanvas(editor);
-    }
-    if (editor.mmd) InvalidateRect(editor.mmd, nullptr, FALSE);
+    ShowWindow(GetDlgItem(editor.window,kIdApplyKey),editor.advancedExpanded?SW_SHOW:SW_HIDE);
+    put(kIdApplyKey,right-applyWidth,moreY+S(30),applyWidth,advancedHeight);
+    int buttons[]={kIdAddKey,kIdDeleteKey,kIdUndo,kIdRedo};
+    int usable=width-3*gap;
+    for(int i=0;i<4;++i){int bx=left+usable*i/4+i*gap;put(buttons[i],bx,stripTop+actionOffset,usable*(i+1)/4-usable*i/4,height);}
+
+    int bakeButton=S(132),pairsWidth=width-bakeButton-gap,pair=pairsWidth/3;
+    int bakeLabels[]={kIdBakeFirstLabel,kIdBakeLastLabel,kIdBakeStepLabel};
+    int bakeEdits[]={kIdBakeFirstEdit,kIdBakeLastEdit,kIdBakeStepEdit};
+    for(int i=0;i<3;++i)field(bakeLabels[i],bakeEdits[i],left+i*pair,bakeTop,pair-gap);
+    put(kIdBakeRun,right-bakeButton,bakeTop,bakeButton,height);
+    put(kIdHoverHint,margin,hintTop,client.right-2*margin,S(kHintHeight));
+    const int readoutWidth=std::min(S(340),(int(client.right)-2*margin)/2);
+    put(kIdStatus,margin,statusTop,client.right-2*margin-readoutWidth-gap,S(kStatusHeight));
+    put(kIdMouseReadout,right-readoutWidth,statusTop,readoutWidth,S(kStatusHeight));
+    if(editor.canvas){CanvasMetrics(editor);InvalidateCanvas(editor);}
+    if(editor.mmd)InvalidateRect(editor.mmd,nullptr,FALSE);
 }
+
 
 void FillCombos(Editor &editor) {
     const unsigned language = editor.session.language;
@@ -4418,6 +4647,7 @@ void ApplyLanguage(Editor &editor) {
     SetControlText(editor.window, kIdFitRange, T(language, StrFitRange));
     SetControlText(editor.window, kIdShortcutToggle, T(language, StrShortcuts));
     SetControlText(editor.window, kIdChannelAll, T(language, StrSelectAll));
+    SetControlText(editor.window, kIdChannelInvert, T(language, StrInvertSelection));
     SetControlText(editor.window, kIdAddKey, T(language, StrAddKey));
     SetControlText(editor.window, kIdDeleteKey, T(language, StrDeleteKey));
     SetControlText(editor.window, kIdApplyKey, T(language, StrApply));
@@ -4472,8 +4702,10 @@ HWND MakeControl(Editor &editor, const wchar_t *className, const wchar_t *text, 
 void CreateControls(Editor &editor) {
     const unsigned language = editor.session.language;
     MakeControl(editor,L"BUTTON",PlayCaption(editor),WS_TABSTOP|BS_PUSHBUTTON,kIdPlay);
-    MakeControl(editor,L"BUTTON",L"◀",WS_TABSTOP|BS_PUSHBUTTON,kIdPreviousFrame);
-    MakeControl(editor,L"BUTTON",L"▶",WS_TABSTOP|BS_PUSHBUTTON,kIdNextFrame);
+    MakeControl(editor,L"BUTTON",L"上一关键帧",WS_TABSTOP|BS_PUSHBUTTON,kIdPreviousKey);
+    MakeControl(editor,L"BUTTON",L"上一帧",WS_TABSTOP|BS_PUSHBUTTON,kIdPreviousFrame);
+    MakeControl(editor,L"BUTTON",L"下一帧",WS_TABSTOP|BS_PUSHBUTTON,kIdNextFrame);
+    MakeControl(editor,L"BUTTON",L"下一关键帧",WS_TABSTOP|BS_PUSHBUTTON,kIdNextKey);
     MakeControl(editor,L"EDIT",L"0",WS_TABSTOP|ES_AUTOHSCROLL|ES_NUMBER,kIdTimelineFrame);
     MakeControl(editor,L"BUTTON",language==0?L"移動":language==1?L"Go":L"跳转",WS_TABSTOP|BS_PUSHBUTTON,kIdSeekFrame);
 
@@ -4505,9 +4737,12 @@ void CreateControls(Editor &editor) {
     MakeControl(editor, L"BUTTON", T(language, StrCompareFilter), WS_TABSTOP | WS_GROUP | BS_PUSHBUTTON,
                 kIdCompareFilter);
     MakeControl(editor, L"STATIC", T(language, StrChannels), SS_LEFT, kIdChannelLabel);
-    MakeControl(editor, WC_TREEVIEWW, L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_CHECKBOXES, kIdChannelList);
+    MakeControl(editor, WC_TREEVIEWW, L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | WS_CLIPSIBLINGS | TVS_NOHSCROLL | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_CHECKBOXES, kIdChannelList);
     SendMessageW(GetDlgItem(editor.window,kIdChannelList),CCM_SETUNICODEFORMAT,TRUE,0);
+    MakeControl(editor,L"STATIC",language==2?L"调整通道栏宽度":language==1?L"Resize channel panel":L"チャンネル欄の幅を変更",SS_NOTIFY,1111);
+    SetWindowSubclass(GetDlgItem(editor.window,1111),ChannelSplitterProc,1111,reinterpret_cast<DWORD_PTR>(&editor));
     MakeControl(editor, L"BUTTON", T(language, StrSelectAll), WS_TABSTOP | BS_PUSHBUTTON, kIdChannelAll);
+    MakeControl(editor, L"BUTTON", T(language, StrInvertSelection), WS_TABSTOP | BS_PUSHBUTTON, kIdChannelInvert);
 
     editor.canvas = CreateWindowExW(0, kCanvasClass, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 10, 10,
                                     editor.window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdCanvas)), instance, nullptr);
@@ -4518,6 +4753,13 @@ void CreateControls(Editor &editor) {
                                  reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdMmdPanel)), instance, nullptr);
     SetWindowLongPtrW(editor.mmd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&editor));
     MakeControl(editor, L"STATIC", L"", SS_LEFT, kIdMmdReadout);
+    for(int row=0;row<2;++row){
+        MakeControl(editor,L"STATIC",row?L"终止点（":L"起始点（",SS_LEFT,1100+row*3);
+        MakeControl(editor,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL,kIdMmdX1+row*2);
+        MakeControl(editor,L"STATIC",L"，",SS_CENTER,1101+row*3);
+        MakeControl(editor,L"EDIT",L"",WS_TABSTOP|ES_AUTOHSCROLL,kIdMmdY1+row*2);
+        MakeControl(editor,L"STATIC",L"）",SS_LEFT,1102+row*3);
+    }
 
     MakeControl(editor, L"STATIC", T(language, StrKeyFrame), SS_LEFT, kIdFrameLabel);
     MakeControl(editor, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL, kIdFrameEdit);
@@ -4548,8 +4790,11 @@ void CreateControls(Editor &editor) {
     MakeControl(editor, L"STATIC", T(language, StrBakeStep), SS_LEFT, kIdBakeStepLabel);
     MakeControl(editor, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL, kIdBakeStepEdit);
     MakeControl(editor, L"BUTTON", T(language, StrBakeRun), WS_TABSTOP | BS_PUSHBUTTON, kIdBakeRun);
+    MakeControl(editor,L"BUTTON",L"收起斜率与权重",WS_TABSTOP|BS_PUSHBUTTON,1090);
+    MakeControl(editor,L"STATIC",L"上下拖动 · Ctrl 精调 · Shift 快调",SS_LEFT,1094);
     MakeControl(editor, L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS, kIdHoverHint);
     MakeControl(editor, L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS, kIdStatus);
+    MakeControl(editor, L"STATIC", L"", SS_RIGHT | SS_CENTERIMAGE | SS_ENDELLIPSIS, kIdMouseReadout);
 
     FillCombos(editor);
 }
@@ -4600,11 +4845,16 @@ void HandleCommand(Editor &editor, WPARAM wparam) {
         if(editor.session.setPlaying)editor.session.setPlaying(!(editor.session.isPlaying&&editor.session.isPlaying()));
         SetControlText(editor.window,kIdPlay,PlayCaption(editor));return;
     case kIdPreviousFrame: case kIdNextFrame:
-        if(editor.session.currentFrame)SeekTimeline(editor,int(std::lround(editor.session.currentFrame()))+(id==kIdNextFrame?1:-1));
+        if(editor.session.currentFrame){
+            const double current=editor.session.currentFrame();
+            if(std::isfinite(current))SeekTimeline(editor,int(std::clamp(std::round(current)+(id==kIdNextFrame?1:-1),0.0,double(kMaximumFrame))));
+        }
+        OnPlayheadTimer(editor);
         return;
+    case kIdPreviousKey: case kIdNextKey: SeekAdjacentKey(editor,id==kIdNextKey);return;
     case kIdSeekFrame:{
         long long frame=0;
-        if(ParseIntegerText(ControlText(editor.window,kIdTimelineFrame),frame)&&frame>=0&&frame<=kMaximumFrame)SeekTimeline(editor,int(frame));
+        if(ParseIntegerText(ControlText(editor.window,kIdTimelineFrame),frame)&&frame>=0&&frame<=kMaximumFrame){SeekTimeline(editor,int(frame));OnPlayheadTimer(editor);}
         return;
     }
     case kIdFitAll: FitAll(editor); return;
@@ -4628,6 +4878,7 @@ void HandleCommand(Editor &editor, WPARAM wparam) {
         if (code == BN_CLICKED) RunCompareFilter(editor);
         return;
     case kIdChannelAll: SelectAllChannels(editor); return;
+    case kIdChannelInvert: InvertChannels(editor); return;
     case kIdBakeRun: RunBake(editor); return;
     case kIdReadMotion: RunReadMotion(editor); return;
     case kIdWriteMotion: RunWriteMotion(editor); return;
@@ -4651,6 +4902,60 @@ void BufferedPaint(Editor& editor,HWND hwnd,HDC dc,const RECT& dirty,bool miniat
     RestoreDC(surface.dc,saved);
     BitBlt(dc,dirty.left,dirty.top,dirty.right-dirty.left,dirty.bottom-dirty.top,surface.dc,dirty.left,dirty.top,SRCCOPY);
 }
+void InsertCurveKeyAtPoint(Editor& editor,POINT point,UINT flags) {
+    CanvasMetrics(editor);
+    if(!PtInRect(&editor.plot,point) || editor.tool==1 ||
+       (flags&(MK_CONTROL|MK_SHIFT)) || (GetKeyState(VK_SPACE)&0x8000) || (GetKeyState(VK_MENU)&0x8000))return;
+    CancelDrag(editor);SetFocus(editor.canvas);
+    auto& state=CurrentState(editor);
+    if(!state.valid || !CurrentSource(editor).apply)return;
+    std::vector<std::size_t> candidates=ComparedChannels(editor);
+    if(ActiveChannelVisible(editor))candidates.insert(candidates.begin(),state.active);
+    const int radius=Scale(6,editor.dpi);
+    double best=double(radius*radius)+1,hitFrame=0;
+    std::size_t hit=state.channels.size();
+    // Match the visible curve near the pointer, preferring the active curve at
+    // intersections. Sampling a small pixel band also works on steep slopes.
+    for(const std::size_t c:candidates){
+        const auto& track=state.channels[c].track;
+        if(track.keys.empty() || (editor.viewMode==1&&track.discrete))continue;
+        for(int x=std::max(int(editor.plot.left),int(point.x)-radius);x<=std::min(int(editor.plot.right),int(point.x)+radius);++x){
+            double frame=0,y=0;if(!XToTime(editor,x,frame))continue;
+            const Sample value=SampleTrack(editor,track,frame);
+            if(!ValueToY(editor,editor.viewMode?value.derivative*kFramesPerSecond:value.value,y)||!std::isfinite(y))continue;
+            const double distance=double(x-point.x)*(x-point.x)+(y-point.y)*(y-point.y);
+            if(distance+.25<best){best=distance;hitFrame=frame;hit=c;}
+        }
+    }
+    if(hit==state.channels.size())return;
+    const Channel& channel=state.channels[hit];
+    int frame=int(std::clamp(std::round(hitFrame),0.0,double(kMaximumFrame)));
+    // A visible key wins over neighbouring rounded frames when zoomed out.
+    for(const Key& key:channel.track.keys){
+        double x=0,y=0;
+        const Sample sample=SampleTrack(editor,channel.track,key.frame);
+        if(TimeToX(editor,key.frame,x)&&ValueToY(editor,editor.viewMode?sample.derivative*kFramesPerSecond:key.value,y)&&
+           std::hypot(x-point.x,y-point.y)<=radius){frame=key.frame;break;}
+    }
+    const auto existing=std::lower_bound(channel.track.keys.begin(),channel.track.keys.end(),frame,
+        [](const Key& key,int f){return key.frame<f;});
+    std::size_t index=std::size_t(existing-channel.track.keys.begin());
+    if(existing==channel.track.keys.end() || existing->frame!=frame){
+        // Native nonlinear samplers/linked lanes need a host subdivision API;
+        // never substitute a scalar approximation and call it shape preserving.
+        if(channel.sample || !channel.nativeControls.empty() || !channel.interpolationGroup.empty()){
+            SetStatus(editor,L"此原生通道暂不支持保持原形状插帧。骨骼可切换到自由曲线。",true);return;
+        }
+        std::vector<Channel> next=CopyChannels(editor);std::string error;
+        if(animation_curve::InsertPreservingShape(next[hit].track,frame,index,error)!=animation_curve::InsertResult::Inserted){
+            SetStatus(editor,L"此位置无法在当前权重限制内保持原曲线，请选择其他帧。",true);return;
+        }
+        if(!CommitChannels(editor,std::move(next),L"已添加关键帧，原曲线形状保持不变。"))return;
+    }else SetStatus(editor,T(editor.session.language,StrFrameSelected)+FormatInteger(frame),false);
+    state.active=hit;state.selection={index};
+    RefreshEditorsUi(editor);PublishKeySelection(editor);SeekTimeline(editor,frame);OnPlayheadTimer(editor);
+}
+
 LRESULT CALLBACK CanvasProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     auto *editor = reinterpret_cast<Editor *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     if (!editor) return DefWindowProcW(hwnd, message, wparam, lparam);
@@ -4678,7 +4983,12 @@ LRESULT CALLBACK CanvasProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
     case WM_GETDLGCODE:
         return DLGC_WANTARROWS | DLGC_WANTCHARS;
     case WM_LBUTTONDOWN:
+        editor->mmdFollowPlayhead=false;
         CanvasMouseDown(*editor, static_cast<UINT>(wparam), POINT{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)});
+        return 0;
+    case WM_LBUTTONDBLCLK:
+        if(!CenterBarAtPoint(*editor,POINT{GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam)}))
+            InsertCurveKeyAtPoint(*editor,POINT{GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam)},UINT(wparam));
         return 0;
     case WM_MBUTTONDOWN: {
         POINT point = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
@@ -4714,20 +5024,29 @@ LRESULT CALLBACK CanvasProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
         else
             SetHoverHint(*editor, -1);
         CanvasMouseMove(*editor, point);
+        UpdateMouseReadout(*editor,point);
         return 0;
     }
     case WM_MOUSELEAVE:
         SetHoverHint(*editor, -1);
+        UpdateMouseReadout(*editor,{},false);
         return 0;
     case WM_MOUSEWHEEL: {
         POINT point = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
         ScreenToClient(hwnd, &point);
         CanvasWheel(*editor, wparam, point);
+        UpdateMouseReadout(*editor,point);
         return 0;
     }
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
         switch (wparam) {
+        case VK_RETURN:
+            if(message==WM_KEYDOWN)ApplyFromRegisterShortcut(*editor,lparam);
+            return 0;
+        case VK_DELETE:
+            if(message==WM_KEYDOWN)DeleteFromShortcut(*editor,lparam);
+            return 0;
         case VK_TAB:
             // The canvas is a tab stop too, so Tab leaves it towards the next
             // control in the reading order.
@@ -4814,6 +5133,15 @@ LRESULT CALLBACK MmdProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) 
     auto *editor = reinterpret_cast<Editor *>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     if (!editor) return DefWindowProcW(hwnd, message, wparam, lparam);
     switch (message) {
+    case WM_KEYDOWN:
+        if(wparam==VK_RETURN){ApplyFromRegisterShortcut(*editor,lparam);return 0;}
+        if(wparam==VK_DELETE){DeleteFromShortcut(*editor,lparam);return 0;}
+        if(wparam==VK_ESCAPE && editor->mmdDragHandle>=0){
+            editor->mmdDragHandle=-1;
+            if(GetCapture()==hwnd)ReleaseCapture();
+            UpdateMmdPanel(*editor);return 0;
+        }
+        break;
     case WM_PAINT: {
         PAINTSTRUCT paint = {};
         HDC dc = BeginPaint(hwnd, &paint);
@@ -4841,10 +5169,14 @@ LRESULT CALLBACK MmdProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) 
         MmdMouseUp(*editor);
         return 0;
     case WM_CAPTURECHANGED:
-        editor->mmdDragHandle = -1;
+        if(editor->mmdDragHandle>=0){editor->mmdDragHandle=-1;UpdateMmdPanel(*editor);}
         return 0;
     case WM_KILLFOCUS:
-        editor->mmdDragHandle = -1;
+        if(editor->mmdDragHandle>=0){
+            editor->mmdDragHandle=-1;
+            if(GetCapture()==hwnd)ReleaseCapture();
+            UpdateMmdPanel(*editor);
+        }
         InvalidateRect(hwnd, nullptr, TRUE);
         return 0;
     default:
@@ -4855,6 +5187,22 @@ LRESULT CALLBACK MmdProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) 
 
 LRESULT HandleHook(Editor &editor, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
+    case WM_APP+394: {
+        if(!lparam)return FALSE;
+        CanvasMetrics(editor);
+        auto& out=*reinterpret_cast<CurveEditorAxisState*>(lparam);
+        out.plot=editor.plot;out.timeBar=editor.timeBar;out.valueBar=editor.valueBar;
+        BarPixels(editor,true,out.timeFirst,out.timeLast);
+        BarPixels(editor,false,out.valueFirst,out.valueLast);
+        const auto time=TimeBarRange(editor),value=ValueBarRange(editor);
+        out.timeLow=time.fullLow;out.timeHigh=time.fullHigh;
+        out.valueLow=value.fullLow;out.valueHigh=value.fullHigh;
+        out.timeStart=editor.timeStart;out.timeEnd=editor.timeEnd;
+        ValueRange(editor,out.viewLow,out.viewHigh);
+        out.mouseValid=MouseCoordinates(editor,out.mouseFrame,out.mouseValue);
+        out.viewMode=editor.viewMode;
+        return TRUE;
+    }
     case kHookPointForKey: {
         CanvasMetrics(editor);
         const POINT point = KeyPoint(editor, static_cast<std::size_t>(wparam));
@@ -4995,7 +5343,15 @@ LRESULT HandleHook(Editor &editor, UINT message, WPARAM wparam, LPARAM lparam) {
 
 LRESULT DrawChannelMarker(Editor&editor,NMTVCUSTOMDRAW&draw){
     if(draw.nmcd.dwDrawStage==CDDS_PREPAINT)return CDRF_NOTIFYITEMDRAW;
-    if(draw.nmcd.dwDrawStage==CDDS_ITEMPREPAINT)return CDRF_NOTIFYPOSTPAINT;
+    if(draw.nmcd.dwDrawStage==CDDS_ITEMPREPAINT){
+        if(curve_editor_theme::loaded){
+            const bool selected=(draw.nmcd.uItemState&CDIS_SELECTED)!=0;
+            draw.clrText=curve_editor_theme::text;
+            draw.clrTextBk=selected?curve_editor_theme::selection:curve_editor_theme::paper;
+            draw.nmcd.uItemState&=~CDIS_SELECTED;
+        }
+        return CDRF_NOTIFYPOSTPAINT;
+    }
     if(draw.nmcd.dwDrawStage!=CDDS_ITEMPOSTPAINT)return CDRF_DODEFAULT;
     HWND tree=draw.nmcd.hdr.hwndFrom;
     HTREEITEM item=reinterpret_cast<HTREEITEM>(draw.nmcd.dwItemSpec);
@@ -5037,14 +5393,38 @@ LRESULT CALLBACK EditorProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             return DrawChannelMarker(*editor,*reinterpret_cast<NMTVCUSTOMDRAW*>(lparam));
         break;
     }
+    case WM_KEYDOWN:
+        if(wparam==VK_RETURN){ApplyFromRegisterShortcut(*editor,lparam);return 0;}
+        if(wparam==VK_DELETE){DeleteFromShortcut(*editor,lparam);return 0;}
+        break;
+    case WM_APP+393: {
+        auto* bounds=reinterpret_cast<double*>(lparam);
+        Track* track=ActiveTrack(*editor);std::size_t key=ActiveKeyIndex(*editor);
+        bounds[0]=0.0001;bounds[1]=0.9999;
+        if(track&&key<track->keys.size()){
+            if(wparam==kIdInWeightEdit&&key>0)bounds[1]=0.9999-track->keys[key-1].outWeight;
+            if(wparam==kIdOutWeightEdit&&key+1<track->keys.size())bounds[1]=0.9999-track->keys[key+1].inWeight;
+        }
+        bounds[1]=std::max(bounds[0],bounds[1]);return 1;
+    }
     case kSourceChangedMessage:
         ProcessSourceChanges(*editor);
         return 0;
     case WM_CREATE:
         editor->dpi = ResolveDpi(hwnd);
         editor->font = CreateUiFont(editor->dpi);
+        curve_editor_theme::Load(editor->session.theme);
+        editor->themeShell = CreateSolidBrush(curve_editor_theme::shell);
         CreateControls(*editor);
+        curve_editor_theme::Apply(hwnd);
+        curve_editor_segments::Apply(hwnd);
+        curve_editor_scrub::Apply(hwnd);
+        TreeView_SetBkColor(GetDlgItem(hwnd,kIdChannelList),curve_editor_theme::paper);
+        TreeView_SetTextColor(GetDlgItem(hwnd,kIdChannelList),curve_editor_theme::text);
+        TreeView_SetLineColor(GetDlgItem(hwnd,kIdChannelList),curve_editor_theme::border);
+        TreeView_SetItemHeight(GetDlgItem(hwnd,kIdChannelList),Scale(23,editor->dpi));
         InstallTabNavigation(*editor);
+        curve_editor_channel_scroll::Attach(GetDlgItem(hwnd,kIdChannelList));
         ApplyLanguage(*editor);
         ReadAndAdopt(*editor, false);
         UpdateBakeFields(*editor);
@@ -5077,6 +5457,7 @@ LRESULT CALLBACK EditorProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
         return 0;
     }
     case WM_COMMAND:
+        if(LOWORD(wparam)==1090){editor->advancedExpanded=!editor->advancedExpanded;LayoutEditor(*editor);return 0;}
         HandleCommand(*editor, wparam);
         if(LOWORD(wparam)>=kIdAddKey&&LOWORD(wparam)<=kIdRedo)PublishKeySelection(*editor);
         return 0;
@@ -5096,14 +5477,27 @@ LRESULT CALLBACK EditorProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
         }
         break;
     }
+    case WM_ERASEBKGND:
+    case WM_PRINTCLIENT: {
+        RECT client{};GetClientRect(hwnd,&client);
+        FillRect(reinterpret_cast<HDC>(wparam),&client,editor->themeShell?editor->themeShell:GetSysColorBrush(COLOR_BTNFACE));
+        return 1;
+    }
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC: {
         HDC dc = reinterpret_cast<HDC>(wparam);
         HWND control = reinterpret_cast<HWND>(lparam);
         SetBkMode(dc, TRANSPARENT);
-        if (control == GetDlgItem(hwnd, kIdStatus) && CurrentState(*editor).statusError) SetTextColor(dc, RGB(168, 0, 0));
+        SetTextColor(dc,curve_editor_theme::text);
+        const bool field=message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX;
+        SetBkColor(dc,field?curve_editor_theme::paper:curve_editor_theme::shell);
+        if (field&&curve_editor_theme::paperBrush)return reinterpret_cast<LRESULT>(curve_editor_theme::paperBrush);
+        if (control == GetDlgItem(hwnd, kIdStatus) && CurrentState(*editor).statusError) SetTextColor(dc, curve_editor_theme::error);
         // The hover hint is grey helper text, never an error line.
-        else if (control == GetDlgItem(hwnd, kIdHoverHint)) SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
-        return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_BTNFACE));
+        else if (control == GetDlgItem(hwnd, kIdHoverHint)) SetTextColor(dc, curve_editor_theme::muted);
+        return reinterpret_cast<LRESULT>(editor->themeShell?editor->themeShell:GetSysColorBrush(COLOR_BTNFACE));
     }
     case WM_CLOSE:
         DestroyWindow(hwnd);
@@ -5115,9 +5509,11 @@ LRESULT CALLBACK EditorProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             editor->playheadTimerRunning = false;
         }
         if (editor->font) DeleteObject(editor->font);
+        if (editor->themeShell) DeleteObject(editor->themeShell);
         {
             std::lock_guard<std::mutex> guard(g_registryMutex);
             g_editors.erase(std::remove(g_editors.begin(), g_editors.end(), editor), g_editors.end());
+            if(g_editors.empty())curve_editor_theme::Release();
         }
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         delete editor;
@@ -5236,6 +5632,10 @@ void *Open(void *owner, Session session, bool visible) {
         KillTimer(existing->window, kSourceChangedTimer);
         existing->pendingSources.clear();
         existing->session = std::move(session);
+        curve_editor_theme::Load(existing->session.theme);
+        if(existing->themeShell)DeleteObject(existing->themeShell);
+        existing->themeShell=CreateSolidBrush(curve_editor_theme::shell);
+        curve_editor_theme::Apply(existing->window);
         existing->sourceIndex = existing->session.initialSource < existing->session.sources.size()
                                     ? existing->session.initialSource
                                     : 0;

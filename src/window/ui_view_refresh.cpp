@@ -64,7 +64,9 @@ void SetReadoutText(HWND edit, const char* text) {
 
 }  // namespace
 
+void RefreshForcePasteControls(MMDApp* app);
 void PostLanguageSweep2(MMDApp* app) {
+    RefreshForcePasteControls(app);
     // Target window: this+0xA0D38 doubles as an HWND when non-zero.
     HWND hwnd = reinterpret_cast<HWND>(app->state.floatingWindow);
     RECT client;

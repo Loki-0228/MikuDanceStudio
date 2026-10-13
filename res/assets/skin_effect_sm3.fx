@@ -100,109 +100,111 @@ technique ZValuePlotTec
 
 ///////////// ï™éUåıÇ»ÇµÉeÉNÉXÉ`ÉÉÇ»ÇµÉoÉbÉtÉ@ÉVÉÉÉhÉEÉeÉNÉjÉbÉN ////////////////
 
+// MME effects may inherit sampler 0 without declaring filter states.
+// Preserve the native linear-depth sampling for both built-in and MME materials.
 sampler DefSampler = sampler_state	// ÉTÉìÉvÉâÅ[ÉXÉeÅ[Ég
 {
 	AddressU  = Clamp;
 	AddressV  = Clamp;
 	AddressW  = Clamp;
-	MINFILTER = POINT;
-	MAGFILTER = POINT;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
 	MIPFILTER = NONE;
 };
 
-// Native receiver filtering adapted from MMN's default material shader.
-// Filter comparisons, never interpolated depths, to retain thin silhouettes.
+// Optional cubic depth reconstruction uses the actual shadow-map size.
 float4 MdsShadowMapSize = float4(2048,2048,0,0);
+bool MdsShadowFilterEnhanced = false;
 
-float MdsCompareShadow(float2 texel, float2 uv, float depth,
-                      float2 gradient, float bias)
+float MdsSplineShadowDepth(float2 uv)
 {
-    float2 size = max(MdsShadowMapSize.xy, 1);
-    // Match the receiver plane to the texel actually fetched at map borders.
-    texel = clamp(texel, 0, size - 1);
-    // D3D9 rasterizes the projection at integer texels. Texture fetches use
-    // texel centres, hence the half-texel offset only on the lookup.
-    float receiver = depth + dot(gradient, texel / size - uv);
-    float stored = tex2Dlod(DefSampler, float4((texel + 0.5) / size, 0, 0)).r;
-    return receiver - bias <= stored ? 1 : 0;
-}
-
-float MdsBilinearShadow(float2 sampleUv, float2 uv, float depth,
-                       float2 gradient, float bias)
-{
-    float2 grid = sampleUv * max(MdsShadowMapSize.xy, 1);
-    float2 base = floor(grid), weight = frac(grid);
-    float a = MdsCompareShadow(base, uv, depth, gradient, bias);
-    float b = MdsCompareShadow(base + float2(1,0), uv, depth, gradient, bias);
-    float c = MdsCompareShadow(base + float2(0,1), uv, depth, gradient, bias);
-    float d = MdsCompareShadow(base + 1, uv, depth, gradient, bias);
-    return lerp(lerp(a,b,weight.x), lerp(c,d,weight.x), weight.y);
+    // Nonnegative cubic B-spline. Four hardware-linear lookups reconstruct
+    // a separable 4x4 depth kernel before the original continuous ramp.
+    float2 size = MdsShadowMapSize.xy;
+    float2 grid = uv * size - 0.5f;
+    float2 cell = floor(grid), f = grid - cell;
+    float2 f2 = f * f, f3 = f2 * f;
+    float2 w0 = (1 - 3*f + 3*f2 - f3) / 6;
+    float2 w1 = (4 - 6*f2 + 3*f3) / 6;
+    float2 w2 = (1 + 3*f + 3*f2 - 3*f3) / 6;
+    float2 w3 = f3 / 6;
+    float2 g0 = w0 + w1, g1 = w2 + w3;
+    float2 h0 = (cell - 0.5f + w1/g0) / size;
+    float2 h1 = (cell + 1.5f + w3/g1) / size;
+    return tex2Dlod(DefSampler, float4(h0.x,h0.y,0,0)).r * g0.x*g0.y
+         + tex2Dlod(DefSampler, float4(h1.x,h0.y,0,0)).r * g1.x*g0.y
+         + tex2Dlod(DefSampler, float4(h0.x,h1.y,0,0)).r * g0.x*g1.y
+         + tex2Dlod(DefSampler, float4(h1.x,h1.y,0,0)).r * g1.x*g1.y;
 }
 
-// A cubic B-spline reconstructs magnified shadow texels with continuous
-// first and second derivatives. The compact 4x4 comparison kernel smooths
-// stair steps without widening the shadow into a large penumbra.
-float MdsShadowRow(float2 base, float4 weights, float2 uv,
-                   float depth, float2 gradient, float bias)
+
+float MdsCubicWeight(float coordinate)
 {
-    return weights.x*MdsCompareShadow(base+float2(-1,0),uv,depth,gradient,bias)
-         + weights.y*MdsCompareShadow(base,uv,depth,gradient,bias)
-         + weights.z*MdsCompareShadow(base+float2(1,0),uv,depth,gradient,bias)
-         + weights.w*MdsCompareShadow(base+float2(2,0),uv,depth,gradient,bias);
+    float x=abs(coordinate);
+    float t=max(2.0f-x,0.0f);
+    return x<1.0f ? (4.0f-6.0f*x*x+3.0f*x*x*x)/6.0f : t*t*t/6.0f;
 }
-float4 MdsCubicWeights(float f)
+
+float MdsAdaptiveSplineDepth(float2 uv, float2 uvDx, float2 uvDy)
 {
-    float f2=f*f, f3=f2*f;
-    return float4(1-3*f+3*f2-f3, 4-6*f2+3*f3,
-                  1+3*f+3*f2-3*f3, f3) / 6;
-}
-float MdsReconstructShadow(float2 uv, float depth, float2 gradient, float bias)
-{
-    float2 grid = uv * max(MdsShadowMapSize.xy, 1);
-    float2 base = floor(grid), f = frac(grid);
-    float4 wx = MdsCubicWeights(f.x), wy = MdsCubicWeights(f.y);
-    return wy.x*MdsShadowRow(base+float2(0,-1),wx,uv,depth,gradient,bias)
-         + wy.y*MdsShadowRow(base,wx,uv,depth,gradient,bias)
-         + wy.z*MdsShadowRow(base+float2(0,1),wx,uv,depth,gradient,bias)
-         + wy.w*MdsShadowRow(base+float2(0,2),wx,uv,depth,gradient,bias);
+    float2 size=MdsShadowMapSize.xy;
+    // Define the reconstruction footprint in UV, then integrate the real
+    // allocated texels. Increasing map density increases contributing taps,
+    // rather than separating four sparse lobes or enlarging the UV footprint.
+    float2 scale=max(1.240967365f*size/4096.0f,1.0f);
+    float2 dx=uvDx*size,dy=uvDy*size;
+    float pixelLimit=2.0f*min(size.x,size.y)/4096.0f;
+    dx*=min(1.0f,pixelLimit/max(length(dx),0.00001f));
+    dy*=min(1.0f,pixelLimit/max(length(dy),0.00001f));
+    // The bounded 2-pixel antialiasing footprint is independent of the map size.
+    scale=sqrt(scale*scale+(dx*dx+dy*dy));
+    scale=min(scale,8.0f);
+    float2 grid=uv*size-0.5f,cell=floor(grid),fraction=grid-cell;
+    float2 reach=ceil(2.0f*scale);
+    float sum=0.0f,normalization=0.0f;
+    [loop] for(int iy=0;iy<17;++iy) {
+        if(iy>reach.y) break;
+        float ky=-reach.y+2.0f*iy;
+        float wy0=MdsCubicWeight((ky-fraction.y)/scale.y);
+        float wy1=MdsCubicWeight((ky+1.0f-fraction.y)/scale.y);
+        float wy=wy0+wy1;
+        if(wy<=0.00000001f) continue;
+        float v=(cell.y+ky+0.5f+wy1/wy)/size.y;
+        [loop] for(int ix=0;ix<17;++ix) {
+            if(ix>reach.x) break;
+            float kx=-reach.x+2.0f*ix;
+            float wx0=MdsCubicWeight((kx-fraction.x)/scale.x);
+            float wx1=MdsCubicWeight((kx+1.0f-fraction.x)/scale.x);
+            float wx=wx0+wx1;
+            if(wx<=0.00000001f) continue;
+            float u=(cell.x+kx+0.5f+wx1/wx)/size.x;
+            float weight=wx*wy;
+            sum+=weight*tex2Dlod(DefSampler,float4(u,v,0,0)).r;
+            normalization+=weight;
+        }
+    }
+    return sum/max(normalization,0.00000001f);
 }
 
 float MdsShadowVisibility(float3 projected, float2 uv, float3 normal)
 {
-    // Derivatives must be evaluated before the per-pixel coverage test.
-    float2 dx = ddx(uv), dy = ddy(uv);
-    float dzdx = ddx(projected.z), dzdy = ddy(projected.z);
-    // Leaving the map removes occlusion only. Keep material toon lighting
-    // and its specular mask independent of camera-dependent map coverage.
+    float2 uvDx = ddx(uv), uvDy = ddy(uv);
+    // Leaving coverage removes occlusion, not material lighting. The fitted
+    // projection keeps scene geometry inside these bounds in both modes.
     if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1 ||
         projected.z < 0 || projected.z > 1)
         return 1;
-    float det = dx.x * dy.y - dx.y * dy.x;
-    float2 gradient = 0;
-    if (abs(det) > 1e-12)
-        gradient = float2(dzdx * dy.y - dzdy * dx.y,
-                          dzdy * dx.x - dzdx * dy.x) / det;
-    float ndl = saturate(dot(normalize(normal), -LightDir.xyz));
-    // Keep the native mode-dependent depth scale; grazing surfaces need more
-    // bias, while receiver-plane correction accounts for each tap's offset.
-    float threshold = parthf ? max(SKII2 * uv.y, 1) : SKII1;
-    float bias = (0.3 / threshold) * max(1, 2 * (1 - ndl));
-    float2 size = max(MdsShadowMapSize.xy, 1);
-    float footprint = max(length(dx * size), length(dy * size));
-    float nearVisibility = 0;
-    // LOD 0 comparisons are safe inside this derivative-dependent branch.
-    // Blend over 1..2 shadow texels per pixel so camera motion does not switch
-    // filters abruptly. Both modes keep the depth scale calculated above.
-    [branch] if (footprint < 2)
-        nearVisibility = MdsReconstructShadow(uv, projected.z, gradient, bias);
-    [branch] if (footprint <= 1)
-        return nearVisibility;
-    // Retain pixel-footprint integration when the map is minified.
-    float farVisibility = 0.25 * (MdsBilinearShadow(uv + 0.25*(dx+dy), uv, projected.z, gradient, bias)
-                 +MdsBilinearShadow(uv + 0.25*(dx-dy), uv, projected.z, gradient, bias)
-                 +MdsBilinearShadow(uv + 0.25*(-dx+dy), uv, projected.z, gradient, bias)
-                 +MdsBilinearShadow(uv - 0.25*(dx+dy), uv, projected.z, gradient, bias));
-    return lerp(nearVisibility, farVisibility, smoothstep(1, 2, footprint));
+    // Match 9.32 exactly: linearly interpolate depth first, then apply its
+    // continuous mode-specific ramp. Filtering binary comparisons, shifting
+    // the lookup by half a texel, or extrapolating a receiver triangle changes
+    // grazing-surface gradients and reveals triangle boundaries at low detail.
+    float depth = tex2D(DefSampler, uv).r;
+    [branch] if (MdsShadowFilterEnhanced)
+        depth = MdsAdaptiveSplineDepth(uv, uvDx, uvDy);
+    float difference = max(projected.z - depth, 0.0f);
+    if (parthf)
+        return 1 - saturate(difference * SKII2 * uv.y - 0.3f);
+    return 1 - saturate(difference * SKII1 - 0.3f);
 }
 
 struct BufferShadow_OUTPUT
@@ -251,7 +253,7 @@ float4 BufferShadow_PS(float4 ZCalcTex : TEXCOORD0,float3 N : TEXCOORD1,float3 E
    
 	{
 		float comp = shadowVisibility;
-		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// ï™éUåı
+		comp = min(saturate(dot(normalize(N),-LightDir)*Toon),comp);	// ï™éUåı
 		if(comp==1.0f){
 			float4 ans = EgColor + Specula;
 			if(transp) ans.a = 0.5f;
@@ -332,7 +334,7 @@ float4 BShadowTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,floa
 
 	{
 		float comp = shadowVisibility;
-		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// ï™éUåı
+		comp = min(saturate(dot(normalize(N),-LightDir)*Toon),comp);	// ï™éUåı
 		if(comp==1.0f){
 			float4 ans = EgColor*((tex2D(s1,Tex) * TexCMul + TexCAdd) * alpha + (1-alpha)) + Specula*comp;
 			if(transp) ans.w = 0.5f;
@@ -413,7 +415,7 @@ float4 BShadowSphia_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float3
 
 	{
 		float comp = shadowVisibility;
-		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// ï™éUåı
+		comp = min(saturate(dot(normalize(N),-LightDir)*Toon),comp);	// ï™éUåı
 		if(comp==1.0f){
 			ans = ans + Specula*comp;
 			if(transp) ans.w = 0.5f;
@@ -510,7 +512,7 @@ float4 BShadowSphiaTexture_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1
 	
 	{
 		float comp = shadowVisibility;
-		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// ï™éUåı
+		comp = min(saturate(dot(normalize(N),-LightDir)*Toon),comp);	// ï™éUåı
 		if(comp==1.0f){
 			ans = ans + Specula*comp;
 			if(transp) ans.w = 0.5f;
@@ -580,7 +582,7 @@ float4 BShadowTexCd2_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCOORD1,float
 
 	{
 		float comp = shadowVisibility;
-		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// ï™éUåı
+		comp = min(saturate(dot(normalize(N),-LightDir)*Toon),comp);	// ï™éUåı
 		if(comp==1.0f){
 			float4 ans = EgColor*((tex2D(s1,Tex) * SphCMul + SphCAdd)*alpha + (1-alpha)) + Specula*comp;
 			if(transp) ans.a = 0.5f;
@@ -661,7 +663,7 @@ float4 BShadowTextureTexCd2Tec_PS(float4 ZCalcTex : TEXCOORD0,float2 Tex : TEXCO
 	
 	{
 		float comp = shadowVisibility;
-		comp = min(smoothstep(0,1,saturate(dot(normalize(N),-LightDir)*Toon)),comp);	// ï™éUåı
+		comp = min(saturate(dot(normalize(N),-LightDir)*Toon),comp);	// ï™éUåı
 		if(comp==1.0f){
 			ans = ans + Specula*comp;
 			if(transp) ans.a = 0.5f;

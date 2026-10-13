@@ -83,6 +83,12 @@ LRESULT CALLBACK MicWndProc(HWND hwnd, UINT msg, WPARAM wParam,
         s.CtrlModifierState() = (wParam & MK_CONTROL) != 0 ? 3 : 0;
     }
     switch (msg) {
+    case WM_SETCURSOR:
+        if (reinterpret_cast<HWND>(wParam) == hwnd && LOWORD(lParam) == HTCLIENT) {
+            SetCursor(LoadCursorA(nullptr, s.ViewportToolHovered() ? IDC_SIZEALL : IDC_ARROW));
+            return TRUE;
+        }
+        return DefWindowProcA(hwnd, msg, wParam, lParam);
     case WM_MOUSEMOVE:                                             // 0x466A36
         s.MessageSeen() = 1;                                      // 0x466BDB
         FilterSeparateWindowMouseMove(app, LOWORD(lParam), HIWORD(lParam));  // 0x466BF6
@@ -121,8 +127,10 @@ LRESULT CALLBACK MicWndProc(HWND hwnd, UINT msg, WPARAM wParam,
         LayoutViewportPanels(app);                                 // 0x466A77
         return 0;
     case WM_MOUSEACTIVATE:                                         // 0x466C6E
+        if (LOWORD(lParam) != HTCLIENT)
+            return DefWindowProcA(hwnd, msg, wParam, lParam);
         HandleMouseActivate(app);
-        return 0;
+        return MA_ACTIVATE;
     case WM_LBUTTONDOWN:                                           // 0x466C4E
     case WM_LBUTTONDBLCLK:
         s.MouseX() = static_cast<std::int16_t>(LOWORD(lParam));

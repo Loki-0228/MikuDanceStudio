@@ -47,44 +47,44 @@ struct TextEntry { int id; const char* en; const wchar_t* zh; };
 // is the port's Simplified-Chinese translation, cross-checked against both
 // the EN literal and the JP creation string in ui_controls.inc.
 constexpr TextEntry kEnTexts[] = {
-    {400, "undo", L"\u64a4\u6d88"}, {401, "redo", L"\u91cd\u505a"},
-    {418, "<", L"<"}, {419, ">", L">"}, {429, "current", L"\u5f53\u524d"},
-    {416, "v-sel", L"纵选择"}, {423, "delete", L"\u5220\u9664"},
-    {420, "copy", L"\u590d\u5236"}, {421, "paste", L"\u7c98\u8d34"},
-    {422, "revers", L"\u53cd\u8f6c"}, {415, "range-sel", L"\u8303\u56f4\u9009\u62e9"},
-    {424, "expand", L"大小缩放"}, {432, "liner", L"\u7ebf\u6027"},
-    {431, "paste", L"\u7c98\u8d34"}, {430, "copy", L"\u590d\u5236"},
-    {435, "load", L"\u8bfb\u53d6"}, {437, "delete", L"\u5220\u9664"},
-    {440, "shadow", L"\u9634\u5f71"}, {441, "Add-syn", L"\u52a0\u7b97"},
-    {442, "OP", L"\u5916\u4eb2"}, {438, "register", L"\u767b\u8bb0"},
-    {451, "reset", L"\u91cd\u7f6e"}, {446, "perspect", L"\u900f\u89c6"},
-    {452, "register", L"\u767b\u8bb0"}, {454, "+", L"+"},
-    {453, "-", L"-"}, {467, "reset", L"\u91cd\u7f6e"}, {468, "register", L"\u767b\u8bb0"},
-    {562, "off", L"\u5173\u95ed"}, {563, "mode1", L"\u6a21\u5f0f1"},
-    {564, "mode2", L"\u6a21\u5f0f2"}, {565, "register", L"\u767b\u8bb0"},
+    {400, "Undo", L"\u64a4\u6d88"}, {401, "Redo", L"\u91cd\u505a"},
+    {418, "<", L"<"}, {419, ">", L">"}, {429, "Current", L"\u5f53\u524d"},
+    {416, "V-sel", L"纵选择"}, {423, "Delete", L"\u5220\u9664"},
+    {420, "Copy", L"\u590d\u5236"}, {421, "Paste", L"\u7c98\u8d34"},
+    {422, "Revers", L"\u53cd\u8f6c"}, {415, "Range-sel", L"\u8303\u56f4\u9009\u62e9"},
+    {424, "Expand", L"大小缩放"}, {432, "Liner", L"\u7ebf\u6027"},
+    {431, "Paste", L"\u7c98\u8d34"}, {430, "Copy", L"\u590d\u5236"},
+    {435, "Load", L"\u8bfb\u53d6"}, {437, "Delete", L"\u5220\u9664"},
+    {440, "Shadow", L"\u9634\u5f71"}, {441, "Add-syn", L"\u52a0\u7b97"},
+    {442, "OP", L"\u5916\u4eb2"}, {438, "Register", L"\u767b\u8bb0"},
+    {451, "Reset", L"\u91cd\u7f6e"}, {446, "Perspect", L"\u900f\u89c6"},
+    {452, "Register", L"\u767b\u8bb0"}, {454, "+", L"+"},
+    {453, "-", L"-"}, {467, "Reset", L"\u91cd\u7f6e"}, {468, "Register", L"\u767b\u8bb0"},
+    {562, "Off", L"\u5173\u95ed"}, {563, "Mode1", L"\u6a21\u5f0f1"},
+    {564, "Mode2", L"\u6a21\u5f0f2"}, {565, "Register", L"\u767b\u8bb0"},
     {470, "+", L"+"}, {469, "-", L"-"}, {489, "+", L"+"}, {488, "-", L"-"},
-    {472, "load", L"\u8bfb\u53d6"}, {473, "delete", L"\u5220\u9664"},
-    {477, "Add-syn", L"\u52a0\u7b97"}, {487, "register", L"\u767b\u8bb0"},
-    {402, "front", L"\u6b63\u9762"}, {403, "back", L"\u80cc\u9762"},
-    {404, "top", L"\u4e0a\u9762"}, {405, "left", L"\u5de6\u9762"},
-    {406, "right", L"\u53f3\u9762"}, {407, "btm", L"\u4e0b\u9762"},
-    {408, "play", L"\u64ad\u653e"}, {535, "track", L"\u8ffd\u8e2a"},
-    {412, "model", L"\u6a21\u578b"}, {531, "bone", L"\u9aa8\u9abc"},
-    {490, "select", L"\u9009\u62e9"}, {493, "rotate", L"\u65cb\u8f6c"},
-    {492, "move", L"\u79fb\u52a8"},
-    {491, MMD_ORIGINAL_PROFILE ? "box-sel" : "scale", MMD_ORIGINAL_PROFILE ? L"框选" : L"\u7f29\u653e"},
-    {494, "select all", L"\u5168\u9009"}, {501, "unregisted", L"\u672a\u767b\u8bb0"},
-    {496, "copy", L"\u590d\u5236"}, {497, "paste", L"\u7c98\u8d34"},
-    {498, "revers", L"\u53cd\u8f6c"}, {500, "register", L"\u767b\u8bb0"},
-    {499, "physics", L"\u7269\u7406"}, {495, "reset", L"\u91cd\u7f6e"},
+    {472, "Load", L"\u8bfb\u53d6"}, {473, "Delete", L"\u5220\u9664"},
+    {477, "Add-syn", L"\u52a0\u7b97"}, {487, "Register", L"\u767b\u8bb0"},
+    {402, "Front", L"\u6b63\u9762"}, {403, "Back", L"\u80cc\u9762"},
+    {404, "Top", L"\u4e0a\u9762"}, {405, "Left", L"\u5de6\u9762"},
+    {406, "Right", L"\u53f3\u9762"}, {407, "Btm", L"\u4e0b\u9762"},
+    {408, "Play", L"\u64ad\u653e"}, {535, "Track", L"\u8ffd\u8e2a"},
+    {412, "Model", L"\u6a21\u578b"}, {531, "Bone", L"\u9aa8\u9abc"},
+    {490, "Select", L"\u9009\u62e9"}, {493, "Rotate", L"\u65cb\u8f6c"},
+    {492, "Move", L"\u79fb\u52a8"},
+    {491, MMD_ORIGINAL_PROFILE ? "Box-sel" : "Scale", MMD_ORIGINAL_PROFILE ? L"框选" : L"\u7f29\u653e"},
+    {494, "Select all", L"\u5168\u9009"}, {501, "Unregisted", L"\u672a\u767b\u8bb0"},
+    {496, "Copy", L"\u590d\u5236"}, {497, "Paste", L"\u7c98\u8d34"},
+    {498, "Revers", L"\u53cd\u8f6c"}, {500, "Register", L"\u767b\u8bb0"},
+    {499, "Physics", L"\u7269\u7406"}, {495, "Reset", L"\u91cd\u7f6e"},
     {503, "+", L"+"}, {502, "-", L"-"}, {529, "+", L"+"}, {528, "-", L"-"},
     {567, "+", L"+"}, {566, "-", L"-"},
-    {524, "register", L"\u767b\u8bb0"}, {525, "register", L"\u767b\u8bb0"},
-    {527, "register", L"\u767b\u8bb0"}, {526, "register", L"\u767b\u8bb0"},
-    {543, "dist", L"\u8ddd\u79bb"}, {570, "scale", L"\u7f29\u653e"},
-    {551, "info", L"\u4fe1\u606f"},
-    {552, "low pow", L"\u7701\u6027\u80fd"}, {557, "axis", L"\u5750\u6807\u8f74"},
-    {555, "set", L"\u8bbe\u7f6e"}, {556, "Fshadow", L"\u7f8e\u5f71"},
+    {524, "Register", L"\u767b\u8bb0"}, {525, "Register", L"\u767b\u8bb0"},
+    {527, "Register", L"\u767b\u8bb0"}, {526, "Register", L"\u767b\u8bb0"},
+    {543, "Dist", L"\u8ddd\u79bb"}, {570, "Scale", L"\u7f29\u653e"},
+    {551, "Info", L"\u4fe1\u606f"},
+    {552, "Low pow", L"\u7701\u6027\u80fd"}, {557, "Axis", L"\u5750\u6807\u8f74"},
+    {555, "Set", L"\u8bbe\u7f6e"}, {556, "Fshadow", L"\u7f8e\u5f71"},
 };
 
 HWND Dlg(MMDApp* app, int id) {
@@ -477,8 +477,12 @@ void LocalizeUI(MMDApp* app) {
     const bool english = s.EnglishUI() == kUiEnglish;              // UI captions follow UI language
     const bool chinese = s.EnglishUI() == kUiChinese;
 #if !MMD_ORIGINAL_PROFILE
-    SetWindowTextW(Dlg(app, panel::kAdaptiveShadowCheckbox), chinese ? L"动态缩放" :
-        english ? L"Dynamic scaling" : L"動的スケーリング");
+    SetWindowTextW(Dlg(app, panel::kForcePasteButton), chinese ? L"强制粘贴" :
+        english ? L"Force paste" : L"強制貼付");
+    SetWindowTextW(Dlg(app, panel::kAdaptiveShadowCheckbox), chinese ? L"动态精度" :
+        english ? L"Dynamic" : L"動的精度");
+    SetWindowTextW(Dlg(app, panel::kShadowFilterCheckbox), chinese ? L"滤波加强" :
+        english ? L"Smoothing" : L"平滑化");
 #endif
     HFONT previousFont = s.state.hFontUI;
     CreateUiFont(app, app->MainWindow());
@@ -504,7 +508,7 @@ void LocalizeUI(MMDApp* app) {
     if (english) {
         for (const TextEntry& t : kEnTexts)
             SetWindowTextA(Dlg(app, t.id), t.en);
-        SetWindowTextA(Dlg(app, 536), modelMode ? "To model" : "camera");
+        SetWindowTextA(Dlg(app, 536), modelMode ? "To model" : "Camera");
     } else if (chinese) {
         for (const TextEntry& t : kEnTexts)
             SetWindowTextW(Dlg(app, t.id), t.zh);

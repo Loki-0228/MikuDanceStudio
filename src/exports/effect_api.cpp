@@ -69,6 +69,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/effect_api.hpp"
+#include "mikudancestudio/text_encoding.hpp"
 
 // VA 0x0042A110 - model-slot count; real body in src/unported/stubs.cpp.
 namespace mikudancestudio {
@@ -82,6 +83,18 @@ using mikudancestudio::MMDApp;
 // x64 reference RVA 0xA6FA0: try CP932, then the renderer's explicit
 // locales. The process-wide Japanese locale cannot encode Chinese paths.
 void EffectFilename(MMDApp* app, char* out, const wchar_t* path) {
+#if !MMD_ORIGINAL_PROFILE
+    // Native MME receives this path through MMHack and probes the same-name
+    // EMD with ANSI file APIs. CP932 bytes for shared Chinese/Japanese glyphs
+    // identify a different file on a Chinese Windows installation.
+    if (GetModuleHandleW(L"MMEffect.dll")) {
+        std::string nativePath;
+        if (mikudancestudio::text_encoding::EncodeExact(path, CP_ACP, nativePath) && nativePath.size() < 256) {
+            strcpy_s(out, 256, nativePath.c_str());
+            return;
+        }
+    }
+#endif
     char encoded[3 * 256]{};
     BOOL usedDefault = FALSE;
     if (WideCharToMultiByte(932, 0, path, -1, encoded, sizeof(encoded),
@@ -534,6 +547,7 @@ void BeginEffectObjectRegistration() {
 void NotifyEffectFileOpen(const wchar_t* path) {
     if (path == nullptr || GetModuleHandleW(L"MMHack.dll") == nullptr)
         return;
+    InstallEffectPathCompatibility();
     HANDLE file = CreateFileW(path, GENERIC_READ,
                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);

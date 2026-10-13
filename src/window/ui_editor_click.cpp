@@ -1205,14 +1205,13 @@ void HandleLButtonDown(MMDApp* app) {
     const std::int32_t x = app->MouseX();
     const std::int32_t sidebar = app->SidebarWidth();
 
-    // early-out: click in the left panel header strip - this+0xC8 = 1,
-    // this+0xA442C = 0, then shared tail.  Gates (eval order as in the
+    // Start a deferred sidebar resize. The current layout remains valid
+    // until release, so normal paints need not be suspended. Gates as in the
     // original): y <= bottom-0x9E(158) && x <= sidebar+6 &&
     // [0xA0D38]==0 && sidebar <= x.
     if (y <= rc.bottom - 0x9E && x <= sidebar + 6 &&
         app->FloatingWindow() == nullptr && sidebar <= x) {
         app->SidebarResizeDragging() = 1;
-        app->WindowLayoutReady() = 0;
         return;
     }
     // row gates used by every region below (0x446B01-0x446B3A):

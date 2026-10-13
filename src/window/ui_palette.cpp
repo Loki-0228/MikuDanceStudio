@@ -44,6 +44,7 @@
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/bottom_panel_layout.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/accessory_layout.hpp"
 #include "mikudancestudio/bone_scale.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
@@ -355,6 +356,10 @@ void HandlePaletteChanged(HDC hdc) {
     GetClientRect(reinterpret_cast<HWND>(app->state.hwnd),
                   &rc);                                     // 0x42CEC5 (this+0xA06B8)
     const std::int32_t bottom = rc.bottom;
+    const auto FillPanelBottom = [app, bottom](HDC dc, int l, int t, int r, int b, COLORREF c1, COLORREF c2, int edge) {
+        if (t >= bottom - 157) { l = BottomPanelX(app, l); r = BottomPanelX(app, r); }
+        mikudancestudio::FillPanelBottom(dc, l, t, r, b, c1, c2, edge);
+    };
     const std::int32_t side = app->SidebarWidth();
     const COLORREF colA = app->ThemeColor(UiThemeColor::ControlLight);
     const COLORREF colB = app->ThemeColor(UiThemeColor::ControlDark);
@@ -579,17 +584,16 @@ void HandlePaletteChanged2(HDC hdc) {
                 // Accessory slot array this+0x9DD70 [byte this+0x9E170].
                 mdl::AccessoryRecord* acc =
                     app->AccessorySlot(app->SelectedAccessorySlot());
-                if (acc == nullptr) {
-                    DrawUiGlyph(app, "camera light accessary", hdc, 20,
-                              xBase + 10, hideTop - 25, 0xFF, 0xFF, 0xFF, 1);  // 0x42C316
-                } else {
-                    const auto name = text_encoding::Display(acc->name);
-                    const std::wstring label = (app->EnglishUI() == 2
-                        ? L"相机 / 照明 / 配件 / " : L"camera light accessory / ") + name;
-                    DrawWideUiGlyph(label.c_str(), hdc, 20, xBase + 10, hideTop - 25,
-                                    0xFF, 0xFF, 0xFF, 1);
-                    // 0x42C2EB
-                }
+                const bool chinese = app->EnglishUI() == kUiChinese;
+                std::wstring label = chinese ? L"相机 / 照明 / 配件"
+                                              : L"Camera light accessory";
+                if (acc != nullptr)
+                    label += L" / " + text_encoding::Display(acc->name);
+                // Keep the title's font stable when an accessory is selected.
+                DrawWideUiGlyph(label.c_str(), hdc, 20, xBase + 10,
+                                hideTop - 25 - (chinese && acc == nullptr ? 3 : 0),
+                                0xFF, 0xFF, 0xFF, chinese ? 1 : 0,
+                                chinese ? L"Microsoft YaHei UI" : L"Arial");
             }
             DrawUiGlyph(app, "camera", hdc, 14, xBase + 90, hideBottom + 10,
                       0, 0, 0, 1);                               // 0x42C33B

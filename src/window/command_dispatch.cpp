@@ -1,9 +1,13 @@
+#include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/force_paste.hpp"
+#include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/animation_curve_editor.hpp"
 #include "mikudancestudio/frame_rate_correction.hpp"
+#include "mikudancestudio/native_media.hpp"
 // ===========================================================================
 // VA 0x0047E8A0 - CommandDispatch  (original: sub_47E8A0, 0x10A6A = 68KB)
 // ===========================================================================
@@ -403,6 +407,7 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
     } curveSync{hwnd};
     const std::uint16_t id = LOWORD(wParam);
     const std::uint16_t notification = HIWORD(wParam);
+    if (ctrl == nullptr && notification <= 1 && image_sequence::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification <= 1 && plugin_menu::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification == 0 && bake::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification == 0 && frame_rate_correction::HandleCommand(app, id)) return;
@@ -410,6 +415,7 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
     // MMS addition: the Help menu's dock-corner item (command 32810) cycles
     // one corner on each ordinary menu click.
     if (ctrl == nullptr && notification == 0 && viewport_corner_menu::HandleCommand(app, id)) return;
+    if (ctrl == nullptr && notification == 0 && autosave::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification == 0 && viewport_render_scale::HandleCommand(app, id)) return;
 
     switch (id) {
@@ -521,15 +527,15 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
         break;
     }
     case 0xD8: {    // Background: AVI display (0x4871F9)
-        // Original: clearing is free; setting requires a loaded AVI
-        // stream (dword 0x9E400 != 0) - with no AVI the case is a no-op.
+        // Modern video has a Media Foundation reader instead of an AVI stream.
         auto& flag = s.state.aviBackgroundEnabled;
         if (flag == 1) {
             flag = 0;
             CheckMenuItem(GetMenu(hwnd), 0xD8, MF_UNCHECKED);
-        } else if (s.state.aviStream != 0) {
+        } else if (s.state.aviStream != 0 || media::HasVideo(app)) {
             flag = 1;
             CheckMenuItem(GetMenu(hwnd), 0xD8, MF_CHECKED);
+            AviBgOverlayRefresh(app);
         }
         break;
     }
@@ -569,13 +575,14 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
             CmdControl450(app, hwnd, id, notification);
         } else if (id >= 500 && id <= 567) {
             CmdControl500(app, hwnd, id, notification);
-        } else if ((id == 571 || id == 574 || id == 576 || id == panel::kAdaptiveShadowCheckbox) &&
+        } else if ((id == 571 || id == 574 || id == 576 || id == panel::kAdaptiveShadowCheckbox || id == panel::kShadowFilterCheckbox) &&
                    notification == BN_CLICKED) {
             // MMS: the 缩放 X / Y / Z reset buttons (command_control_500.cpp).
             CmdControl500(app, hwnd, id, notification);
         }
         break;
     }
+    RefreshForcePasteControls(app);
 }
 
 }  // namespace mikudancestudio

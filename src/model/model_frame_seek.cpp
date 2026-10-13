@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // VA 0x004B4260 - direct frame seek / pose rebuild  (0x14F8 bytes)
 // ===========================================================================
@@ -500,6 +501,9 @@ int SeekModelFrame(unsigned char* model, int frameArg, int physicsMode) {  // wa
     }
     bone_scale::Evaluate(model, static_cast<float>(frameArg));
     morph_curve::Evaluate(model, static_cast<double>(frameArg));
+#if !MMD_ORIGINAL_PROFILE
+    bone_curve::Evaluate(model, static_cast<double>(frameArg));
+#endif
     return result;
 }
 

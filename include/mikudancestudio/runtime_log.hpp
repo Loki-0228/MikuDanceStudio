@@ -4,11 +4,15 @@
 
 namespace mikudancestudio::runtime_log {
 // Runtime diagnostics for the shipped build.  Always enabled, independently
-// of the porting-era DIAG probes, and deliberately file-free: nothing is
-// created on disk in any configuration.  The newest messages are kept in a
+// of the porting-era DIAG probes, and deliberately file-free: diagnostics
+// creates no files. Project recovery uses its own callback. The newest messages are kept in a
 // bounded in-memory ring; a fatal fault renders that ring into a modal
 // "last error" window and the process only ends after the user presses OK.
 void Initialize() noexcept;
+// Optional application-owned, best-effort recovery before showing a fatal error.
+// Diagnostics itself remains independent of project serialization.
+using CrashBackup = void (*)(unsigned long exceptionCode) noexcept;
+void SetCrashBackup(CrashBackup callback) noexcept;
 void Write(const char* format, ...) noexcept;
 void WritePath(const char* label, const wchar_t* path) noexcept;
 // The phase must be a string literal (no allocation or application-state

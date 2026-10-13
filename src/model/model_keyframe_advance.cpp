@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // VA 0x004A31D0 - per-model keyframe application  (5754 bytes, 187 blocks)
 // + helpers VA 0x004A05A0 (VMD interpolation easing) and 0x00499B50
@@ -761,6 +762,9 @@ void AdvanceModelKeyframes(unsigned char* model, float cursor, int physicsMode) 
     }
     bone_scale::Evaluate(model, static_cast<float>(frame));
     morph_curve::Evaluate(model, frame);
+#if !MMD_ORIGINAL_PROFILE
+    bone_curve::Evaluate(model, frame);
+#endif
 }
 
 }  // namespace mikudancestudio

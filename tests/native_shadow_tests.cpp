@@ -1,4 +1,4 @@
-// MAINTENANCE: regression-keep; hidden D3D9 receiver-plane and coverage checks.
+// MAINTENANCE: regression-keep; hidden D3D9 native 9.32 parity and coverage checks.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -15,12 +15,54 @@
 #include <vector>
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/native_shadow_projection.hpp"
+#include "mikudancestudio/adaptive_shadow.hpp"
 
 using namespace mikudancestudio::d3dx;
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr unsigned kSize=128;
+void CheckReferenceFit() {
+    using namespace mikudancestudio;
+    NativeShadowBounds bounds;
+    const float low[3]={-6,0,-3}, high[3]={6,20,8};
+    bounds.Include(low);bounds.Include(high);
+    std::array<float,16> inside{};
+    inside[0]=inside[5]=inside[10]=.01f;inside[14]=.25f;inside[15]=1;
+    if (FitReferenceShadowProjection(inside,bounds)!=inside)
+        throw std::runtime_error("unclipped native sampling grid changed");
+    unsigned checked=0;
+    for (float scale : {.01f,.1f,1.f,10.f}) for (float warp : {-1.f,0.f,.5f,1.f}) {
+        auto matrix=inside;matrix[0]=matrix[5]=scale;matrix[10]=scale*.15f;
+        matrix[7]=warp;matrix[12]=2;matrix[13]=-1;matrix[14]=-.2f;
+        const auto fitted=FitReferenceShadowProjection(matrix,bounds);
+        for (unsigned corner=0;corner<8;++corner) {
+            const auto p=bounds.Corner(corner);double q[4]{};
+            for (int a=0;a<4;++a)
+                q[a]=fitted[12+a]+p[0]*double(fitted[a])+p[1]*double(fitted[4+a])+p[2]*double(fitted[8+a]);
+            if (!(q[3]>0) || std::abs(q[0]/q[3])>=1 || std::abs(q[1]/q[3])>=1 ||
+                !(q[2]/q[3]>0 && q[2]/q[3]<1))
+                throw std::runtime_error("native projective coverage or positive W failed");
+            ++checked;
+        }
+        if (!std::isfinite(MinimumShadowScale(fitted,bounds)))
+            throw std::runtime_error("native projective sampling density is not finite");
+    }
+    std::printf("PASS native grid preservation and %u projective coverage corners\n",checked);
+}
 void CheckProjection() {
+    CheckReferenceFit();
+    using namespace mikudancestudio;
+    if (ShadowSamplingFactor(.1f) != 4.f || ShadowSamplingFactor(.05f) != 1.f ||
+        ShadowSamplingFactor(.00001f) != 1.f)
+        throw std::runtime_error("shared finest range lost its 4x sampling demand");
+    for (unsigned base : {2048u, 4096u}) {
+        if (FittedShadowResolutionLimit(base, .2f, .2f, 16384) != base ||
+            FittedShadowResolutionLimit(base, .2f, .1f, 16384) != base * 2 ||
+            FittedShadowResolutionLimit(base, .2f, .001f, 16384) != base * 2 ||
+            FittedShadowResolutionLimit(base, .2f, .001f, 2048) != 2048)
+            throw std::runtime_error("fitted coverage density compensation or hardware limit failed");
+    }
+    std::puts("PASS finest sampling demand, coverage density compensation and hardware limits");
     const float focus[3] = {2, 10, -3};
     for (const auto& direction : std::vector<std::array<float, 3>>{
              {-.5f, -1, .5f}, {0, -1, 0}, {0, 0, 1}, {1, 0, 0}, {0, 0, 0}}) {
@@ -49,6 +91,30 @@ void CheckProjection() {
         }
     }
     std::puts("PASS focused coverage and directional occluder/receiver projection");
+    mikudancestudio::NativeShadowBounds bounds;
+    const float lower[3]{-20, -5, -130}, upper[3]{35, 48, 160};
+    bounds.Include(lower); bounds.Include(upper);
+    const float panned[3]{300, -120, 90};
+    unsigned covered = 0;
+    for (const auto& direction : std::vector<std::array<float, 3>>{
+             {-.5f, -1, .5f}, {0, -1, 0}, {0, 0, 1}, {1, 0, 0}, {0, 0, 0}}) {
+        for (int mode : {1, 2}) for (float range : {.1f, .01125f, .00001f}) {
+            const auto projection = mikudancestudio::NativeShadowProjection(focus, direction.data(), range, mode, &bounds);
+            if (projection != mikudancestudio::NativeShadowProjection(panned, direction.data(), range, mode, &bounds))
+                throw std::runtime_error("camera pan moved fitted shadow coverage");
+            for (unsigned corner = 0; corner < 8; ++corner) {
+                const auto point = bounds.Corner(corner);
+                float p[3]{};
+                for (int axis = 0; axis < 3; ++axis)
+                    p[axis] = projection[12+axis] + point[0]*projection[axis] +
+                        point[1]*projection[4+axis] + point[2]*projection[8+axis];
+                if (!std::isfinite(p[0]+p[1]+p[2]) || std::abs(p[0]) >= .99f || std::abs(p[1]) >= .99f || p[2] <= .01f || p[2] >= .99f)
+                    throw std::runtime_error("fitted shadow projection clips geometry or filter margin");
+                ++covered;
+            }
+        }
+    }
+    std::printf("PASS %u fitted coverage corners, both modes, depth, extreme precision and camera pan\n", covered);
 }
 void Check(HRESULT hr,const char* operation) {
     if(FAILED(hr)){std::printf("%s: 0x%08lx\n",operation,static_cast<unsigned long>(hr));throw std::runtime_error(operation);}
@@ -78,7 +144,7 @@ Effect Load(IDirect3DDevice9* device,const std::filesystem::path& file) {
     if(errors){using Data=void*(WINAPI*)(void*);std::printf("%s\n",static_cast<const char*>(EffectMethod<Data,3>(errors)(errors)));static_cast<IUnknown*>(errors)->Release();}
     Check(hr,"Compile production shader");return fx;
 }
-std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,int mode,float slope,bool split,bool legacy,float depthGap=0,int pattern=0,float phase=0,const CoverageProbe* coverage=nullptr) {
+std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,int mode,float slope,bool split,bool legacy,float depthGap=0,int pattern=0,float phase=0,const CoverageProbe* coverage=nullptr,float facing=1) {
     ComPtr<IDirect3DTexture9> shadow;
     Check(device->CreateTexture(mapSize,mapSize,1,0,D3DFMT_R32F,D3DPOOL_MANAGED,&shadow,nullptr),"Create shadow texture");
     D3DLOCKED_RECT pixels{};Check(shadow->LockRect(0,&pixels,nullptr,0),"Lock shadow texture");
@@ -95,9 +161,7 @@ std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,i
     auto lightProjection=identity;lightProjection.m[3][0]=2*phase/mapSize;
     if(coverage)for(unsigned i=0;i<3;++i)lightProjection.m[3][i]+=coverage->offset[i];
     Check(FxSetMatrix(effect,"matLightViewProj",&lightProjection),"Set light projection");
-    const float size[4]={float(mapSize),float(mapSize),0,0};
-    if(!legacy)Check(FxSetFloatArray(effect,"MdsShadowMapSize",size,4),"Set actual shadow resolution");
-    const float white[4]={1,1,1,.37f},dark[4]={.2f,.2f,.2f,1},light[4]={0,0,-1,1},zero[4]={0,0,0,1},eye[4]={0,0,4,1};
+    const float white[4]={1,1,1,.37f},dark[4]={.2f,.2f,.2f,1},light[4]={std::sqrt(1-facing*facing),0,-facing,1},zero[4]={0,0,0,1},eye[4]={0,0,4,1};
     Check(FxSetFloatArray(effect,"EgColor",white,4),"Set material");
     Check(FxSetFloatArray(effect,"ToonColor",dark,4),"Set toon");
     Check(FxSetFloatArray(effect,"LightDir",light,4),"Set light");
@@ -132,19 +196,6 @@ std::vector<DWORD> Draw(IDirect3DDevice9* device,void* effect,unsigned mapSize,i
     for(unsigned y=0;y<kSize;++y)std::copy_n(reinterpret_cast<const DWORD*>(static_cast<const char*>(pixels.pBits)+y*pixels.Pitch),kSize,output.data()+y*kSize);
     Check(readback->UnlockRect(),"Unlock readback");Check(device->SetTexture(0,nullptr),"Unbind map");
     return output;
-}
-double EdgeCurvature(const std::vector<DWORD>& pixels) {
-    std::vector<double> contour;
-    for(unsigned y=16;y<112;++y){
-        for(unsigned x=16;x<111;++x){
-            const double a=(pixels[y*kSize+x]>>16)&255,b=(pixels[y*kSize+x+1]>>16)&255;
-            if(a<=153&&b>153){contour.push_back(x+(153-a)/(b-a));break;}
-        }
-    }
-    if(contour.size()!=96)throw std::runtime_error("Missing diagonal shadow contour");
-    double sum=0;
-    for(size_t i=1;i+1<contour.size();++i){const double d=contour[i-1]-2*contour[i]+contour[i+1];sum+=d*d;}
-    return std::sqrt(sum/(contour.size()-2));
 }
 void Save(const std::filesystem::path& path,const std::vector<DWORD>& pixels) {
     std::ofstream out(path,std::ios::binary);out<<"P6\n"<<kSize<<" "<<kSize<<"\n255\n";
@@ -186,57 +237,48 @@ int wmain(int argc,wchar_t** argv) {
             }
         }
         if(coverageOnly){DestroyWindow(window);std::printf("material_coverage failures=%u\n",failures);return failures?1:0;}
-        for(unsigned resolution:{32u,64u})for(int mode:{1,2}){
-            for(float slope:{-.15f,0.f,.15f}){
-                const auto image=Draw(device.Get(),effect.value,resolution,mode,slope,false,legacy);
-                unsigned dark=0,wrongAlpha=0,borderDark=0;
-                for(unsigned y=16;y<112;++y)for(unsigned x=16;x<112;++x){const DWORD p=image[y*kSize+x];dark+=((p>>16)&255)<250;wrongAlpha+=std::abs(int(p>>24)-94)>1;}
-                for(unsigned y=0;y<kSize;++y)for(unsigned x=0;x<kSize;++x)
-                    if(x<16||x>=112||y<16||y>=112)borderDark+=((image[y*kSize+x]>>16)&255)<250;
-                std::printf("plane size=%u mode=%d slope=%.2f dark=%u border_dark=%u wrong_alpha=%u\n",resolution,mode,slope,dark,borderDark,wrongAlpha);
-                failures+=dark!=0||borderDark!=0||wrongAlpha!=0;
+        auto reference=Load(device.Get(),legacy ? std::filesystem::path(argv[1]) :
+            std::filesystem::path(argv[1]).parent_path()/"original"/"skin_effect_sm3.fx");
+        unsigned comparisons=0, partialDepths=0;
+        const auto compare=[&](unsigned resolution,int mode,float slope,float gap,int pattern,float phase,float facing=1.f){
+            const auto actual=Draw(device.Get(),effect.value,resolution,mode,slope,false,false,gap,pattern,phase,nullptr,facing);
+            const auto original=Draw(device.Get(),reference.value,resolution,mode,slope,false,true,gap,pattern,phase,nullptr,facing);
+            unsigned difference=0, different=0;
+            for(unsigned y=16;y<112;++y)for(unsigned x=16;x<112;++x){
+                const DWORD a=actual[y*kSize+x], b=original[y*kSize+x];
+                unsigned error=0;
+                for(unsigned shift:{0u,8u,16u,24u})
+                    error=(std::max)(error,unsigned(std::abs(int((a>>shift)&255)-int((b>>shift)&255))));
+                difference=(std::max)(difference,error);different+=error>1;
             }
-            const auto image=Draw(device.Get(),effect.value,resolution,mode,0,true,legacy);
-            unsigned intermediate=0,wrongSides=0;
-            for(unsigned x=16;x<112;++x){const int red=(image[64*kSize+x]>>16)&255;
-                if(red>55&&red<250)++intermediate;
-                if((x<52&&std::abs(red-51)>1)||(x>72&&red<250))++wrongSides;
+            const unsigned centre=(actual[64*kSize+64]>>16)&255;
+            if(gap>0&&slope==0&&pattern==0&&facing==1)partialDepths+=centre>55&&centre<250;
+            std::printf("native_parity size=%u mode=%d slope=%.3f gap=%.5f pattern=%d phase=%.3f facing=%.2f max_difference=%u different=%u\n",
+                resolution,mode,slope,gap,pattern,phase,facing,difference,different);
+            failures+=different!=0;++comparisons;
+            if(pattern==1&&phase==0&&!output.empty()){
+                const auto name="diagonal-mode"+std::to_string(mode);
+                Save(output/(name+".ppm"),actual);Save(output/(name+"-932.ppm"),original);
             }
-            std::printf("coverage size=%u mode=%d transition_pixels=%u wrong_sides=%u\n",resolution,mode,intermediate,wrongSides);
-            failures+=intermediate==0||intermediate>8||wrongSides!=0;
+        };
+        for(int mode:{1,2}){
+            // Magnified and minified maps; coplanar slopes; thin and diagonal
+            // occluders; fractional map positions. Compare real GPU RGBA with
+            // the checked-in 9.32 shader instead of imposing a new PCF filter.
+            for(unsigned resolution:{16u,32u,64u,192u}){
+                for(float slope:{-.15f,0.f,.15f})compare(resolution,mode,slope,0,0,0);
+                for(float gap:{.00015f,.00025f,.0004f,.0006f,.001f})compare(resolution,mode,0,gap,0,0);
+                compare(resolution,mode,0,0,2,0);
+            }
+            for(float phase:{0.f,.09375f,.1875f,.28125f,.375f,.46875f,.5625f,.65625f})
+                compare(16,mode,0,0,1,phase);
+            // Native toon interpolation is linear, including partially lit
+            // normals. A smoothstep here changes the body gradient even if
+            // the depth sampler and both mode thresholds are correct.
+            for(float facing:{.05f,.1f,.2f,.3f,.4f})compare(32,mode,0,.00025f,0,0,facing);
         }
-        if(!legacy)for(unsigned resolution:{32u,64u}){
-            // At this separation, the original mode-specific depth tolerance
-            // accepts mode 1 and rejects mode 2. Filtering must preserve it.
-            const auto mode1=Draw(device.Get(),effect.value,resolution,1,0,false,false,.00015f);
-            const auto mode2=Draw(device.Get(),effect.value,resolution,2,0,false,false,.00015f);
-            const unsigned lit=(mode1[64*kSize+64]>>16)&255;
-            const unsigned shadow=(mode2[64*kSize+64]>>16)&255;
-            std::printf("mode_difference size=%u mode1=%u mode2=%u\n",resolution,lit,shadow);
-            failures+=lit<250||shadow>55;
-        }
-        if(!legacy)for(int mode:{1,2}){
-            double curvature=0;
-            for(float phase:{0.f,.09375f,.1875f,.28125f,.375f,.46875f,.5625f,.65625f}){
-                const auto diagonal=Draw(device.Get(),effect.value,16,mode,0,false,false,0,1,phase);
-                const double value=EdgeCurvature(diagonal);curvature+=value;
-                std::printf("diagonal mode=%d phase=%.3f curvature=%.6f\n",mode,phase,value);
-                if(phase==0&&!output.empty())Save(output/("diagonal-mode"+std::to_string(mode)+".ppm"),diagonal);
-            }
-            // The jaggedness metric measures second differences of the actual
-            // 50% contour, so a uniformly blurred straight edge cannot mask it.
-            std::printf("diagonal_mean mode=%d curvature=%.6f\n",mode,curvature/8);
-            failures+=curvature/8>.18;
-            const auto thin=Draw(device.Get(),effect.value,32,mode,0,false,false,0,2);
-            const unsigned middle=(thin[64*kSize+64]>>16)&255;
-            std::printf("thin_shadow mode=%d center=%u\n",mode,middle);
-            failures+=middle>130;
-            for(unsigned resolution:{128u,192u,256u}){
-                const auto plane=Draw(device.Get(),effect.value,resolution,mode,.15f,false,false);
-                unsigned dark=0;for(unsigned y=16;y<112;++y)for(unsigned x=16;x<112;++x)dark+=((plane[y*kSize+x]>>16)&255)<250;
-                std::printf("minified_plane size=%u mode=%d dark=%u\n",resolution,mode,dark);failures+=dark!=0;
-            }
-        }
+        failures+=partialDepths==0;
+        std::printf("native_parity comparisons=%u partial_depth_cases=%u\n",comparisons,partialDepths);
         DestroyWindow(window);std::printf("native_shadow failures=%u\n",failures);return failures?1:0;
     } catch(const std::exception& e){DestroyWindow(window);std::fprintf(stderr,"%s\n",e.what());return 1;}
 }

@@ -20,6 +20,7 @@
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/force_paste.hpp"
 
 namespace mikudancestudio {
 
@@ -93,7 +94,9 @@ void SetPhysicsMenuState(HWND hwnd, UINT state) {
 // VA 0x00429790.  UINT 1 is MF_GRAYED, matching the immediate operands in
 // the original rather than treating it as a Boolean.
 void DisablePlaybackMenus(HWND hwnd) {
+    EnableWindow(GetDlgItem(hwnd, panel::kForcePasteButton), FALSE);
     HMENU menu = GetMenu(hwnd);
+    EnableMenuItem(menu, panel::kForcePasteButton, MF_GRAYED);
     SetMenuRange(menu, 202, 210, MF_GRAYED);
     SetMenuRange(menu, 212, 213, MF_GRAYED);
     SetMenuRange(menu, 217, 220, MF_GRAYED);
@@ -141,6 +144,7 @@ void RestorePlaybackMenus(MMDApp* app) {
                                : MFS_ENABLED;
         SetPhysicsMenuState(hwnd, state);
     }
+    RefreshForcePasteControls(app);
     DrawMenuBar(hwnd);
 }
 

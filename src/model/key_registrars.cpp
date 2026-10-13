@@ -494,9 +494,13 @@ bool RegisterBoneKey(unsigned char* model, unsigned char* rec, int frameOffset,
                                axisOut[2] * axisOut[2]);
         const float cosT = dot / (nB * nA);
         if (cosT < 0.0f) sinHalf = -sinHalf;
-        q[0] = sinHalf * axisOut[0];
-        q[1] = sinHalf * axisOut[1];
-        q[2] = sinHalf * axisOut[2];
+        // Original x64 0x1400C96EF..0x1400C9719 multiplies by the bone
+        // axis (xmm11/xmm10/xmm12), not the source quaternion's xyz.
+        // D3DXQuaternionToAxisAngle copies xyz without normalizing it;
+        // using axisOut here shrinks angles and reverses negative twists.
+        q[0] = sinHalf * boneAxis[0];
+        q[1] = sinHalf * boneAxis[1];
+        q[2] = sinHalf * boneAxis[2];
         auto* d3 = &d3dx::Get();
         if (d3->quatNormalize != nullptr) d3->quatNormalize(q, q);
     }
@@ -708,8 +712,6 @@ bool RegisterMirroredBoneKey(unsigned char* model, unsigned char* rec,
 bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
                                 int frameOffset) {
     unsigned char* const m = model;
-    mdl::MorphKey* keys = mdl::MorphKeys(m);
-    std::size_t capacity = mdl::MorphKeyCapacity(keys);
     const std::uint32_t frame =
         static_cast<std::uint32_t>(frameOffset) + Rd32(rec + 32);
 
@@ -723,6 +725,18 @@ bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
         if (++morphIdx >= morphCnt) return true;
         ++mrec; // typed records already account for the x86/x64 stride
     }
+    return RegisterMorphKeyAtIndex(model, morphIdx, frame, RdF32(rec + 36));
+}
+
+// Explicit destination identity keeps force paste independent of names, even
+// when two expressions have the same display or encoded name.
+bool RegisterMorphKeyAtIndex(unsigned char* model, int morphIdx,
+                             std::uint32_t frame, float value) {
+    unsigned char* const m = model;
+    if (!m || morphIdx < 0 || static_cast<unsigned>(morphIdx) >= mdl::Mdl(m)->morphCount)
+        return false;
+    mdl::MorphKey* keys = mdl::MorphKeys(m);
+    std::size_t capacity = mdl::MorphKeyCapacity(keys);
     if (keys == nullptr) return false;
 
     int cur = morphIdx;
@@ -743,7 +757,7 @@ bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
             keys[cur].next = static_cast<std::uint32_t>(free_);
             keys[free_].previous = static_cast<std::uint32_t>(cur);
             keys[free_].frame = frame;
-            keys[free_].value = RdF32(rec + 36);
+            keys[free_].value = value;
             keys[free_].allocated = 1;
             if (frame > mdl::Mdl(m)->maxFrame)
                 mdl::Mdl(m)->maxFrame = frame;
@@ -752,7 +766,7 @@ bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
     }
 
     if (frame == keys[cur].frame) {
-        keys[cur].value = RdF32(rec + 36);
+        keys[cur].value = value;
         keys[cur].allocated = 1;
         return true;
     }
@@ -768,7 +782,7 @@ bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
     keys[cur].previous = static_cast<std::uint32_t>(free_);
     keys[free_].next = static_cast<std::uint32_t>(cur);
     keys[free_].frame = frame;
-    keys[free_].value = RdF32(rec + 36);
+    keys[free_].value = value;
     keys[free_].allocated = 1;
     if (frame > mdl::Mdl(m)->maxFrame)
         mdl::Mdl(m)->maxFrame = frame;

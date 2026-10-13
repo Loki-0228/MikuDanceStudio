@@ -149,7 +149,7 @@ LRESULT CALLBACK InspectPhysicsDialog(int code, WPARAM wp, LPARAM lp) {
             const bool chinese = g_Block->EnglishUI() == 2;
             Check(Text(physics) == (chinese ? L"切换物理开关帧" : L"change physics ON/OFF frame") &&
                   Text(GetDlgItem(physics, 1)) == (chinese ? L"确定" : L"OK") &&
-                  Text(GetDlgItem(physics, 2)) == (chinese ? L"取消" : L"cancel"),
+                  Text(GetDlgItem(physics, 2)) == (chinese ? L"取消" : L"Cancel"),
                   "physics switch title and buttons follow current language");
             wchar_t text[128]{};
             SendDlgItemMessageW(physics, 669, CB_GETLBTEXT, 0, reinterpret_cast<LPARAM>(text));
@@ -187,9 +187,9 @@ void PhysicsDialogTranslation(MMDApp* app, HWND owner) {
         Check(!IntersectRect(&overlap, &toggleRect, &amountRect),
               "gravity wind checkbox never paints over its numeric input");
         Check(Text(gravity) == (chinese ? L"重力设置" : L"gravity setting") &&
-              Text(GetDlgItem(gravity, 1)) == (chinese ? L"登记" : L"register") &&
-              Text(GetDlgItem(gravity, 2)) == (chinese ? L"关闭" : L"close") &&
-              Text(windToggle) == (chinese ? L"风力" : L"noize"),
+              Text(GetDlgItem(gravity, 1)) == (chinese ? L"登记" : L"Register") &&
+              Text(GetDlgItem(gravity, 2)) == (chinese ? L"关闭" : L"Close") &&
+              Text(windToggle) == (chinese ? L"风力" : L"Noize"),
               "gravity title, buttons and wind follow current language");
         bool sawAcceleration = false;
         for (HWND child = GetWindow(gravity, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT))

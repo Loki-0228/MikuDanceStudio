@@ -529,7 +529,15 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     SetWindowTextA(GetDlgItem(hwnd, panel::kGotoFrameEdit), "0");
 
 #if !MMD_ORIGINAL_PROFILE
-    HWND adaptiveShadow = CreateWindowExW(0, L"BUTTON", L"動的スケーリング",
+    HWND forcePaste = CreateWindowExW(0, L"BUTTON", L"強制貼付",
+        WS_CHILD | WS_VISIBLE | WS_DISABLED | WS_TABSTOP | BS_PUSHBUTTON,
+        0, 0, 72, 18, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(panel::kForcePasteButton)), hInst, nullptr);
+    if (!forcePaste) return false;
+    ApplyUiFontToControl(app, forcePaste, panel::kForcePasteButton);
+    InstallControlSubclass(app, forcePaste, panel::kForcePasteButton);
+    SetWindowPos(forcePaste, GetDlgItem(hwnd, 423), 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    HWND adaptiveShadow = CreateWindowExW(0, L"BUTTON", L"動的精度",
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 0, 0, 176, 20, hwnd,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(panel::kAdaptiveShadowCheckbox)), hInst, nullptr);
     if (!adaptiveShadow) return false;
@@ -538,6 +546,18 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     ApplyUiFontToControl(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
     InstallControlSubclass(app, adaptiveShadow, panel::kAdaptiveShadowCheckbox);
     InstallPanelCheckboxPaint(adaptiveShadow);
+    HWND shadowFilter = CreateWindowExW(0, L"BUTTON", L"平滑化",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 0, 0, 84, 18, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(panel::kShadowFilterCheckbox)), hInst, nullptr);
+    if (!shadowFilter) return false;
+    SendMessageW(shadowFilter, BM_SETCHECK, app->ShadowFilterEnhanced() ? BST_CHECKED : BST_UNCHECKED, 0);
+    D3DCAPS9 shadowCaps{};
+    EnableWindow(shadowFilter, app->Renderer()->device &&
+        SUCCEEDED(app->Renderer()->device->GetDeviceCaps(&shadowCaps)) &&
+        shadowCaps.PixelShaderVersion >= D3DPS_VERSION(3, 0));
+    ApplyUiFontToControl(app, shadowFilter, panel::kShadowFilterCheckbox);
+    InstallControlSubclass(app, shadowFilter, panel::kShadowFilterCheckbox);
+    InstallPanelCheckboxPaint(shadowFilter);
 #endif
 
     // UI-init tail (original 0x004675FB / 0x00467602, adjacent calls):
@@ -668,7 +688,7 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     if (app->EnglishUI() != 0)
         fullScreenText = stereoCapable
             ? "NVIDIA 3D Vision(Alt+Enter)"
-            : "full screen(Alt+Enter)";
+            : "Full screen(Alt+Enter)";
     else
         fullScreenText = stereoCapable ? kJpNvidia3D : kJpFullScreen;
     mii = {};

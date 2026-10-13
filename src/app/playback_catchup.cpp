@@ -90,6 +90,7 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/bone_scale.hpp"
 #include <Windows.h>
 
@@ -310,9 +311,15 @@ void PlaybackCatchup(MMDApp* app, unsigned char selActive) {
         const std::int32_t frameA = s.AviRecordStartFrame();
         const float fps = s.AviRecordFps();
         const int shown = static_cast<int>(
-            static_cast<float>(n * 30) / fps + UnsigFlt(frameA));
+            static_cast<float>(n) * 30.0f / fps + UnsigFlt(frameA));
         wchar_t buf[0x100];
-        if (s.state.englishUI == 2) {
+        if (image_sequence::Active(app)) {
+            swprintf_s(buf, image_sequence::Text(app,
+                L"正在输出图片序列：第 %d 张（时间轴 %d / %d 帧）",
+                L"Exporting image %d (timeline frame %d / %d)",
+                L"連番画像出力中：%d 枚（フレーム %d / %d）"),
+                n + 1, shown, s.AviRecordEndFrame());
+        } else if (s.state.englishUI == 2) {
             swprintf_s(buf, 0x100, L"正在录制：第 %d 帧（结束帧 %d）",
                        shown, s.AviRecordEndFrame());
         } else if (s.state.englishUI != 0) {

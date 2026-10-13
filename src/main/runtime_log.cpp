@@ -9,11 +9,12 @@
 // user presses OK - a silent flash-exit becomes a readable error report.
 //
 // Constraints kept from the file-based version:
-//   * the fault path must not allocate, take a user-space lock or dereference
+//   * diagnostics must not allocate, take a user-space lock or dereference
 //     application state, so the ring uses one sequence-stamped slot per line
 //     and every buffer is static or on the stack;
 //   * the phase is a string literal only (see runtime_log.hpp);
 //   * a faulting thread that already reported is not reported twice.
+// Project recovery installs a separate, guarded best-effort callback.
 // ===========================================================================
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -53,6 +54,7 @@ std::atomic<unsigned long long> nextSequence{1};
 std::atomic<const char*> phase{"startup"};
 std::atomic<bool> reporting{false};
 std::atomic<bool> shuttingDown{false};
+std::atomic<CrashBackup> crashBackup{nullptr};
 ULONGLONG lastHeartbeat = 0;
 wchar_t dialogText[kDialogChars];
 
@@ -306,6 +308,8 @@ void ShowLastError(const char* reason, const EXCEPTION_RECORD* record) noexcept 
         EXCEPTION_RECORD record{};
         record.ExceptionCode = code;
         record.ExceptionAddress = address;
+        if (!shuttingDown.load(std::memory_order_relaxed))
+            if (auto backup = crashBackup.load()) backup(code);
         // Teardown faults (after the close was confirmed) stay silent: the
         // settings are saved and the window is gone, so a modal error box
         // would only look like the program failed to close.
@@ -350,6 +354,8 @@ LONG WINAPI OnCrash(EXCEPTION_POINTERS* pointers) noexcept {
     if (pointers != nullptr && pointers->ContextRecord != nullptr)
         CaptureBacktrace(pointers->ContextRecord);
     if (!shuttingDown.load(std::memory_order_relaxed))
+        if (auto backup = crashBackup.load()) backup(record.ExceptionCode);
+    if (!shuttingDown.load(std::memory_order_relaxed))
         ShowLastError(nullptr, &record);
     // Returning EXCEPTION_EXECUTE_HANDLER lets the system finish the process
     // now that the user has seen (and can copy) the report.
@@ -357,8 +363,10 @@ LONG WINAPI OnCrash(EXCEPTION_POINTERS* pointers) noexcept {
 }
 }  // namespace
 
+void SetCrashBackup(CrashBackup callback) noexcept { crashBackup.store(callback); }
+
 void Initialize() noexcept {
-    // No directory, no file, no dump: nothing is created on disk.
+    // Diagnostics initialization creates no directory, file or dump.
     ULONG reserve = 64 * 1024;
     SetThreadStackGuarantee(&reserve);
     SetUnhandledExceptionFilter(OnCrash);

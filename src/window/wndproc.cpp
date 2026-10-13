@@ -1,3 +1,4 @@
+#include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
 // ===========================================================================
 // VA 0x004C3A10 - MainWndProc  (original: sub_4C3A10, 0x8A6 bytes)
@@ -39,6 +40,8 @@
 #include <cstdint>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/recent_projects.hpp"
+#include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/ui_message.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
@@ -123,6 +126,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) ||
             (msg == WM_SYSCOMMAND && (wParam & 0xfff0) == SC_CLOSE)) return 0;
     }
+    if (recent_projects::HandleMessage(app, msg, wParam, lParam)) return 0;
+    if (HandleBottomPanelResize(app, msg, wParam, lParam)) return msg == WM_SETCURSOR ? TRUE : 0;
     if (msg == WM_INITMENU) plugin_menu::Refresh(app);
     if (msg == WM_INITMENUPOPUP) {
         // Menu state can survive a programmatic model/panel change. Resolve
@@ -140,6 +145,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         frame_rate_correction::RefreshMenu(app);
         // Keep the Help menu's current dock-corner label and UI language fresh.
         viewport_corner_menu::EnsureItem(app);
+    }
+    if (msg == WM_INITMENUPOPUP) autosave::RefreshMenu(app);
+    if (msg == WM_NCPAINT || msg == WM_NCACTIVATE || msg == WM_SETTEXT || msg == WM_EXITMENULOOP) {
+        const auto result = DefWindowProcW(hwnd, msg, wParam, lParam);
+        autosave::PaintMenuWarning(app);
+        return result;
+    }
+    if (msg == WM_PRINT && (lParam & PRF_NONCLIENT)) {
+        const auto result = DefWindowProcW(hwnd, msg, wParam, lParam);
+        autosave::PaintMenuWarning(app, reinterpret_cast<HDC>(wParam));
+        return result;
     }
     s.MessageSeen() = 1;                                           // 658796
     if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP ||
@@ -192,6 +208,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             return 0;
 
         case WM_DESTROY: {
+            autosave::Shutdown();
             runtime_log::Write("WM_DESTROY begin (window is closing)");
             WINDOWPLACEMENT wndpl;
             wndpl.length = sizeof(wndpl);
@@ -354,7 +371,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         const int controlId = GetDlgCtrlID(control);
         if (controlId == panel::kCameraRefModelCheckbox ||
             controlId == panel::kCameraRefBoneCheckbox ||
-            controlId == panel::kAdaptiveShadowCheckbox)
+            controlId == panel::kAdaptiveShadowCheckbox || controlId == panel::kShadowFilterCheckbox)
             return HandleCtlColor(control, reinterpret_cast<HDC>(wParam));
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
@@ -404,6 +421,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         // Finish the gesture before clearing its range or releasing capture.
         if (s.SelectionBoxDragging() != 0 || s.SidebarResizeDragging() != 0)
             HandleMouseMove(static_cast<std::uint32_t>(lParam), HIWORD(lParam));
+        CommitSidebarResize(app);
         HandleLButtonUp(app);                                     // 0x44A9A0
         if (GetCapture() == hwnd)
             ReleaseCapture();
@@ -440,8 +458,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         ReleaseCapture();
         return 0;
     case WM_MOUSEACTIVATE:
+        if (LOWORD(lParam) != HTCLIENT)
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         HandleMouseActivate(app);                                 // 0x4632F0
-        return 0;
+        return MA_ACTIVATE;
     case WM_MOUSEWHEEL:
         HandleMouseWheel(HIWORD(wParam));                         // 0x44BD70
         return 0;

@@ -124,6 +124,7 @@
 #include "mikudancestudio/accessory_layout.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/recent_projects.hpp"
 #include "mikudancestudio/bone_key_pool.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/bone_combo.hpp"
@@ -2255,6 +2256,7 @@ void LoadSceneV1(MMDApp* app, int fd) {
     LoadSceneV1_SuccessTail(ctx);                     // 0x45E149..0x45E7F7
     native_mesh::ProjectOpened(app, app->EnvFileName());
     mmv4mms::ProjectOpened(app, app->EnvFileName());
+    recent_projects::Record(app, app->EnvFileName());
 }
 
 }  // namespace mikudancestudio

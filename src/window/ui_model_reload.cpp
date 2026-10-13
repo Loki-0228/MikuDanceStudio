@@ -171,6 +171,8 @@ void PostModelReload2(MMDApp* app) {  // 0x40D940
 #if !MMD_ORIGINAL_PROFILE
     ShowWindow(MainControl(app, panel::kAdaptiveShadowCheckbox),
         cameraMode && app->state.optflag[6] != 0 ? SW_SHOWNORMAL : SW_HIDE);
+    ShowWindow(MainControl(app, panel::kShadowFilterCheckbox),
+        cameraMode && app->state.optflag[6] != 0 ? SW_SHOWNORMAL : SW_HIDE);
 #endif
 
     const struct {
@@ -235,7 +237,7 @@ void PostModelReload2(MMDApp* app) {  // 0x40D940
         EnableWindow(MainControl(app, 400), FALSE);
         EnableWindow(MainControl(app, 401), FALSE);
         if (app->EnglishUI() != 0) {
-            SetUiControlText(app, MainControl(app, 407), "btm");
+            SetUiControlText(app, MainControl(app, 407), "Btm");
             SetUiControlText(app, GetDlgItem(viewportWindow, panel::kModelEditToggle), "To model");
         } else {
             SetWindowTextW(MainControl(app, 407), L"\x4e0b\x9762");
@@ -256,7 +258,7 @@ void PostModelReload2(MMDApp* app) {  // 0x40D940
                  mdl::Mdl(model)->redoDirty != 0);
     // MMS: 407 is the bottom view in both panels (command_control_400.cpp).
     if (app->EnglishUI() != 0) {
-        SetUiControlText(app, MainControl(app, 407), "btm");
+        SetUiControlText(app, MainControl(app, 407), "Btm");
         SetUiControlText(app, GetDlgItem(viewportWindow, panel::kModelEditToggle), "To camera");
     } else {
         SetWindowTextW(MainControl(app, 407), L"\x4e0b\x9762");

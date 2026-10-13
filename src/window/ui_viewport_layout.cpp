@@ -30,6 +30,7 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/ui_language.hpp"
+#include "ui_control_layout.hpp"
 
 namespace mikudancestudio {
 
@@ -106,20 +107,24 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     const RECT& viewport = s.ViewportRect();
     const int stripY = viewport.bottom;                           // 658764
     const int rowY = viewport.top;                                // 658756
+    const bool deferPaint = app->SidebarResizeDragging() != 0;
+    auto move = [&](int id, int x, int y, int w, int h) {
+        ui::MoveLayoutControl(base, id, x, y, w, h, deferPaint);
+    };
 
     // Camera strip: x = inset + K, shown while inset + K <= right.
     auto moveLeft = [&](int id, int k, int dy, int w, int h) {
         if (inset + k <= right)
-            MoveWindow(GetDlgItem(base, id), inset + k, stripY + dy, w, h, TRUE);
+            move(id, inset + k, stripY + dy, w, h);
         else
-            MoveWindow(GetDlgItem(base, id), -9000, -9000, 1, 1, TRUE);
+            move(id, -9000, -9000, 1, 1);
     };
     // Top button row: x = right - K, shown while right - K >= inset.
     auto moveRight = [&](int id, int k, int dy, int w, int h) {
         if (right - k >= inset)
-            MoveWindow(GetDlgItem(base, id), right - k, rowY + dy, w, h, TRUE);
+            move(id, right - k, rowY + dy, w, h);
         else
-            MoveWindow(GetDlgItem(base, id), -9000, -9000, 1, 1, TRUE);
+            move(id, -9000, -9000, 1, 1);
     };
 
     moveLeft(536,   5,  3, 55, 27);   // 0x40CB25 model-select strip label
@@ -163,7 +168,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     // once with the control font and again with the bold font caused ghosts.
     for (int id : {570, 571, 572, 574, 575, 576, 577}) {
         HWND control = GetDlgItem(base, id);
-        if (control != nullptr && app->state.hFontUI != nullptr) {
+        if (!deferPaint && control != nullptr && app->state.hFontUI != nullptr) {
             ApplyUiFontToControl(app, control, id);
             if (id == 570)
                 SendMessageW(control, WM_SETFONT,
@@ -183,9 +188,9 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
         inset + scaleZField + scaleEditWidth <= right;
     auto moveScale = [&](int id, int x, int dy, int w, int h) {
         if (scaleFits)
-            MoveWindow(GetDlgItem(base, id), inset + x, stripY + dy, w, h, TRUE);
+            move(id, inset + x, stripY + dy, w, h);
         else
-            MoveWindow(GetDlgItem(base, id), -9000, -9000, 1, 1, TRUE);
+            move(id, -9000, -9000, 1, 1);
     };
     moveScale(570, scaleTitleX, 8, scaleTitleWidth, 18);  // 14px toolbar font
     moveScale(571, scaleXAxis, 9, 16, 17);  // X
@@ -204,6 +209,8 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     moveRight(554, 398, -19, 35, 14); // frame edit box
     moveRight(555, 441, -22, 40, 20);
 
+    // Hide/show would force intermediate paints while the splitter is moving.
+    if (deferPaint) return;
     for (int i = 536; i <= 557; ++i) {                            // 0x40D053
         HWND overlay = GetDlgItem(base, i);
         if (IsWindowVisible(overlay)) {

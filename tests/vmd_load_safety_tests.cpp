@@ -1,6 +1,6 @@
 // Exercise the real LoadVmdMotion entry, key registrars, and extension loaders.
 // No windows or D3D device are created. Each case can also run in isolation:
-// vmd_load_safety_tests.exe --case overflow|short|counts|valid|tails|camera|ik
+// vmd_load_safety_tests.exe --case overflow|short|counts|valid|tails|camera|ik|twist|force-morph
 // vmd_load_safety_tests.exe --benchmark [warmup iterations]
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +29,10 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/morph_curve.hpp"
+#include "mikudancestudio/d3dx_dyn.hpp"
+#include "mikudancestudio/force_paste.hpp"
+#include "mikudancestudio/ported_funcs.hpp"
+#include <limits>
 
 namespace mikudancestudio { int LoadVmdMotion(MMDApp*, const char*); }
 namespace {
@@ -213,6 +218,130 @@ struct Fixture {
         }
     }
 };
+
+void ForceMorphPaste() {
+    Fixture fixture;
+    auto* app = fixture.app.get();
+    auto* model = fixture.model.get();
+    model->physicsMode = 2;
+    // Duplicate names must not redirect an explicitly selected destination.
+    for (auto& morph : fixture.morphs) std::strcpy(morph.name, "face");
+    fixture.morphs[0].panel = mdl::MorphPanel::eye;
+    fixture.morphs[1].panel = mdl::MorphPanel::mouth;
+    std::array<mdl::FrameGroup, 2> rows{};
+    rows[0].targetIndex = 0; rows[1].targetIndex = 1;
+    model->displayFrames = rows.data(); model->facialFrameCount = 2;
+    Check(ForcePasteMorphTarget(app) == -1, "force paste requires an explicit expression selection");
+    rows[0].selected = rows[1].selected = 1;
+    Check(ForcePasteMorphTarget(app) == -2, "force paste rejects multiple expression destinations");
+    rows[0].selected = 0;
+    Check(ForcePasteMorphTarget(app) == 1, "force paste resolves the selected expression by index");
+
+    std::array<mdl::MorphClipboardRecord, 3> clipboard{};
+    for (auto& record : clipboard) std::strcpy(record.name, "face");
+    clipboard[0].frame = 0; clipboard[0].value = .2f;
+    clipboard[1].frame = 7; clipboard[1].value = .8f;
+    clipboard[2].frame = 20; clipboard[2].value = .4f;
+    const auto originalClipboard = clipboard;
+    app->MorphClipboard() = clipboard.data(); app->ClipboardCounts().morphs = 3;
+    app->CurrentFrame() = 30;
+    Check(RegisterMorphKeyAtIndex(fixture.Raw(), 1, 37, .1f) &&
+          RegisterMorphKeyAtIndex(fixture.Raw(), 1, 60, .9f), "prepare overwritten and preserved expression keys");
+    Check(ForcePasteMorphKeys(app, ForcePasteMorphTarget(app)), "paste expression keys through the production operation");
+    std::uint32_t index = 1, previous = 0;
+    const std::array<std::uint32_t, 5> frames{0, 30, 37, 50, 60};
+    const std::array<float, 5> values{.125f, .2f, .8f, .4f, .9f};
+    for (unsigned i = 0; i < frames.size(); ++i) {
+        const auto& key = fixture.morphKeys[index];
+        Check(key.frame == frames[i] && key.value == values[i] && key.previous == previous,
+              "expression paste preserves spacing, overwrites matching frames, and retains other keys");
+        Check(key.allocated == (i > 0 && i < 4), "only pasted expression keys are selected");
+        previous = index; index = key.next;
+        Check((index == 0) == (i + 1 == frames.size()), "expression key chain has no duplicate or missing frames");
+    }
+    Check(fixture.morphKeys[0].next == 0 && fixture.morphKeys[0].value == 0,
+          "same-name source expression is not modified");
+    Check(model->maxFrame == 60 && app->state.lastRegisteredFrame == 60 && app->SceneModified(),
+          "expression paste updates project extent and modified state");
+    Check(std::memcmp(clipboard.data(), originalClipboard.data(), sizeof(clipboard)) == 0,
+          "force paste preserves clipboard names, relative frames, and values");
+    // Frame zero and a single copied value use the same operation.
+    app->CurrentFrame() = 0; app->ClipboardCounts().morphs = 1;
+    Check(ForcePasteMorphKeys(app, 1) && fixture.morphKeys[1].value == .2f,
+          "single expression value can replace the frame-zero key");
+    app->CurrentFrame() = 100;
+    Check(ForcePasteMorphKeys(app, 1) && model->maxFrame == 100 && app->state.lastRegisteredFrame == 100,
+          "repeated force paste extends the animation at the new current frame");
+    auto reject = [&] {
+        const auto before = fixture.State();
+        Check(!ForcePasteMorphKeys(app, 1), "invalid or blocked expression paste is rejected");
+        Check(fixture.State() == before, "rejected expression paste does not mutate keyframes or selection");
+    };
+    clipboard[0].value = std::numeric_limits<float>::quiet_NaN(); reject();
+    clipboard[0].value = .2f; clipboard[0].frame = std::numeric_limits<std::uint32_t>::max(); reject();
+    clipboard[0].frame = 0; app->ClipboardCounts().morphs = 0; reject();
+    app->ClipboardCounts().morphs = 1; app->PlaybackActive() = 1; reject();
+    app->PlaybackActive() = 0; app->FrameStepPlayback() = 1; reject();
+    app->FrameStepPlayback() = 0; fixture.morphs[1].panel = mdl::MorphPanel::system; reject();
+    app->MorphClipboard() = nullptr;
+    std::puts("force_morph: selection, same-name destinations, values, timing, overwrite, repeated paste, and rejection checks passed");
+}
+
+void FixedAxisRotations() {
+    Check(d3dx::Get().Load(), "load production quaternion functions");
+    unsigned tested = 0, failures = 0;
+    double maximumError = 0;
+    constexpr double radians = 3.14159265358979323846 / 180;
+    const std::array<std::array<float, 3>, 3> axes{{{1,0,0}, {-1,0,0}, {.6f,.8f,0}}};
+    for (int version : {1, 2}) for (bool pmx : {false, true}) {
+        for (auto type : {mdl::BoneType::FixedAxis, mdl::BoneType::UnderIk, mdl::BoneType::RotateMove}) {
+            for (const auto& axis : axes) {
+                Fixture fixture;
+                fixture.model->physicsMode = pmx ? 2 : 1;
+                fixture.model->boneCount = 2;
+                fixture.bones[0].type = type;
+                fixture.bones[0].flags = mdl::kBoneFlagFixedAxis;
+                fixture.bones[0].tailBone = 1;
+                fixture.bones[1].parent = -1;
+                fixture.bones[1].slotIndex = -1;
+                fixture.bones[1].rotQuat[3] = fixture.boneKeys[1].rotation[3] = 1;
+                for (int c = 0; c < 3; ++c) {
+                    fixture.bones[0].axis[c] = axis[c];
+                    fixture.bones[0].position[c] = float(c + 1);
+                    fixture.bones[1].position[c] = fixture.bones[0].position[c] + axis[c]*5;
+                }
+                for (float degrees : {-60.f, 60.f, -120.f, 120.f, 0.f, 180.f, -270.f, 270.f}) {
+                    for (float sign : {1.f, -1.f}) {
+                        Motion motion(version);
+                        std::array<float, 4> expected{};
+                        for (int c = 0; c < 3; ++c)
+                            expected[c] = float(sign * axis[c] * std::sin(degrees*radians/2));
+                        expected[3] = float(sign * std::cos(degrees*radians/2));
+                        const auto quaternionOffset = motion.counts[0] + 4 + 15 + 4 + 12;
+                        std::memcpy(motion.bytes.data()+quaternionOffset, expected.data(), sizeof(expected));
+                        Check(fixture.Load(motion.bytes) == 2, "load fixed-axis VMD through production parser and registrar");
+                        double error = 0;
+                        for (int c = 0; c < 4; ++c)
+                            error = (std::max)(error, std::abs(double(fixture.boneKeys[0].rotation[c])-expected[c]));
+                        maximumError = (std::max)(maximumError, error);
+                        if (error > 2e-6) {
+                            if (failures < 6) {
+                                const auto* q = fixture.boneKeys[0].rotation;
+                                const double sine = q[0]*axis[0]+q[1]*axis[1]+q[2]*axis[2];
+                                std::printf("twist_mismatch version=%d pmx=%u type=%u input_degrees=%.0f loaded_degrees=%.6f error=%.6f\n",
+                                    version, pmx, unsigned(type), degrees, 2*std::atan2(sine,q[3])/radians, error);
+                            }
+                            ++failures;
+                        }
+                        ++tested;
+                    }
+                }
+            }
+        }
+    }
+    std::printf("fixed_axis_vmd cases=%u failures=%u maximum_quaternion_error=%.9g\n", tested, failures, maximumError);
+    Check(!failures, "VMD import preserves signed fixed-axis rotations and equivalent quaternion signs");
+}
 
 void Overflow() {
     Fixture fixture; const auto before = fixture.State(); Motion motion;
@@ -442,7 +571,7 @@ int main(int argc, char** argv) {
         Benchmark(warmup, iterations); return 0;
     }
     struct Case { const char* name; void (*run)(); };
-    const Case cases[]{{"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}};
+    const Case cases[]{{"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}, {"twist", FixedAxisRotations}, {"force-morph", ForceMorphPaste}};
     if (argc == 3 && std::strcmp(argv[1], "--case") == 0) {
         for (const auto& test : cases) if (std::strcmp(argv[2], test.name) == 0) { test.run(); std::printf("VMD %s: passed\n", test.name); return 0; }
         return 2;

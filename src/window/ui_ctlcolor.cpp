@@ -110,12 +110,11 @@ LRESULT HandleCtlColor(HWND control, HDC dc) {
         return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH));
     }
 
-    // The camera-reference checkboxes sit over the dark blue view panel. Keep
-    // their labels readable without painting an opaque button background.
+    // Panel captions use color.txt's shared text color, including custom themes.
     const int controlId = GetDlgCtrlID(ctrl);
-    if (controlId == panel::kAdaptiveShadowCheckbox) {
+    if (controlId == panel::kAdaptiveShadowCheckbox || controlId == panel::kShadowFilterCheckbox) {
         SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, RGB(255, 255, 255));
+        SetTextColor(dc, RGB(app->UiTextRed(), app->UiTextGreen(), app->UiTextBlue()));
         // The checkbox subclass paints the matching panel gradient at its
         // actual position; the slider's solid brush belongs to another row.
         return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH));
@@ -123,7 +122,7 @@ LRESULT HandleCtlColor(HWND control, HDC dc) {
     if (controlId == panel::kCameraRefModelCheckbox ||
         controlId == panel::kCameraRefBoneCheckbox) {
         SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, RGB(255, 255, 255));
+        SetTextColor(dc, RGB(app->UiTextRed(), app->UiTextGreen(), app->UiTextBlue()));
         return reinterpret_cast<LRESULT>(GetStockObject(NULL_BRUSH));
     }
 

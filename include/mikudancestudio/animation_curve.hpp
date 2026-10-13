@@ -29,6 +29,10 @@ bool Validate(const Track&, std::string& error);
 // Clamps outside the first/last frame; Bezier time is inverted, not assumed linear.
 Sample Evaluate(const Track&, double frame);
 void UpdateAutomatic(Track&);
+enum class InsertResult { Inserted, Existing, Rejected };
+// Splits the time/value Bezier at an integer frame without changing its shape.
+// Existing frames are no-ops; unrepresentable weights leave the track intact.
+InsertResult InsertPreservingShape(Track&, std::int32_t frame, std::size_t& index, std::string& error);
 bool SetTangent(Track&, std::size_t key, Tangent, std::string& error);
 // Per-side Bezier editing.  A key's in side is the interval ending at it, its
 // out side the interval starting at it.  A side is straight when that interval

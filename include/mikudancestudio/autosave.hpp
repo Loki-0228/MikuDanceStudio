@@ -1,0 +1,41 @@
+#pragma once
+#include <Windows.h>
+#include <string>
+#include <vector>
+#include <filesystem>
+
+namespace mikudancestudio {
+class MMDApp;
+// A copy never changes the active project name, dirty state, title or save hooks.
+bool SaveSceneCopy(MMDApp*, const wchar_t* destination);
+bool SceneSaveInProgress() noexcept;
+namespace autosave {
+inline constexpr unsigned kSettingsCommand = 32813;
+inline constexpr char kOwnershipKey[] = "org.mikudancestudio.autosave.filename";
+struct Settings {
+    bool enabled = false; // Periodic saving only; crash recovery is always armed.
+    unsigned intervalMinutes = 1;
+    unsigned maxBackups = 100;
+    bool overwriteOldest = false;
+    std::wstring directory;
+};
+enum class Result { Saved, Disabled, Busy, Full, Failed };
+Settings LoadSettings(const std::filesystem::path&);
+bool SaveSettings(const std::filesystem::path&, const Settings&);
+bool Validate(const Settings&, std::wstring& error);
+const Settings& Current();
+bool Configure(MMDApp*, const Settings&, std::wstring& error);
+void Initialize(MMDApp*);
+void Shutdown() noexcept;
+// Invoked only by the outer main loop, never from a nested dialog message loop.
+void Tick(MMDApp*, ULONGLONG now);
+Result BackupNow(MMDApp*, bool crash = false);
+void TryCrashBackup(unsigned long exceptionCode) noexcept;
+std::vector<std::filesystem::path> Backups(const std::filesystem::path&);
+bool FolderFull() noexcept;
+void RefreshMenu(MMDApp*);
+bool HandleCommand(MMDApp*, unsigned);
+void PaintMenuWarning(MMDApp*, HDC dc = nullptr);
+const wchar_t* Text(MMDApp*, const wchar_t* zh, const wchar_t* en, const wchar_t* ja);
+}
+}

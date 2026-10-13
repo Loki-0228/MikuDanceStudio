@@ -46,10 +46,13 @@
 #include <Windows.h>
 
 #include <cstdint>
+#include <algorithm>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
+#include "ui_control_layout.hpp"
 
 namespace mikudancestudio {
 
@@ -58,6 +61,24 @@ namespace {
 // GetDlgItem + MoveWindow pair as in the original (0x44341E..0x443427 etc.).
 void MoveCtrl(HWND parent, int id, int x, int y, int w, int h) {
     MoveWindow(GetDlgItem(parent, id), x, y, w, h, TRUE);
+}
+
+void LayoutForcePasteRow(HWND hwnd, int side, int bottom, bool deferPaint = false) {
+    if (!GetDlgItem(hwnd, panel::kForcePasteButton)) return;
+    const bool wrap = side < 328;
+    const int y = bottom - 224 - (wrap ? 23 : 0);
+    const int start = wrap ? side / 2 - 119 : (std::min)(side / 2 - 119, side - 322);
+    const int ids[] = {420, 421, 422, 416, 423};
+    const int offsets[] = {0, 43, 86, 134, 189};
+    for (int i = 0; i < 5; ++i)
+        ui::MoveLayoutControl(hwnd, ids[i], start + offsets[i], y, i < 3 ? 40 : 50, 18, deferPaint);
+    ui::MoveLayoutControl(hwnd, panel::kForcePasteButton,
+        wrap ? side / 2 + 48 : start + 244, bottom - 224, 72, 18, deferPaint);
+    // At the minimum sidebar width, keep complete labels on a second row.
+    const int shift = wrap ? 23 : 0;
+    ui::MoveLayoutControl(hwnd, 427, side - 19, 162, 16, bottom - 410 - shift, deferPaint);
+    ui::MoveLayoutControl(hwnd, 428, 97, bottom - 247 - shift, side - 116, 16, deferPaint);
+    ui::MoveLayoutControl(hwnd, 429, 8, bottom - 247 - shift, 80, 18, deferPaint);
 }
 
 // Visibility re-toggle loop body (0x444B4A..0x444B6F and the four siblings).
@@ -138,6 +159,7 @@ void HandleWindowSize(MMDApp* app) {
     MoveCtrl(hwnd, 420, side / 2 - 119, bottom - 224, 40, 18);
     MoveCtrl(hwnd, 421, side / 2 - 76, bottom - 224, 40, 18);
     MoveCtrl(hwnd, 422, side / 2 - 33, bottom - 224, 40, 18);
+    LayoutForcePasteRow(hwnd, side, bottom);
     MoveCtrl(hwnd, 425, side / 2 - 3, bottom - 201, 50, 14);
     MoveCtrl(hwnd, 426, side / 2 + 69, bottom - 201, 50, 14);
     MoveCtrl(hwnd, 434, side / 2 - 118, bottom - 193, 100, 400);
@@ -208,7 +230,8 @@ void HandleWindowSize(MMDApp* app) {
     MoveCtrl(hwnd, 563, 745 - bandXBase, bottom - 135, 54, 22);
     MoveCtrl(hwnd, 564, 802 - bandXBase, bottom - 135, 54, 22);
 #if !MMD_ORIGINAL_PROFILE
-    MoveCtrl(hwnd, panel::kAdaptiveShadowCheckbox, 688 - bandXBase, bottom - 112, 170, 18);
+    MoveCtrl(hwnd, panel::kAdaptiveShadowCheckbox, 688 - bandXBase, bottom - 112, 84, 18);
+    MoveCtrl(hwnd, panel::kShadowFilterCheckbox, 775 - bandXBase, bottom - 112, 83, 18);
 #endif
     MoveCtrl(hwnd, 560, 683 - bandXBase, bottom - 75, 176, 20);
     MoveCtrl(hwnd, 561, 815 - bandXBase, bottom - 92, 35, 14);
@@ -317,8 +340,15 @@ void HandleWindowSize(MMDApp* app) {
     MoveCtrl(hwnd, 531, 950 - bandXBase2, bottom - 99, 50, 14);
     MoveCtrl(hwnd, 413, 952 - bandXBase2, bottom - 19, 13, 13);
     MoveCtrl(hwnd, 414, 888 - bandXBase2, bottom - 19, 13, 13);
+#if !MMD_ORIGINAL_PROFILE
+    // Keep enough title space in every language, including a live switch to Chinese.
+    MoveCtrl(hwnd, 534, 1017 - bandXBase2, bottom - 61, 22, 55);
+#else
     MoveCtrl(hwnd, 534, 1017 - bandXBase2, bottom - 63, 22, 57);
+#endif
     MoveCtrl(hwnd, 535, 1002 - bandXBase2, bottom - 141, 35, 37);
+
+    ResizeBottomPanelControls(app);
 
     // --- visibility re-toggle, five id ranges (0x444B3B..0x444C99) ---------
     ToggleVisible(hwnd, 455, 469);
@@ -342,6 +372,10 @@ void RelayoutSidebarControls(MMDApp* app) {
     if (app->FullscreenMode() != 0) return;
     const HWND hwnd = static_cast<HWND>(app->Hwnd());
     const int side = app->SidebarWidth();
+    const bool deferPaint = app->SidebarResizeDragging() != 0;
+    const auto MoveCtrl = [deferPaint](HWND parent, int id, int x, int y, int w, int h) {
+        ui::MoveLayoutControl(parent, id, x, y, w, h, deferPaint);
+    };
     RECT client{};
     GetClientRect(hwnd, &client);
 
@@ -364,18 +398,42 @@ void RelayoutSidebarControls(MMDApp* app) {
     MoveCtrl(hwnd, 420, side / 2 - 119, bottom - 224, 40, 18);
     MoveCtrl(hwnd, 421, side / 2 - 76, bottom - 224, 40, 18);
     MoveCtrl(hwnd, 422, side / 2 - 33, bottom - 224, 40, 18);
+    LayoutForcePasteRow(hwnd, side, bottom, deferPaint);
     MoveCtrl(hwnd, 425, side / 2 - 3, bottom - 201, 50, 14);
     MoveCtrl(hwnd, 426, side / 2 + 69, bottom - 201, 50, 14);
     MoveCtrl(hwnd, 434, side / 2 - 118, bottom - 193, 100, 400);
     MoveCtrl(hwnd, 415, side / 2 - 4, bottom - 181, 60, 18);
     MoveCtrl(hwnd, 424, side / 2 + 60, bottom - 181, 60, 18);
 
-    ToggleVisible(hwnd, 400, 401);
-    ToggleVisible(hwnd, 415, 426);
-    ToggleVisible(hwnd, 558, 559);
-    ToggleVisible(hwnd, 434, 434);
+    if (!deferPaint) {
+        ToggleVisible(hwnd, 400, 401);
+        ToggleVisible(hwnd, 415, 426);
+        ToggleVisible(hwnd, 558, 559);
+        ToggleVisible(hwnd, 434, 434);
+    }
     RefreshMainWindowViewport(app);
     LayoutViewportPanels(app);
+}
+
+void CommitSidebarResize(MMDApp* app) {
+    if (!app || app->SidebarResizeDragging() == 0 || app->FullscreenMode() != 0 ||
+        app->FloatingWindow() != nullptr) return;
+    HWND hwnd = app->MainWindow();
+    RECT client{};
+    if (!GetClientRect(hwnd, &client) || client.right <= 5) return;
+    const int width = std::min(std::max(250, app->MouseX()), int(client.right) - 5);
+    if (width == app->SidebarWidth()) return;
+    app->WindowLayoutReady() = 0;
+    app->SidebarWidth() = width;
+    app->SidebarRatio() = float(double(width) / client.right);
+    RelayoutSidebarControls(app);
+    PanelPaint(app);
+    // Repaint the old and new control areas only after all geometry agrees.
+    // WM_PAINT may now present the scene, which clears the former controls
+    // from the expanded D3D viewport even with no idle-loop frame in between.
+    app->WindowLayoutReady() = 1;
+    RedrawWindow(hwnd, nullptr, nullptr,
+        RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
 }  // namespace mikudancestudio

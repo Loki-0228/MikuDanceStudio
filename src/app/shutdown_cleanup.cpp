@@ -1,4 +1,6 @@
+#include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
@@ -437,8 +439,10 @@ void TeardownDShowGraphCoUninit(DShowRecorder* rec) {
 // =========================================================================//
 void ShutdownCleanup(MMDApp* app) {
     viewport_render_scale::Release(app);
+    autosave::Shutdown();
     device_lost_wait::Forget(app);
     AbortPngMovRecording(app->Recorder());
+    image_sequence::Abort(app);
     ReleaseTransparentCapture(app);
     mmv4mms::Shutdown();
     plugin_menu::Shutdown(app);

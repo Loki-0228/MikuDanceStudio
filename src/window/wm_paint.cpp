@@ -28,6 +28,7 @@
 
 #include "mikudancestudio/bottom_panel_layout.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/bottom_panel_resize.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
@@ -42,8 +43,43 @@ namespace {
 #include "wm_paint_labels.inc"
 
 void Lbl(MMDApp* a, const char* s, HDC hdc, int size, int x, int y) {
+    RECT client{}; GetClientRect(a->MainWindow(), &client);
+    if (y >= client.bottom - 157) x = BottomPanelX(a, x);
     DrawUiGlyph(a, s, hdc, size, x, y,
               a->UiTextRed(), a->UiTextGreen(), a->UiTextBlue(), 0);
+}
+
+void PanelTitle(MMDApp* app, HDC hdc, const char* english, const char* japanese,
+                int left, int right, int top, int englishX, int japaneseX) {
+    const int mappedLeft = BottomPanelX(app, left);
+    const int mappedRight = BottomPanelX(app, right);
+    const bool en = app->EnglishUI() != 0;
+#if !MMD_ORIGINAL_PROFILE
+    if (app->EnglishUI() == kUiChinese) {
+        if (const wchar_t* title = ChineseUiText(english)) {
+            // Header text belongs inside the panel border. Ordinary translated
+            // labels use a baseline lift and an English x anchor; neither is
+            // appropriate for centered headers, especially the narrow volume box.
+            LOGFONTW lf{};
+            lf.lfHeight = -12;
+            lf.lfCharSet = DEFAULT_CHARSET;
+            wcscpy_s(lf.lfFaceName, L"Microsoft YaHei UI");
+            HFONT font = CreateFontIndirectW(&lf);
+            if (font) {
+                const int saved = SaveDC(hdc);
+                SelectObject(hdc, font);
+                SetBkMode(hdc, TRANSPARENT);
+                SetTextColor(hdc, RGB(app->UiTextRed(), app->UiTextGreen(), app->UiTextBlue()));
+                RECT bounds{mappedLeft + 1, top + 1, mappedRight - 1, top + 18};
+                DrawTextW(hdc, title, -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                RestoreDC(hdc, saved);
+                DeleteObject(font);
+                return;
+            }
+        }
+    }
+#endif
+    Lbl(app, en ? english : japanese, hdc, 12, en ? englishX : japaneseX, top + 2);
 }
 
 }  // namespace
@@ -122,11 +158,11 @@ void HandleWindowPaint(MMDApp* app) {
         DeleteObject(blk);
     }
 
+    PanelTitle(app, hdc, "Interpolation curve", kJpLblInterpCurve,
+        3, 215, rc.bottom - 157, 60, 70);
     if (en) {
-        Lbl(app, "Interpolation curve", hdc, 12, 60, rc.bottom - 155);
         Lbl(app, "auto", hdc, 12, 160, rc.bottom - 104);
     } else {
-        Lbl(app, kJpLblInterpCurve, hdc, 12, 70, rc.bottom - 155);
         Lbl(app, kJpLblAutoSet, hdc, 12, 160, rc.bottom - 104);
     }
 
@@ -143,11 +179,11 @@ void HandleWindowPaint(MMDApp* app) {
     else
         Lbl(app, kJpLblBoneFrameManip, hdc, 12, side / 2 - 55, 7);
 
+    PanelTitle(app, hdc, "model manipulation", kJpLblModelManip,
+        218, 358, rc.bottom - 157, 238, 258);
     if (en) {
-        Lbl(app, "model manipulation", hdc, 12, 238, rc.bottom - 155);
         Lbl(app, "disp", hdc, 12, 240, rc.bottom - 83);
     } else {
-        Lbl(app, kJpLblModelManip, hdc, 12, 258, rc.bottom - 155);
         Lbl(app, kJpLblDisp, hdc, 12, 240, rc.bottom - 83);
     }
     Lbl(app, "ON", hdc, 12, 244, rc.bottom - 35);
@@ -160,12 +196,12 @@ void HandleWindowPaint(MMDApp* app) {
     int panelShift = panelLayout.leading;
     if (app->state.optflag[0] != 0) {
         if (app->state.optflag[1] != 0) {
+            PanelTitle(app, hdc, "camera", kJpLblCameraManip,
+                361, 514, rc.bottom - 157, 423, 410);
             if (en) {
-                Lbl(app, "camera", hdc, 12, 423, rc.bottom - 155);
                 Lbl(app, "view angle ", hdc, 11, 368, rc.bottom - 107);
                 Lbl(app, "follow bone", hdc, 11, 368, rc.bottom - 67);
             } else {
-                Lbl(app, kJpLblCameraManip, hdc, 12, 410, rc.bottom - 155);
                 Lbl(app, kJpLblViewAngle, hdc, 11, 368, rc.bottom - 107);
                 Lbl(app, kJpLblFollowBone, hdc, 11, 368, rc.bottom - 67);
             }
@@ -186,10 +222,8 @@ void HandleWindowPaint(MMDApp* app) {
             }
         }
     } else if (app->state.optflag[4] != 0) {
-        if (en)
-            Lbl(app, "bone manipulation", hdc, 12, 413, rc.bottom - 155);
-        else
-            Lbl(app, kJpLblBoneManip, hdc, 12, 425, rc.bottom - 155);
+        PanelTitle(app, hdc, "bone manipulation", kJpLblBoneManip,
+            361, 558, rc.bottom - 157, 413, 425);
     } else {
         if (en) {
             Lbl(app, "b", hdc, 12, 367, rc.bottom - 130);
@@ -208,8 +242,10 @@ void HandleWindowPaint(MMDApp* app) {
     // light panel (only reachable in camera mode, mirrors the original)
     if (app->state.optflag[0] != 0) {
         if (app->state.optflag[2] != 0) {
+            PanelTitle(app, hdc, "light manipulation", kJpLblLightManip,
+                499 - panelShift, 679 - panelShift, rc.bottom - 157,
+                548 - panelShift, 563 - panelShift);
             if (en) {
-                Lbl(app, "light manipulation", hdc, 12, 548 - panelShift, rc.bottom - 155);
                 Lbl(app, "R", hdc, 12, 502 - panelShift, rc.bottom - 137);
                 Lbl(app, "G", hdc, 12, 502 - panelShift, rc.bottom - 119);
                 Lbl(app, "B", hdc, 12, 502 - panelShift, rc.bottom - 101);
@@ -217,7 +253,6 @@ void HandleWindowPaint(MMDApp* app) {
                 Lbl(app, "Y", hdc, 12, 502 - panelShift, rc.bottom - 63);
                 Lbl(app, "Z", hdc, 12, 502 - panelShift, rc.bottom - 45);
             } else {
-                Lbl(app, kJpLblLightManip, hdc, 12, 563 - panelShift, rc.bottom - 155);
                 Lbl(app, kJpLblAka, hdc, 12, 503 - panelShift, rc.bottom - 137);
                 Lbl(app, kJpLblMidori, hdc, 12, 503 - panelShift, rc.bottom - 119);
                 Lbl(app, kJpLblAo, hdc, 12, 503 - panelShift, rc.bottom - 101);
@@ -241,14 +276,15 @@ void HandleWindowPaint(MMDApp* app) {
         }
     } else if (app->state.optflag[5] != 0) {
         // facial panel
+        PanelTitle(app, hdc, "facial manipulation", kJpLblFacialManip,
+            596 - panelShift, 865 - panelShift, rc.bottom - 157,
+            683 - panelShift, 703 - panelShift);
         if (en) {
-            Lbl(app, "facial manipulation", hdc, 12, 683 - panelShift, rc.bottom - 155);
             Lbl(app, "eyes", hdc, 12, 606 - panelShift, rc.bottom - 137);
             Lbl(app, "brow", hdc, 12, 606 - panelShift, rc.bottom - 67);
             Lbl(app, "mouth", hdc, 12, 736 - panelShift, rc.bottom - 137);
             Lbl(app, "other", hdc, 12, 736 - panelShift, rc.bottom - 67);
         } else {
-            Lbl(app, kJpLblFacialManip, hdc, 12, 703 - panelShift, rc.bottom - 155);
             Lbl(app, kJpLblMe2, hdc, 12, 606 - panelShift, rc.bottom - 137);
             Lbl(app, kJpLblMayu, hdc, 12, 606 - panelShift, rc.bottom - 67);
             Lbl(app, kJpLblLip, hdc, 12, 736 - panelShift, rc.bottom - 137);
@@ -272,27 +308,15 @@ void HandleWindowPaint(MMDApp* app) {
     // self-shadow panel
     if (app->state.optflag[0] != 0) {
         if (app->state.optflag[6] != 0) {
-#if !MMD_ORIGINAL_PROFILE
-            if (app->AdaptiveShadowResolution()) {
-                Lbl(app, en ? "self_shadow manipulation" : kJpLblSelfShadow,
-                    hdc, 12, (en ? 708 : 733) - panelShift, rc.bottom - 155);
-                const auto label = [&](const wchar_t* zh, const wchar_t* english, const wchar_t* japanese, int x, int y) {
-                    DrawWideUiGlyph(app->EnglishUI() == kUiChinese ? zh : en ? english : japanese,
-                        hdc, 12, x - panelShift, rc.bottom + y, app->UiTextRed(), app->UiTextGreen(), app->UiTextBlue(), 0);
-                };
-                label(L"阴影精度", L"precision", L"影の精度", 690, -90);
-                label(L"高", L"high", L"高", 690, -54);
-                label(L"低", L"low", L"低", 830, -54);
-            } else
-#endif
+            PanelTitle(app, hdc, "self_shadow manipulation", kJpLblSelfShadow,
+                682 - panelShift, 859 - panelShift, rc.bottom - 157,
+                708 - panelShift, 733 - panelShift);
             if (en) {
-                Lbl(app, "self_shadow manipulation", hdc, 12, 708 - panelShift, rc.bottom - 155);
                 Lbl(app, "shadow range", hdc, 12, 690 - panelShift, rc.bottom - 87);
                 Lbl(app, "detail", hdc, 12, 690 - panelShift, rc.bottom - 54);
                 Lbl(app, "far", hdc, 12,
                     (app->EnglishUI() == kUiChinese ? 830 : 840) - panelShift, rc.bottom - 54);
             } else {
-                Lbl(app, kJpLblSelfShadow, hdc, 12, 733 - panelShift, rc.bottom - 155);
                 Lbl(app, kJpLblShadowRange, hdc, 12, 690 - panelShift, rc.bottom - 92);
                 Lbl(app, kJpLblKirei, hdc, 12, 690 - panelShift, rc.bottom - 53);
                 Lbl(app, kJpLblEnpou, hdc, 12, 830 - panelShift, rc.bottom - 53);
@@ -322,13 +346,14 @@ void HandleWindowPaint(MMDApp* app) {
     if (app->state.optflag[0] != 0) {
         panelShift = panelLayout.accessory;
         if (app->state.optflag[3] != 0) {
+            PanelTitle(app, hdc, "accessory manipulation", kJpLblAccManip,
+                682 - panelShift, 878 - panelShift, rc.bottom - 157,
+                723 - panelShift, 738 - panelShift);
             if (en) {
-                Lbl(app, "accessory manipulation", hdc, 12, 723 - panelShift, rc.bottom - 155);
                 curve_host::DrawLabels(app, hdc);
                 Lbl(app, "display", hdc, 12, 837 - panelShift, rc.bottom - 141);
                 Lbl(app, "shadow", hdc, 12, 837 - panelShift, rc.bottom - 126);
             } else {
-                Lbl(app, kJpLblAccManip, hdc, 12, 738 - panelShift, rc.bottom - 155);
                 curve_host::DrawLabels(app, hdc);
                 Lbl(app, kJpLblDisp, hdc, 12, 840 - panelShift, rc.bottom - 141);
                 Lbl(app, kJpLblKage, hdc, 12, 840 - panelShift, rc.bottom - 126);
@@ -359,30 +384,28 @@ void HandleWindowPaint(MMDApp* app) {
 
     // viewpoint cluster (MMS: the model / bone toggles 412 / 531 carry their
     // own captions, so their labels are no longer painted here)
-    if (en) {
-        Lbl(app, "view", hdc, 12, 949 - panelShift, rc.bottom - 155);
-    } else {
-        Lbl(app, kJpLblShiten, hdc, 12, 943 - panelShift, rc.bottom - 155);
-    }
+    PanelTitle(app, hdc, "view", kJpLblShiten,
+        881 - panelShift, 1042 - panelShift, rc.bottom - 157,
+        949 - panelShift, 943 - panelShift);
 
     // play controls
+    PanelTitle(app, hdc, "play", kJpLblPlay,
+        881 - panelShift, 1011 - panelShift, rc.bottom - 79,
+        932 - panelShift, 929 - panelShift);
     if (en) {
         Lbl(app, "-", hdc, 12, 945 - panelShift, rc.bottom - 34);
-        Lbl(app, "play", hdc, 12, 932 - panelShift, rc.bottom - 77);
         Lbl(app, "repeat", hdc, 10, 974 - panelShift, rc.bottom - 57);
         Lbl(app, "from flame", hdc, 10, 902 - panelShift, rc.bottom - 18);
         Lbl(app, "stop flame", hdc, 10, 967 - panelShift, rc.bottom - 18);
     } else {
         Lbl(app, kJpLblWave, hdc, 12, 939 - panelShift, rc.bottom - 34);
-        Lbl(app, kJpLblPlay, hdc, 12, 929 - panelShift, rc.bottom - 77);
         Lbl(app, kJpLblRepeat, hdc, 10, 969 - panelShift, rc.bottom - 57);
         Lbl(app, kJpLblFlameStart, hdc, 10, 903 - panelShift, rc.bottom - 18);
         Lbl(app, kJpLblFlameStop, hdc, 10, 968 - panelShift, rc.bottom - 18);
     }
-    if (en)
-        Lbl(app, "vol", hdc, 12, 1021 - panelShift, rc.bottom - 77);
-    else
-        Lbl(app, kJpLblVolume, hdc, 12, 1016 - panelShift, rc.bottom - 77);
+    PanelTitle(app, hdc, "vol", kJpLblVolume,
+        1014 - panelShift, 1042 - panelShift, rc.bottom - 79,
+        1021 - panelShift, 1016 - panelShift);
 
     if (app->FloatingWindow() == nullptr)
         HandlePaletteChanged2(hdc);                               // 0x42C140

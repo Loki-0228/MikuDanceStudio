@@ -1,3 +1,4 @@
+#include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
 #include "mikudancestudio/bake_ui_lock.hpp"
 // ===========================================================================
@@ -124,6 +125,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     }
     runtime_log::Write("INIT complete; entering message loop");
 
+    autosave::Initialize(app);
     MSG msg{};
     std::uint32_t timeHigh = 0;         // v7/ebp - high 32 bits of last tick
     DWORD timeLow = timeGetTime();      // Time/ebx
@@ -164,6 +166,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
             DispatchMessageW(&msg);
             if (pumpStats != nullptr) ++statsMsgs;
         } else {
+            autosave::Tick(app, GetTickCount64());
             std::uint32_t nowLow = timeGetTime();           // v9
             std::uint32_t nowHigh = 0;                       // v10
             // v13 = (now - last) * 0.001.  x64 0x7FF7CB4FB4B0..0x7FF7CB4FB4B8:

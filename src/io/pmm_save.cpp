@@ -1,3 +1,6 @@
+#include "mikudancestudio/autosave.hpp"
+#include <atomic>
+#include <filesystem>
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/native_mesh.hpp"
@@ -458,7 +461,6 @@ const char kJpCannotOpenText[] =      // 0x52BD80
 // error-path sprintf buffer (stack -0x34 in the original), shared down.
 void WritePmmFileHeader(int fd, MMDApp* s, HWND main, char* hdr) {
     // ---- 1. file header and global block (0x41B1B3..0x41B355) -----------
-    s->state.windowLayoutReady = 0;
     sprintf_s(hdr, 0x100, "Polygon Movie maker 0002");
     // Bytes 25..29 after the 24-char magic + NUL are unspecified stack
     // residue in the original (its sprintf leaves the buffer's prior bytes
@@ -938,20 +940,12 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
     }
     EncodePmmPath(text, 0x100, s->WavePath());
     W(fd, text, 0x100);                                        // 0x41DCB5
-    if (s->AviStream() == nullptr) {                            // 0x41DCC1
-        swprintf_s(s->AviBackgroundPath(), 0x100, L"%s",
-                   s->AviBackgroundPath());
-    }
     W(fd, &s->AviOffsetX(), 4);
     W(fd, &s->AviOffsetY(), 4);
     W(fd, &s->AviScale(), 4);
     EncodePmmPath(text, 0x100, s->AviBackgroundPath());
     W(fd, text, 0x100);                                        // 0x41DD46
     W(fd, &s->AviBackgroundEnabled(), 4);
-    if (s->PictureBackgroundTexture() == nullptr) {             // 0x41DD7B
-        swprintf_s(s->PictureBackgroundPath(), 0x100, L"%s",
-                   s->PictureBackgroundPath());
-    }
     W(fd, &s->PictureOffsetX(), 4);
     W(fd, &s->PictureOffsetY(), 4);
     W(fd, &s->PictureScale(), 4);
@@ -1093,7 +1087,11 @@ void WritePmmModelTail(int fd, unsigned char** const slots) {
 
 }  // namespace
 
-void SaveSceneFile(MMDApp* app) {
+namespace { std::atomic<bool> saveInProgress{false}; }
+bool SceneSaveInProgress() noexcept { return saveInProgress.load(); }
+static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
+    if (saveInProgress.exchange(true)) return false;
+    struct Release { ~Release() { saveInProgress.store(false); } } release;
     auto* s = app;
 
     // The scratch CHAR buffer (stack "Text").  The original leaves this
@@ -1113,12 +1111,13 @@ void SaveSceneFile(MMDApp* app) {
     mdl::AccessoryKey** const accTracks = s->AccessoryKeyTracks();
     HWND const main = reinterpret_cast<HWND>(s->Hwnd());
 
-    if (s->EnvFileName()[0] == L'\\') {                        // 0x41B097
+    if (!target || !*target || (!backup && target[0] == L'\\')) {                        // 0x41B097
+        if (backup) return false;
         LegacyUiMessageBoxA(main,
                     s->EnglishUI() != 0 ? "Cannot open save file"
                                         : kJpCannotOpenText,
                     "save", 0);
-        return;
+        return false;
     }
 
     // Check fixed-width fields BEFORE opening/truncating the destination.
@@ -1144,6 +1143,7 @@ void SaveSceneFile(MMDApp* app) {
 #if MMD_ORIGINAL_PROFILE
     bool identityMismatch = false;
     if (!OriginalPmmKeys(*s)) {
+        if (backup) return false;
         runtime_log::Write("ORIGINAL_PROFILE PMM save refused: serialized key slot/link exceeds original bone/morph pool");
         const wchar_t* messages[] = {
             L"保存するキーフレームの番号またはリンクが、元の MMD のボーン・モーフ容量を超えています。PMM を保存できません。既存のファイルは変更していません。",
@@ -1151,9 +1151,10 @@ void SaveSceneFile(MMDApp* app) {
             L"将保存的关键帧槽位或链索引超出原版 MMD 的骨骼/表情容量，无法兼容保存 PMM。已有文件未改动。"};
         if (main) MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1], L"PMM", MB_OK | MB_ICONERROR);
         SetLastError(ERROR_BUFFER_OVERFLOW);
-        return;
+        return false;
     }
     if (invalidPath || !OriginalPmmNames(*s, identityMismatch)) {
+        if (backup) return false;
         if (identityMismatch) {
             runtime_log::Write("ORIGINAL_PROFILE PMM save refused: full bone/morph name differs from original raw identity");
             const wchar_t* messages[] = {
@@ -1163,22 +1164,24 @@ void SaveSceneFile(MMDApp* app) {
             if (main) MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1], L"PMM", MB_OK | MB_ICONERROR);
             SetLastError(ERROR_NO_UNICODE_TRANSLATION);
         } else original_file_encoding::Refuse(main, s->EnglishUI(), L"PMM");
-        return;
+        return false;
     }
 #else
     if (invalidPath) {
+        if (backup) return false;
         std::wstring message = L"文件路径超出 PMM 的 255 字节限制，无法无损保存。请缩短路径后重试。\n"
                                L"Path exceeds the PMM field size. Shorten it before saving.\n\n";
         message += invalidPath;
         MessageBoxW(main, message.c_str(), L"保存 / Save", MB_OK | MB_ICONERROR);
-        return;
+        return false;
     }
 #endif
 
-#if !MMD_ORIGINAL_PROFILE
     pmm_extension::Document extensions;
+#if !MMD_ORIGINAL_PROFILE
     try { extensions = pmm_settings::Capture(*s); }
     catch(const std::exception& error) {
+        if (backup) return false;
         s->SceneModified()=1;
         const wchar_t* captions[]={L"PMM / アニメーションカーブ",L"PMM / animation curves",L"PMM / 动画曲线"};
         const wchar_t* messages[]={
@@ -1192,13 +1195,15 @@ void SaveSceneFile(MMDApp* app) {
         if(!detail.empty()&&detail.back()==L'\0')detail.pop_back();
         const std::wstring message=std::wstring(messages[language])+detail;
         MessageBoxW(main,message.c_str(),captions[language],MB_OK|MB_ICONERROR);
-        return;
+        return false;
     }
     std::string meshCacheError;
-    if(!mesh_bake_cache::Save(*s,s->EnvFileName(),extensions,meshCacheError)){
-        s->SceneModified()=1;LegacyUiMessageBoxA(main,meshCacheError.c_str(),"Mesh cache / PMM",MB_OK|MB_ICONERROR);return;
+    if(!mesh_bake_cache::Save(*s,target,extensions,meshCacheError)){
+        if (backup) return false;
+        s->SceneModified()=1;LegacyUiMessageBoxA(main,meshCacheError.c_str(),"Mesh cache / PMM",MB_OK|MB_ICONERROR);return false;
     }
     if (!pmm_extension::Representable(extensions)) {
+        if (backup) return false;
         s->SceneModified() = 1;
         const wchar_t* messages[] = {
             L"PMM 拡張データが保存上限（16 MiB）を超えたか、形式が無効です。既存ファイルは変更していません。ボーンスケールのキーを減らすか、VMD と付随ファイルに分けて保存してください。",
@@ -1206,16 +1211,22 @@ void SaveSceneFile(MMDApp* app) {
             L"PMM 扩展数据超过 16 MiB 上限或格式无效，现有文件未改动。请减少缩放关键帧，或将动作分别保存为 VMD 及其伴随文件。"};
         MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1],
                     L"PMM", MB_OK | MB_ICONERROR);
-        return;
+        return false;
     }
 #endif
+    // Bind ownership to this exact filename; Save/Save As strips the marker.
+    pmm_extension::Erase(extensions, autosave::kOwnershipKey);
+    if (backup) {
+        const auto name = std::filesystem::path(target).filename().u8string();
+        pmm_extension::Set(extensions, autosave::kOwnershipKey, {name.begin(), name.end()});
+    }
     pmmWriteFailed = false;
     int fd = -1;
     // Write beside the destination, then publish only a complete, flushed
     // file. An interrupted write must not truncate the previous project.
     wchar_t destination[MAX_PATH]{},directory[MAX_PATH]{},temporary[MAX_PATH]{};
     wchar_t* filename=nullptr;
-    const DWORD pathLength=GetFullPathNameW(s->EnvFileName(),MAX_PATH,destination,&filename);
+    const DWORD pathLength=GetFullPathNameW(target,MAX_PATH,destination,&filename);
     errno_t err=EINVAL;
     if(pathLength>0&&pathLength<MAX_PATH&&filename){
         wcscpy_s(directory,destination);directory[filename-destination]=L'\0';
@@ -1224,6 +1235,7 @@ void SaveSceneFile(MMDApp* app) {
     }
     if (err != 0) {
         if(*temporary)DeleteFileW(temporary);
+        if (backup) return false;
         if (s->EnglishUI() == 0)
             sprintf_s(hdr, 0x100, kJpSaveFailFmt, err);
         else
@@ -1231,9 +1243,14 @@ void SaveSceneFile(MMDApp* app) {
         LegacyUiMessageBoxA(main, hdr,
                     s->EnglishUI() == 0 ? kJpSaveFailCaption : "save file",
                     0);
-        return;
+        return false;
     }
 
+    struct TemporaryFile {
+        int& fd; const wchar_t* path;
+        ~TemporaryFile() { if (fd >= 0) _close(fd); DeleteFileW(path); }
+    } cleanup{fd, temporary};
+    if (!backup) s->state.windowLayoutReady = 0;
     WritePmmFileHeader(fd, s, main, hdr);                   // 1. 0x41B1B3..0x41B355
     WritePmmModelBlocks(fd, slots, text);                   // 2. 0x41B355..0x41C981
     WritePmmCameraSection(fd, s);                           // 3. 0x41C9AE..0x41CF3E
@@ -1250,13 +1267,17 @@ void SaveSceneFile(MMDApp* app) {
     const bool written = !pmmWriteFailed &&
 #if !MMD_ORIGINAL_PROFILE
         pmm_extension::Append(fd, extensions) &&
+#else
+        (!backup || pmm_extension::Append(fd, extensions)) &&
 #endif
         _commit(fd)==0;
     const bool closed = _close(fd) == 0;
+    fd = -1;
     const bool published=written&&closed&&MoveFileExW(temporary,destination,
-        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=FALSE;
+        (backup ? 0 : MOVEFILE_REPLACE_EXISTING)|MOVEFILE_WRITE_THROUGH)!=FALSE;
     if (!published) {
         DeleteFileW(temporary);
+        if (backup) return false;
         s->SceneModified() = 1;
         const wchar_t* messages[] = {
             L"PMM ファイルを完全に保存できませんでした。保存先の空き容量とアクセス権を確認してください。",
@@ -1264,8 +1285,9 @@ void SaveSceneFile(MMDApp* app) {
             L"PMM 文件未能完整保存。请检查保存位置的剩余空间和写入权限。"};
         MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1],
                     L"PMM", MB_OK | MB_ICONERROR);
-        return;
+        return false;
     }
+    if (backup) return true;
 #if MMD_ORIGINAL_PROFILE
     s->PmmProjectSettings().document = {};
 #else
@@ -1273,12 +1295,19 @@ void SaveSceneFile(MMDApp* app) {
 #endif
     s->PmmProjectSettings().processorEdited = false;
     s->PmmProjectSettings().sortingPrecisionEdited = false;
-    NotifyEffectFileSave(s->EnvFileName());
-    mmv4mms::ProjectSaved(s, s->EnvFileName());
-    pmm_io::SetProjectWindowTitle(main, s->EnvFileName());
+    NotifyEffectFileSave(target);
+    mmv4mms::ProjectSaved(s, target);
+    pmm_io::SetProjectWindowTitle(main, target);
     s->SceneModified() = 0;
     MessageBeep(0x40);
     s->state.windowLayoutReady = 1;
+    return true;
+}
+
+void SaveSceneFile(MMDApp* app) { SaveSceneFileImpl(app, app->EnvFileName(), false); }
+bool SaveSceneCopy(MMDApp* app, const wchar_t* target) {
+    try { return SaveSceneFileImpl(app, target, true); }
+    catch (...) { return false; }
 }
 
 }  // namespace mikudancestudio

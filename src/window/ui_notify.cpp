@@ -112,7 +112,8 @@ void PaintCheckboxPanelBackground(HWND hwnd, HDC hdc) {
     OffsetViewportOrgEx(hdc, -origin.x, -origin.y, nullptr);
     IntersectClipRect(hdc, origin.x + own.left, origin.y + own.top,
                       origin.x + own.right, origin.y + own.bottom);
-    const bool shadow = GetDlgCtrlID(hwnd) == panel::kAdaptiveShadowCheckbox;
+    const bool shadow = GetDlgCtrlID(hwnd) == panel::kAdaptiveShadowCheckbox ||
+                        GetDlgCtrlID(hwnd) == panel::kShadowFilterCheckbox;
     FillPanelBottom(hdc, origin.x + own.left - 1, mainRc.bottom - 157,
                     origin.x + own.right + 1, mainRc.bottom - (shadow ? 3 : 0x52),
                     app->ThemeColorAt(shadow ? 20 : 16),
@@ -120,10 +121,9 @@ void PaintCheckboxPanelBackground(HWND hwnd, HDC hdc) {
     RestoreDC(hdc, saved);
 }
 
-// These checkboxes sit on colored panels, where the theme's dark caption
-// is unreadable. Draw the checkbox ourselves
-// (themed glyph, classic fallback) and put the caption beside it in white.
-void DrawWhiteCheckbox(HWND hwnd, HDC hdc, RECT rc) {
+// Keep the native checkbox glyph and use the same color.txt text component
+// as the adjacent panel labels.
+void DrawPanelCheckbox(HWND hwnd, HDC hdc, RECT rc) {
     PaintCheckboxPanelBackground(hwnd, hdc);
     int box = 13;
     RECT glyph = rc;
@@ -169,7 +169,8 @@ void DrawWhiteCheckbox(HWND hwnd, HDC hdc, RECT rc) {
     const HFONT font = reinterpret_cast<HFONT>(SendMessageA(hwnd, WM_GETFONT, 0, 0));
     const HGDIOBJ oldFont = font ? SelectObject(hdc, font) : nullptr;
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(255, 255, 255));
+    SetTextColor(hdc, g_Block ? RGB(g_Block->UiTextRed(), g_Block->UiTextGreen(), g_Block->UiTextBlue())
+                            : GetSysColor(COLOR_BTNTEXT));
     DrawTextW(hdc, text, -1, &textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     if (oldFont)
         SelectObject(hdc, oldFont);
@@ -197,14 +198,14 @@ LRESULT CALLBACK WhiteReferenceCheckboxProc(HWND hwnd, UINT message,
         HDC dc = BeginPaint(hwnd, &paint);
         RECT client{};
         GetClientRect(hwnd, &client);
-        DrawWhiteCheckbox(hwnd, dc, client);
+        DrawPanelCheckbox(hwnd, dc, client);
         EndPaint(hwnd, &paint);
         return 0;
     }
     if (message == WM_PRINTCLIENT) {
         RECT client{};
         GetClientRect(hwnd, &client);
-        DrawWhiteCheckbox(hwnd, reinterpret_cast<HDC>(wParam), client);
+        DrawPanelCheckbox(hwnd, reinterpret_cast<HDC>(wParam), client);
         return 0;
     }
     if (message == WM_NCDESTROY) {
@@ -285,9 +286,9 @@ LRESULT HandleNotify(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 4;
     }
 
-    // MMS: both model / bone captions are white, whether checked or not.
+    // Model and bone captions use the shared color.txt text colour in either state.
     if (ctrlId == 412 || ctrlId == 531) {
-        DrawWhiteCheckbox(cd->hdr.hwndFrom, cd->hdc, cd->rc);
+        DrawPanelCheckbox(cd->hdr.hwndFrom, cd->hdc, cd->rc);
         return 4;
     }
 
@@ -375,7 +376,7 @@ void InstallPanelCheckboxPaint(HWND control) {
     const int id = GetDlgCtrlID(control);
     if (id != panel::kCameraRefModelCheckbox &&
         id != panel::kCameraRefBoneCheckbox &&
-        id != panel::kAdaptiveShadowCheckbox)
+        id != panel::kAdaptiveShadowCheckbox && id != panel::kShadowFilterCheckbox)
         return;
     SetWindowSubclass(control, WhiteReferenceCheckboxProc,
                       static_cast<UINT_PTR>(id), 0);

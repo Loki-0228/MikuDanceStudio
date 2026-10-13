@@ -61,6 +61,7 @@ struct Video {
     bool originKnown = false;
     double duration = 0;
     bool eos = false;
+    unsigned long long revision = 0;
 
     void Copy(IMFSample* sample) {
         ComPtr<IMFMediaBuffer> buffer;
@@ -90,6 +91,7 @@ struct Video {
     }
 };
 std::unordered_map<MMDApp*, std::unique_ptr<Video>> videos;
+unsigned long long nextVideoRevision = 0;
 }
 
 bool IsAudioPath(const wchar_t* path) {
@@ -174,22 +176,53 @@ bool PrepareAudio(WaveAudioContext* audio, const wchar_t* source, std::wstring& 
 }
 
 bool HasVideo(MMDApp* app) { return videos.find(app) != videos.end(); }
+unsigned long long VideoFrameRevision(MMDApp* app) {
+    const auto it = videos.find(app);
+    return it == videos.end() ? 0 : it->second->revision;
+}
 void ReleaseVideo(MMDApp* app) { videos.erase(app); }
-bool OpenVideo(MMDApp* app, const wchar_t* path, int& width, int& height, double& duration, std::wstring& error) {
+bool OpenVideo(MMDApp* app, const wchar_t* path, int& width, int& height, double& duration, std::wstring& error, int maxDimension) {
     error.clear();
     try {
         auto video = std::make_unique<Video>();
         ComPtr<IMFAttributes> attributes;
         Check(MFCreateAttributes(&attributes, 1), L"Video reader attributes");
-        attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
-        Check(MFCreateSourceReaderFromURL(path, attributes.Get(), &video->reader), L"Open video");
+        attributes->SetUINT32(maxDimension > 0 ? MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING
+                                              : MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+        HRESULT opened = MFCreateSourceReaderFromURL(path, attributes.Get(), &video->reader);
+        if (FAILED(opened) && maxDimension > 0) {
+            attributes->DeleteItem(MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING);
+            attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+            opened = MFCreateSourceReaderFromURL(path, attributes.Get(), &video->reader);
+            maxDimension = 0;
+        }
+        Check(opened, L"Open video");
         auto* reader = video->reader.Get();
         Check(reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE), L"Select video");
         Check(reader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE), L"Select video");
         ComPtr<IMFMediaType> type;
         Check(MFCreateMediaType(&type), L"Video media type");
         type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-        Check(reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get()), L"Decode RGB32 video");
+        ComPtr<IMFMediaType> nativeType;
+        UINT32 nativeWidth = 0, nativeHeight = 0;
+        if (maxDimension > 0 &&
+            SUCCEEDED(reader->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &nativeType)) &&
+            SUCCEEDED(MFGetAttributeSize(nativeType.Get(), MF_MT_FRAME_SIZE, &nativeWidth, &nativeHeight)) &&
+            nativeWidth && nativeHeight && std::max(nativeWidth, nativeHeight) > UINT32(maxDimension)) {
+            // The background is drawn through a 1024-square texture. Resize
+            // before RGB conversion instead of uploading a full 4K/8K bitmap
+            // only to downsample it to the same display texture immediately.
+            const double scale = double(maxDimension) / std::max(nativeWidth, nativeHeight);
+            MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE,
+                std::max(2u, UINT32(nativeWidth * scale) & ~1u),
+                std::max(2u, UINT32(nativeHeight * scale) & ~1u));
+        }
+        HRESULT format = reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get());
+        if (FAILED(format)) {
+            type->DeleteItem(MF_MT_FRAME_SIZE);
+            format = reader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get());
+        }
+        Check(format, L"Decode RGB32 video");
         type.Reset(); Check(reader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &type), L"RGB32 media type");
         Check(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &video->width, &video->height), L"Video dimensions");
         if (!video->width || !video->height || video->width > 16384 || video->height > 16384)
@@ -231,6 +264,7 @@ BITMAPINFOHEADER* VideoFrame(MMDApp* app, double seconds, std::wstring& error) {
             Check(video.reader->SetCurrentPosition(GUID_NULL, position), L"Seek video");
             video.time = video.end = -1; video.eos = false;
         }
+        ComPtr<IMFSample> selected;
         for (;;) {
             ComPtr<IMFSample> sample; DWORD flags = 0; LONGLONG time = 0;
             Check(video.reader->ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, &flags, &time, &sample), L"Read video frame");
@@ -240,7 +274,8 @@ BITMAPINFOHEADER* VideoFrame(MMDApp* app, double seconds, std::wstring& error) {
                 // B-frame reordering with an edit list). MMD's clip time starts
                 // at the first decoded frame. Seeking uses presentation time.
                 if (!video.originKnown) { video.origin = time; video.originKnown = true; }
-                video.Copy(sample.Get()); video.time = time - video.origin;
+                selected = sample;
+                video.time = time - video.origin;
                 LONGLONG duration = video.frameDuration;
                 sample->GetSampleDuration(&duration);
                 video.end = video.time + std::max<LONGLONG>(duration, 1);
@@ -249,6 +284,12 @@ BITMAPINFOHEADER* VideoFrame(MMDApp* app, double seconds, std::wstring& error) {
             if ((sample && video.end > target) || video.eos) break;
         }
         if (video.time < 0) throw Failure{E_FAIL, L"Video has no frames"};
+        // Seeking/catching up may decode an entire GOP. Copy only the frame
+        // that will actually be displayed, not every discarded sample.
+        if (selected) {
+            video.Copy(selected.Get());
+            video.revision = ++nextVideoRevision;
+        }
         return reinterpret_cast<BITMAPINFOHEADER*>(video.dib.data());
     } catch (const Failure& failure) { error = Describe(failure); return nullptr; }
 }

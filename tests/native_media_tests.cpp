@@ -67,6 +67,27 @@ int wmain(int argc, wchar_t** argv) {
         media::ReleaseVideo(app); Check(!media::HasVideo(app), "video release");
         std::wprintf(L"PASS native video %s\n", extension);
     }
+    {
+        int w=0,h=0; double duration=0;
+        CheckResult(media::OpenVideo(app,(directory/L"corners.mp4").c_str(),w,h,duration,error,32),error,
+                    "open resized video preview");
+        Check(w==32 && h==24,"preview conversion preserves aspect ratio and requested bound");
+        for(double seconds : {0.,1.1,7.9,.1}) {
+            auto* dib=media::VideoFrame(app,seconds,error);
+            CheckResult(dib!=nullptr,error,"resized preview supports seeking");
+            const auto* pixels=reinterpret_cast<const unsigned char*>(dib+1);
+            const auto* top=pixels+((h-1-4)*w+4)*4;
+            const auto* bottom=pixels+(4*w+4)*4;
+            Check(top[int(seconds)%2==0?2:1]>230 && bottom[0]>230,"resized preview retains colour and orientation");
+            const auto revision=media::VideoFrameRevision(app);
+            Check(revision && media::VideoFrame(app,seconds,error)==dib && media::VideoFrameRevision(app)==revision,
+                  "repeated display of the same frame reuses the upload revision");
+        }
+        const auto revision=media::VideoFrameRevision(app);
+        CheckResult(media::OpenVideo(app,(directory/L"corners.mp4").c_str(),w,h,duration,error,32),error,"reload preview");
+        Check(media::VideoFrameRevision(app)!=revision,"reload invalidates the previous texture revision");
+        media::ReleaseVideo(app);
+    }
     auto* recorder = reinterpret_cast<DShowRecorder*>(static_cast<std::uintptr_t>(1));
     std::vector<unsigned char> pixels(64 * 48 * 4);
     for (int y = 0; y < 48; ++y) for (int x = 0; x < 64; ++x) {

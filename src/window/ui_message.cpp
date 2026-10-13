@@ -80,6 +80,15 @@ constexpr Text messages[][3] = {
     {{L"PMM フレームデータ", L"キーフレームの参照が不正です。最後の有効なフレーム以降の壊れた参照を切り離しました。"},
      {L"PMM frame data", L"A keyframe link is invalid. The broken link after the last valid frame was disconnected."},
      {L"PMM 帧数据", L"关键帧引用无效。已断开最后一个有效帧之后的损坏引用。"}},
+    {{L"表情へ強制貼付", L"コピーした表情フレームを選択中の表情へ貼り付けますか？"},
+     {L"Force paste expression", L"Paste the copied expression frames to the selected expression?"},
+     {L"强制粘贴表情", L"确定将复制的表情关键帧粘贴到当前选中的表情吗？"}},
+    {{L"表情へ強制貼付", L"表情フレームを先にコピーしてください。"},
+     {L"Force paste expression", L"Copy expression keyframes first."},
+     {L"强制粘贴表情", L"请先复制表情关键帧。"}},
+    {{L"表情へ強制貼付", L"貼り付け先の表情を一つ選択してください。"},
+     {L"Force paste expression", L"Select one destination expression in the timeline or expression panel."},
+     {L"强制粘贴表情", L"请在时间轴或表情面板中选择一个目标表情。"}},
 };
 static_assert(std::size(messages) == static_cast<std::size_t>(UiMessage::Count));
 

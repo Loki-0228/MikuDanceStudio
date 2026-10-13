@@ -666,9 +666,9 @@ void CaptionsAndGrid() {
                   std::wstring(L"\x9078\x3000\x629e"),
           "select button shows 選　択");
     Check(BoneModePanelCaption(ViewportEditMode::Bone, kUiEnglish) ==
-              std::wstring(L"select") &&
+              std::wstring(L"Select") &&
               BoneModePanelCaption(ViewportEditMode::BoneBox, kUiEnglish) ==
-                  std::wstring(L"select"),
+                  std::wstring(L"Select"),
           "select button English caption");
     Check(BoneModePanelCaption(ViewportEditMode::Bone, kUiChinese) ==
               std::wstring(L"\x9009\x62e9"),
@@ -677,7 +677,7 @@ void CaptionsAndGrid() {
     Check(UiControlCaption(panel::kBoneScaleRadio, kUiJapanese) ==
               std::wstring(L"\x62e1\x5927\x7e2e\x5c0f") &&
               UiControlCaption(panel::kBoneScaleRadio, kUiEnglish) ==
-                  std::wstring(L"scale") &&
+                  std::wstring(L"Scale") &&
               UiControlCaption(panel::kBoneScaleRadio, kUiChinese) ==
                   std::wstring(L"\x7f29\x653e"),
           "the scale button is captioned 拡大縮小 / scale / 缩放");

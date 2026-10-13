@@ -34,7 +34,7 @@ bool PrepareAudio(WaveAudioContext*, const wchar_t* source, std::wstring& playab
 }
 const wchar_t* AudioSource(WaveAudioContext* audio) { return audio ? audio->path : L""; }
 void ReleaseAudio(WaveAudioContext*) {}
-bool OpenVideo(MMDApp*, const wchar_t*, int& width, int& height, double& duration, std::wstring& error) {
+bool OpenVideo(MMDApp*, const wchar_t*, int& width, int& height, double& duration, std::wstring& error, int) {
     width = height = 0;
     duration = 0;
     error = kUnavailable;
@@ -42,6 +42,7 @@ bool OpenVideo(MMDApp*, const wchar_t*, int& width, int& height, double& duratio
 }
 bool HasVideo(MMDApp*) { return false; }
 BITMAPINFOHEADER* VideoFrame(MMDApp*, double, std::wstring& error) { error = kUnavailable; return nullptr; }
+unsigned long long VideoFrameRevision(MMDApp*) { return 0; }
 void ReleaseVideo(MMDApp*) {}
 }
 

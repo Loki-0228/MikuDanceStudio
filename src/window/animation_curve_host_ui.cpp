@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -41,7 +42,11 @@ void Refresh(MMDApp&app){
     else {
         for(auto kind:{Kind::Camera,Kind::Light,Kind::Shadow,Kind::Gravity})Apply(&app,kind,app.CurrentFrame());
         for(int slot=0;slot<255;++slot)if(app.AccessorySlot(slot))Apply(&app,Kind::Accessory,app.CurrentFrame(),slot);
-        if(app.SelectedModel())morph_curve::Evaluate(app.SelectedModel(),app.CurrentFrame());
+        if(app.SelectedModel()){
+            morph_curve::Evaluate(app.SelectedModel(),app.CurrentFrame());
+            bone_scale::Evaluate(app.SelectedModel(),float(app.CurrentFrame()));
+            bone_curve::Evaluate(app.SelectedModel(),app.CurrentFrame());
+        }
     }
     InvalidateRect(app.MainWindow(),nullptr,FALSE);
 }
@@ -51,6 +56,9 @@ void Refresh(MMDApp&app){
 void RefreshMain(MMDApp&app){if(IsWindow(app.MainWindow()))Refresh(app);}
 // Use the same playback command as the main window, including audio/physics.
 void BindTransport(curve_editor::Session& session,MMDApp* app){
+    session.theme.enabled=true;
+    session.theme.text=RGB(app->UiTextRed(),app->UiTextGreen(),app->UiTextBlue());
+    for(int i=0;i<35;++i)session.theme.colors[i]=app->ThemeColorAt(i);
     session.currentFrame=[app]{return app->PlaybackActive()?double(app->PlaybackCursorSeconds())*30.0:double(app->CurrentFrame());};
     session.isPlaying=[app]{return IsWindow(app->MainWindow())&&app->PlaybackActive()!=0;};
     session.setPlaying=[app](bool playing){
@@ -678,7 +686,7 @@ double GraphValue(const BoneGraph&keys,const curve_editor::Channel&channel,int a
     return NearAngle(angle,a.values[axis]+(b.values[axis]-a.values[axis])*raw);
 }
 }
-static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&identity,int bone,bool includeDisplay){
+static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&identity,int bone,bool includeDisplay,bool freeCurves){
     const auto*record=mdl::Mdl(identity.model);
     const auto alive=[app,identity,bone]{return MorphIdentityCurrent(*app,identity)&&bone>=0&&std::uint32_t(bone)<mdl::Mdl(identity.model)->boneCount;};
     static const char*const ids[]={"x","y","z","rx","ry","rz","sx","sy","sz"};
@@ -690,7 +698,7 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
     curve_editor::Source source;source.id="bone/"+std::to_string(bone);
     source.linkAdjacentControls=[app]{return IsDlgButtonChecked(app->MainWindow(),panel::kPhysicsFrameCheckbox)==BST_CHECKED;};
     source.label=text_encoding::ModelLabel(*record,UiUsesEnglishNames(app->EnglishUI()))+L" · "+text_encoding::BoneLabel(record->boneTable[bone],UiUsesEnglishNames(app->EnglishUI()));
-    source.read=[app,identity,bone,alive,graph,discrete,includeDisplay](std::vector<curve_editor::Channel>&channels,std::wstring&error){
+    source.read=[app,identity,bone,alive,graph,discrete,includeDisplay,freeCurves](std::vector<curve_editor::Channel>&channels,std::wstring&error){
         if(!alive()){error=Text(app->EnglishUI(),L"選択中のモデルまたはボーンが変わりました。",L"The selected model or bone has changed.",L"当前选中的模型或骨骼已改变。");return false;}
         const auto&modelRecord=*mdl::Mdl(identity.model);const auto*keys=mdl::BoneKeys(identity.model);
         const auto capacity=mdl::BoneKeyCapacity(modelRecord);BoneGraph fresh;
@@ -738,6 +746,14 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
             };
             channels.push_back(std::move(channel));
         }
+        bone_curve::Tracks authored;
+        const bool hasAuthored=bone_curve::Read(identity.model,bone,authored);
+        if(freeCurves||hasAuthored)for(int c=0;c<9;++c){
+            auto& channel=channels[c];
+            if(hasAuthored)channel.track=authored[c];
+            channel.sample={};channel.nativeControls.clear();channel.controlGeometry.clear();channel.interpolationGroup.clear();
+            if(c>=6){channel.minimum=0.001;channel.maximum=1000;}
+        }
         // Visibility and IK are the model's separate discrete master track.
         const auto*display=mdl::DisplayKeys(identity.model);discrete->clear();
         if(display&&includeDisplay){
@@ -762,9 +778,37 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
         }
         *graph=std::move(fresh);return true;
     };
-    source.apply=[app,identity,bone,alive,graph,discrete](const std::vector<curve_editor::Channel>&channels,std::wstring&error){
+    source.apply=[app,identity,bone,alive,graph,discrete,freeCurves](const std::vector<curve_editor::Channel>&channels,std::wstring&error){
         if(!alive()||!IsWindowEnabled(app->MainWindow())){error=L"当前模型或骨骼已改变，或仍在处理操作。";return false;}
         if(channels.size()!=9+discrete->size()){error=L"骨骼通道不匹配。";return false;}
+        // Discrete keys are edited as 0/1 values, retaining their native frame positions.
+        auto*display=mdl::DisplayKeys(identity.model);
+        for(std::size_t c=0;c<discrete->size();++c){
+            const auto&next=channels[9+c];const auto&baseline=(*discrete)[c];
+            if(next.id!=baseline.id||!next.track.discrete||next.track.keys.size()!=baseline.track.keys.size()){error=L"IK 通道不匹配。";return false;}
+            std::uint32_t index=0;
+            for(std::size_t k=0;k<next.track.keys.size();++k){const auto&key=next.track.keys[k];
+                if(!display||index>=mdl::kDisplayKeyCapacity||key.frame!=display[index].frame||(key.value!=0&&key.value!=1)||(c>0&&!display[index].ikStates)){
+                    error=L"IK 关键帧应保持原有帧号，状态只能为 0 或 1。";return false;}
+                index=display[index].next;
+                if((k+1<next.track.keys.size())==(index==0)){
+                    error=L"IK 关键帧已改变，请等待同步。";return false;}
+            }
+        }
+        if(freeCurves||bone_curve::Has(identity.model,bone)){
+            bone_curve::Tracks tracks;
+            for(int c=0;c<9;++c){if(channels[c].id!=ids[c]){error=L"骨骼通道不匹配。";return false;}tracks[c]=channels[c].track;}
+            bone_curve::Tracks previous;
+            const bool authored=bone_curve::Read(identity.model,bone,previous);
+            bool same=authored;std::string reason;
+            for(int c=0;c<9&&same;++c){std::vector<std::uint8_t> a,b;animation_curve::Encode({{"curve",tracks[c]}},a,reason);animation_curve::Encode({{"curve",previous[c]}},b,reason);same=a==b;}
+            if(!same&&!bone_curve::Write(identity.model,bone,tracks,reason)){error=Wide(reason);return false;}
+            for(std::size_t c=0;c<discrete->size();++c){std::uint32_t index=0;
+                for(const auto& key:channels[9+c].track.keys){if(c==0)display[index].visible=std::uint8_t(key.value);else display[index].ikStates[c-1]=std::uint8_t(key.value);index=display[index].next;}
+                (*discrete)[c]=channels[9+c];}
+            app->LastRegisteredFrame()=std::max(app->LastRegisteredFrame(),static_cast<std::uint32_t>(mdl::Mdl(identity.model)->maxFrame));
+            app->SceneModified()=1;Refresh(*app);SelectionReeval(app);return true;
+        }
         auto*keys=mdl::BoneKeys(identity.model);const auto capacity=mdl::BoneKeyCapacity(*mdl::Mdl(identity.model));
         if(!keys){error=L"骨骼关键帧不可用。";return false;}
         std::vector<std::array<bone_scale::Curve,5>> changed(graph->size());
@@ -783,20 +827,6 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
             }
             if(end+1<graph->size()){if(keys[slot].next==0){error=L"骨骼关键帧已改变。";return false;}slot=keys[slot].next;}
             else if(keys[slot].next!=0){error=L"骨骼关键帧已改变。";return false;}
-        }
-        // Discrete keys are edited as 0/1 values, retaining their native frame positions.
-        auto*display=mdl::DisplayKeys(identity.model);
-        for(std::size_t c=0;c<discrete->size();++c){
-            const auto&next=channels[9+c];const auto&baseline=(*discrete)[c];
-            if(next.id!=baseline.id||!next.track.discrete||next.track.keys.size()!=baseline.track.keys.size()){error=L"IK 通道不匹配。";return false;}
-            std::uint32_t index=0;
-            for(std::size_t k=0;k<next.track.keys.size();++k){const auto&key=next.track.keys[k];
-                if(!display||index>=mdl::kDisplayKeyCapacity||key.frame!=display[index].frame||(key.value!=0&&key.value!=1)||(c>0&&!display[index].ikStates)){
-                    error=L"IK 关键帧应保持原有帧号，状态只能为 0 或 1。";return false;}
-                index=display[index].next;
-                if((k+1<next.track.keys.size())==(index==0)){
-                    error=L"IK 关键帧已改变，请等待同步。";return false;}
-            }
         }
         for(std::size_t end=1;end<graph->size();++end){auto&key=keys[(*graph)[end].index];
             for(int lane=0;lane<4;++lane)for(int k=0;k<4;++k)key.interpolation[lane+k*4]=changed[end][lane][k];
@@ -854,12 +884,18 @@ void OpenInterpolation(MMDApp*app,bool visible){
     unsigned char*model=app->SelectedModel();const auto*record=model?mdl::Mdl(model):nullptr;
     if(!record||!record->boneTable||record->selectedBone<0||std::uint32_t(record->selectedBone)>=record->boneCount)return;
     const int initialBone=record->selectedBone;const auto identity=MorphIdentityOf(*app,model);
+    curve_editor::Session session;session.id="mms.interpolation.bone";session.language=app->EnglishUI();
+    session.currentFrame=[app]{return double(app->CurrentFrame());};
+    session.seek=[app](int frame){app->CurrentFrame()=frame;Refresh(*app);SelectionReeval(app);};
+    session.initialSource=bone_curve::Has(model,initialBone)?1:0;
+    for(bool freeCurves : {false,true}) {
     struct Entry{curve_editor::Source source;std::vector<curve_editor::Channel> baseline;};
     auto entries=std::make_shared<std::vector<Entry>>();
     for(std::uint32_t bone=0;bone<record->boneCount;++bone)
-        entries->push_back({BoneSource(app,identity,int(bone),int(bone)==initialBone),{}});
-    curve_editor::Source source;source.id="bones";
-    source.label=text_encoding::ModelLabel(*record,UiUsesEnglishNames(app->EnglishUI()));
+        entries->push_back({BoneSource(app,identity,int(bone),int(bone)==initialBone,freeCurves),{}});
+    curve_editor::Source source;source.id=freeCurves?"bones.free":"bones";
+    source.label=text_encoding::ModelLabel(*record,UiUsesEnglishNames(app->EnglishUI()))+L" · "+
+        Text(app->EnglishUI(),freeCurves?L"自由カーブ":L"標準補間",freeCurves?L"Free curves (Euler XYZ)":L"Native interpolation",freeCurves?L"自由曲线（XYZ 角度）":L"原生插值");
     source.initialMainChannel="bone"+std::to_string(initialBone)+"/"+mainIds[selected>=0&&selected<3?selected:selected==4?6:3];
     const auto displayCollections=BoneDisplayCollections(app,model);
     source.initialExpandedCollection="object/"+displayCollections[initialBone].id+"/bone"+std::to_string(initialBone);
@@ -920,9 +956,7 @@ void OpenInterpolation(MMDApp*app,bool visible){
         if(!entry.source.apply(native,error))return false;
         entry.baseline=std::move(target);return true;
     };
-    curve_editor::Session session;session.id="mms.interpolation.bone";session.language=app->EnglishUI();
-    session.currentFrame=[app]{return double(app->CurrentFrame());};
-    session.seek=[app](int frame){app->CurrentFrame()=frame;Refresh(*app);};
+
     BindSelection(source,app,[app,identity](const std::string& channel,const std::vector<int>* frames)->std::vector<int>{
         if(!MorphIdentityCurrent(*app,identity)||channel.rfind("bone",0)!=0)return {};
         char* end=nullptr;const long bone=std::strtol(channel.c_str()+4,&end,10);
@@ -933,7 +967,9 @@ void OpenInterpolation(MMDApp*app,bool visible){
             return NativeSelection(mdl::DisplayKeys(identity.model),mdl::kDisplayKeyCapacity,0,frames);
         return NativeSelection(mdl::BoneKeys(identity.model),mdl::BoneKeyCapacity(record),std::size_t(bone),frames);
     });
-    session.sources.push_back(std::move(source));BindTransport(session,app);curve_editor::Open(app->Hwnd(),std::move(session),visible);
+    session.sources.push_back(std::move(source));
+    }
+    BindTransport(session,app);curve_editor::Open(app->Hwnd(),std::move(session),visible);
 }
 
 void NotifyRegistered(MMDApp*app,Kind kind,int slot){
@@ -945,8 +981,10 @@ void NotifyModelRegistered(MMDApp*app,bool morph){
     const mdl::ModelRecord*record=model?mdl::Mdl(model):nullptr;
     if(!record)return;
     if(morph)curve_editor::NotifySourceChanged(app->Hwnd(),"morph");
-    else if(record->selectedBone>=0)
+    else if(record->selectedBone>=0){
         curve_editor::NotifySourceChanged(app->Hwnd(),"bones");
+        curve_editor::NotifySourceChanged(app->Hwnd(),"bones.free");
+    }
 }
 void CreateControls(MMDApp*app,void*window){
     HWND hwnd=static_cast<HWND>(window);

@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // Misc dialog bodies: frame-control apply, reorder fill, accessory-edit init, physics ON/OFF apply
 // ===========================================================================
@@ -300,6 +301,14 @@ void CurvePanelRepaint(MMDApp* app) {  // x64 0x7FF7CB482BB0
 
     bool found = false;             // x64 v83: any active record seen
     bool perChannelUniform = true;  // x64 v84: per-channel consistency
+#if !MMD_ORIGINAL_PROFILE
+    if(app->state.optflag[0]==0 && bone_curve::DrawPreview(*app)) {
+        for(int id : {kCurveUniformButton,kCurvePresetButton,kCurveFoundButton})EnableWindow(GetDlgItem(window,id),FALSE);
+        RECT client{};GetClientRect(window,&client);
+        RECT dirty{8,client.bottom-135,137,client.bottom-6};InvalidateRect(window,&dirty,FALSE);
+        return;
+    }
+#endif
     Curve baseline{};
     Curve firstChannels[6]{};
 

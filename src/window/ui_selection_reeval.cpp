@@ -1,3 +1,4 @@
+#include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // VA 0x00430510 with helpers 0x00415E90 / 0x00416090
 // ===========================================================================
@@ -138,6 +139,9 @@ void DrawControlPoints(MMDApp* app, const Curve& curve) {  // 0x416090
 // 8/bottom-135/137/bottom-6 invalidate rect.
 // ---------------------------------------------------------------------------
 void DragInterpolationControlPoint(MMDApp* app) {  // was Sub416280, VA 0x00416280
+#if !MMD_ORIGINAL_PROFILE
+    if(app->state.optflag[0]==0 && app->SelectedModel() && bone_curve::Has(app->SelectedModel(),mdl::Mdl(app->SelectedModel())->selectedBone))return;
+#endif
     const HWND window = static_cast<HWND>(app->Hwnd());
     HDC dc = app->CurveDC();
     HPEN pen = CreatePen(PS_SOLID, 1, 0x00FFFFFFu);              // 0x41629D

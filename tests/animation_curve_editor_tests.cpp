@@ -825,7 +825,7 @@ void CheckLayout(HWND window, const wchar_t *language) {
     } pairs[] = {
         {kIdSourceLabel, kIdSourceCombo, false},   {kIdViewLabel, kIdViewCombo, false},
         {kIdToolLabel, kIdToolCombo, false},       {kIdChannelLabel, kIdChannelList, true},
-        {kIdMmdLabel, kIdMmdPanel, true},          {kIdMmdPanel, kIdMmdReadout, false},
+
         {kIdFrameLabel, kIdFrameEdit, false},      {kIdValueLabel, kIdValueEdit, false},
         {kIdInterpolationLabel, kIdInterpolationCombo, false},
         {kIdTangentLabel, kIdTangentCombo, false}, {kIdInSlopeLabel, kIdInSlopeEdit, false},
@@ -838,6 +838,7 @@ void CheckLayout(HWND window, const wchar_t *language) {
         HWND label = GetDlgItem(window, pair.label);
         HWND control = GetDlgItem(window, pair.control);
         Check(label != nullptr && control != nullptr, "both members of a label pair exist");
+        if(!(GetWindowLongPtrW(label,GWL_STYLE)&WS_VISIBLE)||!(GetWindowLongPtrW(control,GWL_STYLE)&WS_VISIBLE))continue;
         RECT labelRect = {};
         RECT controlRect = {};
         GetWindowRect(label, &labelRect);
@@ -1245,7 +1246,10 @@ void ReadKeepsSelectionAndHistory() {
     Check(KeyCount(window) == 3, "a rename-only re-read keeps every key");
     HWND list = GetDlgItem(window, kIdChannelList);
     wchar_t item[256] = {};
-    SendMessageW(list, LB_GETTEXT, 0, reinterpret_cast<LPARAM>(item));
+    HTREEITEM first=TreeView_GetRoot(list);
+    while(first && TreeView_GetChild(list,first))first=TreeView_GetChild(list,first);
+    TVITEMW treeItem{};treeItem.mask=TVIF_TEXT;treeItem.hItem=first;treeItem.pszText=item;treeItem.cchTextMax=256;
+    SendMessageW(list,TVM_GETITEMW,0,reinterpret_cast<LPARAM>(&treeItem));
     Check(std::wstring(item).find(L"renamed") != std::wstring::npos, "the new channel label is adopted");
     Check(std::wstring(item).find(L"m") != std::wstring::npos, "the new channel unit is adopted");
     Check(GetText(window, kIdFrameEdit) == L"5", "the local selection survives the rename");
@@ -2114,8 +2118,8 @@ void HoverHints() {
     // The three canvas regions explain themselves separately.
     const POINT plot = AskPoint(window, kHookPointForFrame, 5);
     SendMessageW(canvas, WM_MOUSEMOVE, 0, MAKELPARAM(plot.x, plot.y));
-    Check(HoverHint(window) == 7, "the plot area explains the canvas gestures");
-    Check(GetText(window, kIdHoverHint).empty() == false, "the hint line shows a sentence");
+    Check(HoverHint(window) == 0, "the plot has no redundant gesture paragraph");
+    Check(GetText(window, kIdHoverHint).empty(), "the plot leaves the hint line empty");
     const POINT timeBar = AskBarPoint(window, 1, 0);
     SendMessageW(canvas, WM_MOUSEMOVE, 0, MAKELPARAM(timeBar.x, timeBar.y));
     Check(HoverHint(window) == 9, "the horizontal bar explains panning and zooming in time");

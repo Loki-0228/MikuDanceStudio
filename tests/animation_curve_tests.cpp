@@ -1,3 +1,4 @@
+#include "animation_curve_insert_checks.hpp"
 // MAINTENANCE: unit coverage for the shared animation curve core
 // (src/animation/animation_curve.cpp).  Pure CPU; no Win32, DirectX or GUI.
 #include "mikudancestudio/animation_curve.hpp"
@@ -959,6 +960,7 @@ void TestSideEditing() {
 }  // namespace
 
 int main() {
+    g_failures += RunSplitChecks();
     TestValidation();
     TestEvaluation();
     TestStepAndLinear();

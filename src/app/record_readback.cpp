@@ -63,6 +63,7 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/wic_mov_recorder.hpp"
 #include <Windows.h>
@@ -147,6 +148,7 @@ bool RecordingReadbackPass(MMDApp* app) {
         : outputW;                                               // 0x46E86A
     const std::int32_t capH = outputH;
     const bool transparent = TransparentExportActive(app);
+    const bool imageSequence = image_sequence::Active(app);
     const D3DFORMAT fmt = transparent ? D3DFMT_A8R8G8B8 : wrapper->backbufferFormat;
 
     // ---- one-time surfaces + bits buffer ------------------------------
@@ -164,7 +166,7 @@ bool RecordingReadbackPass(MMDApp* app) {
         }
     }
     IDirect3DSurface9** sysSlot = &s.CaptureSystemSurface();
-    if (*sysSlot == nullptr) {                                   // 0x46E82D
+    if (!imageSequence && *sysSlot == nullptr) {                  // 0x46E82D
         IDirect3DSurface9* surf = nullptr;
         const HRESULT hr = device->CreateOffscreenPlainSurface(
             capW, capH, fmt, D3DPOOL_SYSTEMMEM, &surf, nullptr);
@@ -175,7 +177,7 @@ bool RecordingReadbackPass(MMDApp* app) {
             return false;
         }
     }
-    if (s.CaptureReadbackPixels() == nullptr) {                  // 0x46E88D
+    if (!imageSequence && s.CaptureReadbackPixels() == nullptr) { // 0x46E88D
         const std::size_t bytes = static_cast<std::size_t>(capW) *
                                   static_cast<std::size_t>(capH) * 4;
         s.CaptureReadbackPixels() = ::operator new(bytes);
@@ -285,6 +287,15 @@ bool RecordingReadbackPass(MMDApp* app) {
     if (stretch != 0) {
         TraceRec("readback: StretchRect hr=%ld\n", (long)stretch);
         FinishAviRecord(app);                                          // 0x46EDEB
+        return false;
+    }
+
+    if (imageSequence) {
+        std::wstring error;
+        if (image_sequence::WriteFrame(app, *rtSlot, error)) return true;
+        FinishAviRecord(app);
+        MessageBoxW(s.MainWindow(), error.c_str(), image_sequence::Text(app,
+            L"图片序列输出", L"Image sequence export", L"連番画像出力"), MB_OK | MB_ICONERROR);
         return false;
     }
 

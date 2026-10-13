@@ -1484,10 +1484,12 @@ void CapacityMode(){
     mdl::BoneKeyPoolDestroy(f.model->boneKeys);
     std::puts("runtime pool capacity: commit, undo/redo, VMD export and registrar insert complete");
 }
+#include "dense_keyframe_checks.hpp"
 int wmain(int argc,wchar_t** argv){
     std::setvbuf(stdout,nullptr,_IONBF,0);INITCOMMONCONTROLSEX cc{sizeof cc,ICC_WIN95_CLASSES};InitCommonControlsEx(&cc);
     auto hide=SetWindowsHookExW(WH_CBT,HideHook,nullptr,GetCurrentThreadId());auto hook=SetWindowsHookExW(WH_CALLWNDPROCRET,DialogHook,nullptr,GetCurrentThreadId());
-    if(argc==2&&!wcscmp(argv[1],L"--select-all"))AllChannelPicker();
+    if(argc==2&&!wcscmp(argv[1],L"--dense-playback"))DenseKeyframeChecks();
+    else if(argc==2&&!wcscmp(argv[1],L"--select-all"))AllChannelPicker();
     else if(argc==2&&!wcscmp(argv[1],L"--scene-physics"))ScenePhysicsUnit();
     else if(argc==2&&!wcscmp(argv[1],L"--capacity"))CapacityMode();
     else if(argc==2&&!wcscmp(argv[1],L"--warnings"))WarningLogic();

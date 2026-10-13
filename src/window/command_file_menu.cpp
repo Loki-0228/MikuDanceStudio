@@ -108,6 +108,9 @@
 // =========================================================================//
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include "mikudancestudio/image_sequence_export.hpp"
+#include "mikudancestudio/force_paste.hpp"
+#include "mikudancestudio/animation_curve_host.hpp"
 #include "mikudancestudio/wic_mov_recorder.hpp"
 #include "mikudancestudio/bone_scale.hpp"
 #include <Windows.h>
@@ -573,24 +576,7 @@ INT_PTR __stdcall AviOutDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
             ? L"Video Export Settings"
             : app->EnglishUI() == 2 ? L"视频导出设置" : L"動画出力設定");
 #endif
-        const HWND main = MainHwnd(app);
-        BOOL stopValid = FALSE;
-        const int playbackStop = static_cast<int>(GetDlgItemInt(
-            main, panel::kPlayStopFrameEdit, &stopValid, TRUE));
-        std::uint32_t defaultEnd = stopValid && playbackStop > 0
-            ? static_cast<std::uint32_t>(playbackStop) : 0;
-        if (defaultEnd == 0) {
-            defaultEnd = app->LastRegisteredFrame();
-            if (const WaveAudioContext* audio = app->Audio();
-                audio != nullptr && audio->dataSize > 0 &&
-                audio->format.nAvgBytesPerSec > 0) {
-                const double audioFrames = std::ceil(
-                    static_cast<double>(audio->dataSize) * g_FrameScale /
-                    audio->format.nAvgBytesPerSec);
-                if (audioFrames > defaultEnd)
-                    defaultEnd = static_cast<std::uint32_t>(audioFrames);
-            }
-        }
+        const std::uint32_t defaultEnd = image_sequence::DefaultEndFrame(app);
         // Set complete values: selection replacement can append frame defaults
         // or insert dimensions into text already set by the aspect-ratio handler.
         SetDlgItemInt(hDlg, panel::kAviStartFrameEdit, 0, FALSE);
@@ -1267,6 +1253,57 @@ PasteFrameGate PasteFrameGateOf(bool accessoryMode,
     if (!targetSelected)
         return PasteFrameGate::NoTarget;
     return PasteFrameGate::Ready;
+}
+
+int ForcePasteMorphTarget(const MMDApp* app) {
+    if (!app || app->state.optflag[0] != 0) return -1;
+    const auto* raw = app->SelectedModel();
+    if (!raw) return -1;
+    const auto* model = mdl::Mdl(raw);
+    if (!model->displayFrames || !model->morphs) return -1;
+    int target = -1;
+    for (unsigned i = 0; i < model->facialFrameCount; ++i) {
+        const auto& row = model->displayFrames[i];
+        if (!row.selected || row.targetIndex >= model->morphCount ||
+            model->morphs[row.targetIndex].panel == mdl::MorphPanel::system) continue;
+        if (target >= 0 && target != row.targetIndex) return -2;
+        target = row.targetIndex;
+    }
+    return target;
+}
+
+bool ForcePasteMorphKeys(MMDApp* app, int target) {
+    if (!app || app->state.optflag[0] != 0 || app->PlaybackActive() || app->FrameStepPlayback()) return false;
+    auto* model = app->SelectedModel();
+    if (!model || !mdl::Morphs(model) || !mdl::MorphKeys(model) || target < 0 ||
+        static_cast<unsigned>(target) >= mdl::Mdl(model)->morphCount ||
+        mdl::Morphs(model)[target].panel == mdl::MorphPanel::system) return false;
+    const auto count = app->ClipboardCounts().morphs;
+    const auto* source = app->MorphClipboard();
+    if (!count || !source || app->CurrentFrame() < 0) return false;
+    for (unsigned i = 0; i < count; ++i)
+        if (!std::isfinite(source[i].value) ||
+            std::uint64_t(source[i].frame) + app->CurrentFrame() > INT_MAX) return false;
+    auto* keys = mdl::MorphKeys(model);
+    for (std::size_t i = 0; i < mdl::MorphKeyCapacity(keys); ++i) keys[i].allocated = 0;
+    ResetMorphKeyCursor(model);
+    for (unsigned i = 0; i < count; ++i)
+        if (!RegisterMorphKeyAtIndex(model, target, source[i].frame + app->CurrentFrame(), source[i].value))
+            return false;
+    app->SceneModified() = 1;
+    app->state.lastRegisteredFrame = (std::max)(app->state.lastRegisteredFrame, mdl::Mdl(model)->maxFrame);
+    return true;
+}
+
+void RefreshForcePasteControls(MMDApp* app) {
+    if (!app) return;
+    const auto& counts = app->ClipboardCounts();
+    const bool enabled = !app->PlaybackActive() && !app->FrameStepPlayback() &&
+        (app->state.optflag[0] != 0 ? counts.accessories != 0 :
+            (app->SelectedModel() && (counts.bones != 0 || counts.morphs != 0)));
+    EnableWindow(GetDlgItem(app->MainWindow(), panel::kForcePasteButton), enabled);
+    EnableMenuItem(GetMenu(app->MainWindow()), panel::kForcePasteButton,
+                   enabled ? MF_ENABLED : MF_GRAYED);
 }
 
 void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify) {
@@ -1978,11 +2015,30 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
     // RegisterBoneKey, undo-available flag).
     // ------------------------------------------------------------------
     case 250: {
+        if (app->PlaybackActive() || app->FrameStepPlayback()) break;
         app->state.dialogFlags[15] = 1;
         const std::uint8_t opt = app->state.optflag[0];
         const bool isAcc = opt != 0;
         // Explain empty clipboard data before requesting a paste confirmation.
         const auto& clipboardCounts = app->ClipboardCounts();
+        const int morphTarget = ForcePasteMorphTarget(app);
+        if (!isAcc && (morphTarget != -1 || (clipboardCounts.morphs && !clipboardCounts.bones))) {
+            const UINT topmost = app->state.floatingWindow ? MB_TOPMOST : 0;
+            if (!clipboardCounts.morphs || !app->MorphClipboard()) {
+                ShowUiMessage(app, hwnd, UiMessage::NoMorphClipboard, MB_OK | topmost);
+            } else if (morphTarget < 0) {
+                ShowUiMessage(app, hwnd, UiMessage::SelectMorph, MB_OK | topmost);
+            } else if (ShowUiMessage(app, hwnd, UiMessage::PasteMorph, MB_OKCANCEL | topmost) == IDOK &&
+                       ForcePasteMorphKeys(app, morphTarget)) {
+                SeekModelFrame(ActiveModel(app), app->CurrentFrame(), app->PlaybackPhysicsMode());
+                curve_host::NotifyModelRegistered(app, true);
+                PanelPaint(app);
+                SelectionReeval(app);
+                PostLanguageSweep(app);
+                PostLanguageSweep2(app);
+            }
+            break;
+        }
         // Target: the selected bone (model mode) / a selected accessory slot
         // (display mode) - the same test the two "please select" boxes use.
         const bool targetSelected =
