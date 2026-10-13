@@ -450,6 +450,22 @@ static Transform Pivot(const mdl::BoneRecord& bone,const Matrix& scale) {
     }
     return pivot;
 }
+static Transform WithLinearAtPivot(const mdl::BoneRecord& bone,const Transform& reference,const Matrix& linear) {
+    Transform result=reference;
+    for(int c=0;c<3;++c)for(int k=0;k<3;++k) {
+        result[12+c]+=bone.position[k]*(reference[k*4+c]-linear.v[k*3+c]);
+        result[k*4+c]=linear.v[k*3+c];
+    }
+    return result;
+}
+static Transform InheritTransform(const mdl::BoneRecord& bone,const Transform& rigid,
+                                  const Matrix& parentScale,const Transform& parentDelta) {
+    // The pivot follows the parent's full deformation. The shape inherits scale
+    // in the unposed model basis, before this bone's rotation (issue #16).
+    // Applying parentDelta to the whole child instead would change its lengths
+    // and angles whenever it rotates under a non-uniformly scaled parent.
+    return WithLinearAtPivot(bone,Product(rigid,parentDelta),Multiply(parentScale,Linear(rigid.data())));
+}
 void BuildTransforms(const unsigned char* model,const Values& pose,std::vector<Transform>& corrected,const std::vector<Transform>* rigidBaseline) {
     corrected.clear();if(!model)return;
     const auto& m=*mdl::Mdl(model);const int count=int(m.boneCount);const auto* bones=m.boneTable;
@@ -463,6 +479,7 @@ void BuildTransforms(const unsigned char* model,const Values& pose,std::vector<T
         else std::memcpy(rigid[i].data(),bones[i].matInit,64);
     }
     corrected.resize(count);
+    std::vector<Matrix> cumulativeScale(count);
     std::vector<unsigned char> done(count);std::vector<bool> changed(count);std::vector<int> chain;
     for(int i=0;i<count;++i) {
         if(done[i]==2)continue;
@@ -471,9 +488,13 @@ void BuildTransforms(const unsigned char* model,const Values& pose,std::vector<T
             const int index=chain.back();chain.pop_back();const auto& bone=bones[index];
             Transform base=rigid[index];
             const bool inherited=bone.parent>=0&&bone.parent<count&&done[bone.parent]==2&&changed[bone.parent];
-            if(inherited)base=Product(Product(base,InverseTransform(rigid[bone.parent])),corrected[bone.parent]);
+            if(inherited) {
+                const Transform delta=Product(InverseTransform(rigid[bone.parent]),corrected[bone.parent]);
+                base=InheritTransform(bone,base,cumulativeScale[bone.parent],delta);
+            }
             const Matrix scale=Lookup(pose,index);
             if(!Identity(scale))base=Product(Pivot(bone,scale),base);
+            cumulativeScale[index]=inherited?Multiply(scale,cumulativeScale[bone.parent]):scale;
             corrected[index]=base;done[index]=2;changed[index]=inherited||!Identity(scale);
         }
     }
@@ -503,6 +524,7 @@ void ResolvePhysics(unsigned char* model,const std::map<int,Transform>& world) {
     RestoreTransforms(model);auto& s=states[model];
     auto* bones=mdl::Bones(model);const int count=int(mdl::Mdl(model)->boneCount);
     std::vector<Transform> corrected(count),rigid(count);std::vector<unsigned char> done(count);std::vector<int> chain;
+    std::vector<Matrix> cumulativeScale(count);
     for(int i=0;i<count;++i)std::memcpy(rigid[i].data(),bones[i].matInit,64);
     for(int i=0;i<count;++i) {
         if(done[i]==2)continue;
@@ -510,24 +532,36 @@ void ResolvePhysics(unsigned char* model,const std::map<int,Transform>& world) {
         while(!chain.empty()) {
             const int b=chain.back();chain.pop_back();const auto& bone=bones[b];
             Transform inherited=Affine({});
-            if(bone.parent>=0&&bone.parent<count&&done[bone.parent]==2)
+            Matrix parentScale;
+            const bool hasParent=bone.parent>=0&&bone.parent<count&&done[bone.parent]==2;
+            if(hasParent) {
                 inherited=Product(InverseTransform(rigid[bone.parent]),corrected[bone.parent]);
+                parentScale=cumulativeScale[bone.parent];
+            }
             const auto physical=world.find(b);
             bool resolved=false;
             if(physical!=world.end()) {
-                const Transform target=Product(physical->second,InverseTransform(inherited));
-                const Matrix linear=Linear(target.data());Matrix stretch;float rotation[4];
-                if(affine::PolarDecompose(linear.v.data(),stretch.v.data(),rotation)&&Valid(stretch)) {
-                    Transform base{};affine::DefaultMatrixFromQuaternion(base.data(),rotation);
-                    for(int c=0;c<3;++c) {
-                        base[12+c]=target[12+c];
-                        for(int k=0;k<3;++k)base[12+c]+=bone.position[k]*(target[k*4+c]-base[k*4+c]);
+                const Matrix linear=Linear(physical->second.data());Matrix stretch,inverseParent;float rotation[4];
+                if(affine::PolarDecompose(linear.v.data(),stretch.v.data(),rotation)&&Inverse(parentScale,inverseParent)) {
+                    // Forward evaluation is localScale * parentScale * rotation.
+                    // Remove parent scale from the stretch, not from the rotated
+                    // physical matrix. Undo parent deformation only for the pivot.
+                    const Matrix localScale=Multiply(stretch,inverseParent);
+                    if(Valid(localScale)) {
+                        Transform rotationOnly{};affine::DefaultMatrixFromQuaternion(rotationOnly.data(),rotation);
+                        const Transform target=Product(physical->second,InverseTransform(inherited));
+                        const Transform base=WithLinearAtPivot(bone,target,Linear(rotationOnly.data()));
+                        rigid[b]=base;Store(s.current.pose,b,localScale);corrected[b]=physical->second;
+                        std::memcpy(bones[b].matInit,base.data(),64);resolved=true;
                     }
-                    rigid[b]=base;Store(s.current.pose,b,stretch);corrected[b]=physical->second;
-                    std::memcpy(bones[b].matInit,base.data(),64);resolved=true;
                 }
             }
-            if(!resolved)corrected[b]=Product(Product(Pivot(bone,Lookup(s.current.pose,b)),rigid[b]),inherited);
+            const Matrix scale=Lookup(s.current.pose,b);
+            cumulativeScale[b]=hasParent?Multiply(scale,parentScale):scale;
+            if(!resolved) {
+                const Transform base=hasParent?InheritTransform(bone,rigid[b],parentScale,inherited):rigid[b];
+                corrected[b]=Product(Pivot(bone,scale),base);
+            }
             done[b]=2;
         }
     }

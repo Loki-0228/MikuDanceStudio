@@ -105,6 +105,102 @@ void Hierarchy() {
     bs::RestoreTransforms(f.data()); root.parent=2; bs::ApplyTransforms(f.data());
     Check(std::isfinite(root.matInit[0]),"malformed parent cycle terminates");
 }
+bs::Matrix AxisRotation(int axis,float angle) {
+    bs::Matrix r;
+    const int a=(axis+1)%3,b=(axis+2)%3;
+    r.v[a*3+a]=r.v[b*3+b]=std::cos(angle);
+    r.v[a*3+b]=std::sin(angle); r.v[b*3+a]=-std::sin(angle);
+    return r;
+}
+using Point=std::array<float,3>;
+Point OffsetPoint(const Point& origin,const Point& offset,const bs::Matrix& rotation) {
+    Point result=origin;
+    for(int c=0;c<3;++c)for(int k=0;k<3;++k)result[c]+=offset[k]*rotation.v[k*3+c];
+    return result;
+}
+void RigidAt(mdl::BoneRecord& bone,const bs::Matrix& rotation,const Point& pivot) {
+    Identity(bone.matInit);
+    for(int c=0;c<3;++c) {
+        bone.matInit[12+c]=pivot[c];
+        for(int k=0;k<3;++k) {
+            bone.matInit[k*4+c]=rotation.v[k*3+c];
+            bone.matInit[12+c]-=bone.position[k]*rotation.v[k*3+c];
+        }
+    }
+}
+void CheckPivot(const mdl::BoneRecord& bone,const bs::Transform& transform,const Point& expected) {
+    for(int c=0;c<3;++c) {
+        float value=transform[12+c];
+        for(int k=0;k<3;++k)value+=bone.position[k]*transform[k*4+c];
+        Near(value,expected[c],"rotated child stays attached to scaled parent");
+    }
+}
+void CheckShape(const bs::Transform& transform,const bs::Matrix& shape) {
+    // Pairwise lengths and angles must survive rotation, including authored shear.
+    for(int a=0;a<3;++a)for(int b=0;b<3;++b) {
+        float actual=0,expected=0;
+        for(int k=0;k<3;++k) {
+            actual+=transform[a*4+k]*transform[b*4+k];
+            expected+=shape.v[a*3+k]*shape.v[b*3+k];
+        }
+        Near(actual,expected,"child rotation preserves inherited shape");
+    }
+}
+void RotatedHierarchy() {
+    Fixture f(4);
+    const Point origin{5,-3,2},offset{2,3,-1},tipOffset{-1,2,2};
+    const Point positions[3]={{1,-2,.5f},{3,1,-.5f},{2,3,1.5f}};
+    for(int i=0;i<3;++i) {
+        f.bones[i].parent=i-1;
+        std::copy(positions[i].begin(),positions[i].end(),f.bones[i].position);
+    }
+    bs::SetPose(f.data(),0,Diagonal(4,2,.5f));
+    bs::SetPose(f.data(),1,Diagonal(1,3,2));
+    for(int axis=0;axis<3;++axis)for(int degrees=0;degrees<=180;degrees+=15) {
+        const float angle=degrees*std::acos(-1.f)/180.f;
+        const auto parent=AxisRotation((axis+1)%3,.37f);
+        const auto child=bs::Multiply(AxisRotation(axis,angle),parent);
+        const auto grand=bs::Multiply(AxisRotation((axis+2)%3,-.61f),child);
+        const auto childPivot=OffsetPoint(origin,offset,parent);
+        RigidAt(f.bones[0],parent,origin);
+        RigidAt(f.bones[1],child,childPivot);
+        RigidAt(f.bones[2],grand,OffsetPoint(childPivot,tipOffset,child));
+        const auto expectedChild=OffsetPoint(origin,{8,6,-.5f},parent);
+        const auto expectedGrand=OffsetPoint(expectedChild,{-4,12,2},child);
+        std::vector<bs::Transform> baseline(4),out;
+        for(int i=0;i<4;++i)std::memcpy(baseline[i].data(),f.bones[i].matInit,64);
+        bs::BuildTransforms(f.data(),bs::PoseValues(f.data()),out);
+        CheckShape(out[1],Diagonal(4,6,1)); CheckShape(out[2],Diagonal(4,6,1));
+        CheckPivot(f.bones[1],out[1],expectedChild); CheckPivot(f.bones[2],out[2],expectedGrand);
+        Check(out[3]==baseline[3],"unrelated branch remains byte identical");
+        bs::ApplyTransforms(f.data()); bs::ApplyTransforms(f.data());
+        std::vector<bs::Transform> cached,explicitBaseline;
+        bs::BuildTransforms(f.data(),bs::PoseValues(f.data()),cached);
+        bs::BuildTransforms(f.data(),bs::PoseValues(f.data()),explicitBaseline,&baseline);
+        Check(out==cached&&out==explicitBaseline,"cached and explicit baselines do not repeat scaling");
+        bs::RestoreTransforms(f.data());
+        // Physics must use the same inheritance rule and reproduce all target matrices.
+        const std::map<int,bs::Transform> physical{{0,out[0]},{1,out[1]}};
+        for(int repeat=0;repeat<3;++repeat) {
+            bs::ResolvePhysics(f.data(),physical);
+            bs::BuildTransforms(f.data(),bs::PoseValues(f.data()),cached);
+            for(int i=0;i<3;++i)for(int k=0;k<16;++k)
+                Near(cached[i][k],out[i][k],"physics round trip preserves scaled hierarchy");
+        }
+        bs::SetPose(f.data(),0,Diagonal(4,2,.5f));
+        bs::SetPose(f.data(),1,Diagonal(1,3,2));
+    }
+    bs::SetPose(f.data(),1,{});
+    const bs::Matrix shear{{4,.4f,.2f,0,2,.3f,0,0,.5f}};
+    bs::SetPose(f.data(),0,shear);
+    std::vector<bs::Transform> out;
+    bs::BuildTransforms(f.data(),bs::PoseValues(f.data()),out);
+    CheckShape(out[1],shear); CheckShape(out[2],shear);
+    bs::SetPose(f.data(),0,{});
+    bs::BuildTransforms(f.data(),{},out);
+    for(int i=0;i<4;++i)Check(std::memcmp(out[i].data(),f.bones[i].matInit,64)==0,
+                             "unit scale preserves exact legacy transforms");
+}
 void KeysAndUndo() {
     Fixture f; auto* m=f.data(); f.selected[7]=1; f.record->selectedBone=7;
     bs::SetPose(m,7,Diagonal(1,1,1)); RegisterSelectedBoneKeys(m,0,0);
@@ -348,4 +444,4 @@ void VmdProductionRoundTrip() {
 }
 }
 int main() { std::setvbuf(stdout,nullptr,_IONBF,0);
- MathAndAxes(); Hierarchy(); KeysAndUndo(); DragAndAvailability(); VmdProductionRoundTrip(); PersistenceIntegration(); PmmRefusedRecordPreservation(); std::puts("PASS: native bone scale math, hierarchy, keys, undo, clipboard, drag and PMM/VMD integration"); }
+ MathAndAxes(); Hierarchy(); RotatedHierarchy(); KeysAndUndo(); DragAndAvailability(); VmdProductionRoundTrip(); PersistenceIntegration(); PmmRefusedRecordPreservation(); std::puts("PASS: native bone scale math, hierarchy, keys, undo, clipboard, drag and PMM/VMD integration"); }

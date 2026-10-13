@@ -164,6 +164,8 @@ void RestoreTransforms(unsigned char* model);
 void ApplyTransforms(unsigned char* model);
 bool HasPose(const unsigned char* model);
 Values PoseValues(const unsigned char* model);
+// Child pivots follow the parent's deformation. Inherited scale acts in the
+// unposed model basis before each child's rotation, preserving its shape.
 void BuildTransforms(const unsigned char* model, const Values& pose, std::vector<Transform>& out,
                      const std::vector<Transform>* rigidBaseline=nullptr);
 // Copy animation state for an isolated simulator, undoing any display-only
