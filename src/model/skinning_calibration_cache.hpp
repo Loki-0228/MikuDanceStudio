@@ -9,7 +9,7 @@
 
 namespace mikudancestudio::skinning::calibration_cache {
 // Bump when the benchmark geometry, CPU/GPU algorithm or measurement changes.
-constexpr std::uint32_t kVersion=1;
+constexpr std::uint32_t kVersion=2;
 constexpr std::uint64_t kMagic=0x31484341434e4b53ull;
 inline std::filesystem::path Path(const wchar_t* product) {
     // Match Data/mmconfig.ini: bind to the executable, never to the current

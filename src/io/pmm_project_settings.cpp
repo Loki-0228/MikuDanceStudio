@@ -104,7 +104,7 @@ void Reset(MMDApp& app) {
     app.PmmProjectSettings() = {};
     app.TransparentMaterialSortPrecision() = kDefaultTransparentSortPrecision;
     // Processor settings are per machine user, not per project: creating a new
-    // scene never resets them (docs/PROCESSOR_SETTINGS_PROPOSAL.md).
+    // scene never resets them (docs/records/performance/devices.md).
 #if !MMD_ORIGINAL_PROFILE
     antialias::ReloadUserSettings(&app);
     bone_scale_io::ResetPmm();

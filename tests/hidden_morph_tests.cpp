@@ -1,5 +1,5 @@
 // MAINTENANCE: integration-manual; hidden-morph interaction contract of
-// docs/HIDDEN_MORPH_PANEL_SAFETY.md (a PMX morph whose panel byte is 0 stays out
+// docs/records/animation/editing.md (a PMX morph whose panel byte is 0 stays out
 // of the eyebrow/eye/mouth/other lanes while the timeline label list still
 // carries it, and clicking it there is safe and side-effect free).
 //
@@ -8,7 +8,7 @@
 //
 // Usage: hidden_morph_tests --model PATH [--mode contract|bounds]
 // PATH must be the separately supplied Rou PMX regression sample described in
-// docs/HIDDEN_MORPH_PANEL_SAFETY.md. No copyrighted model is bundled here.
+// docs/records/animation/editing.md. No copyrighted model is bundled here.
 // Contract covers timeline selection, four-lane isolation, ordinary controls,
 // registered animation and vertex/UV/material results of the group morphs.
 // Bounds only repeats the click checks after in-memory panel changes 0/5/255;

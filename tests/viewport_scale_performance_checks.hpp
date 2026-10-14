@@ -2,6 +2,7 @@
 #include "mikudancestudio/build_profile.hpp"
 #include "viewport_scale_target_checks.hpp"
 #include "viewport_scale_gpu_checks.hpp"
+#include "effect_preview_shadow_checks.hpp"
 namespace scale_cache_verify {
 using Update = void(*)(MMDApp*,unsigned char*,const float*);
 Update original=nullptr;
@@ -144,6 +145,7 @@ void CheckViewportScalePerformance(MMDApp* app, const wchar_t* output) {
             do{frame();++warmFrames;}while(warmFrames<8 || clock()-warm<.5);
             std::printf("SCALE_WARM block=%d frames=%u seconds=%.3f\n",block,warmFrames,clock()-warm);
             flush();
+            if (std::getenv("MMS_SCALE_VERIFY_MME_SHADOW")) CheckEffectPreviewShadowTargets(percent);
             if (std::getenv("MMS_SCALE_VERIFY_VERTEX_CACHE")) {
                 const auto before=scale_cache_verify::hits;
                 Check(MH_CreateHook(&UpdateModelVertexBuffers,&scale_cache_verify::Observe,
@@ -202,12 +204,19 @@ void CheckViewportScalePerformance(MMDApp* app, const wchar_t* output) {
             perf::Reset();
 #endif
             const auto cacheBefore=model_vertex_cache::GetStats();
+            const auto watchBefore=effect_file_watch::GetStats();
             sceneTime=presentTime=0;presented=0;timing=true;
             unsigned frames=0;const double start=clock();
             do {frame();++frames;}while(clock()-start<measuredSeconds);
             timing=false;
             flush();const double elapsed=clock()-start;
             const auto cacheAfter=model_vertex_cache::GetStats();
+            const auto watchAfter=effect_file_watch::GetStats();
+            std::printf("SCALE_FILE_WATCH block=%d reads=%llu hits=%llu notifications=%llu files=%u directories=%u\n",
+                block, static_cast<unsigned long long>(watchAfter.reads-watchBefore.reads),
+                static_cast<unsigned long long>(watchAfter.hits-watchBefore.hits),
+                static_cast<unsigned long long>(watchAfter.notifications-watchBefore.notifications),
+                watchAfter.files, watchAfter.directories);
             std::printf("SCALE_CACHE block=%d percent=%d hits=%llu misses=%llu stores=%llu bytes=%zu outline_hits=%llu cpu_bytes=%zu\n",block,percent,
                 static_cast<unsigned long long>(cacheAfter.hits-cacheBefore.hits),
                 static_cast<unsigned long long>(cacheAfter.misses-cacheBefore.misses),
@@ -245,6 +254,10 @@ void CheckViewportScalePerformance(MMDApp* app, const wchar_t* output) {
                 std::ofstream dimensions(directory/(name+".txt"));dimensions<<captureWidth<<' '<<captureHeight;
             }
         }
+    }
+    if (std::getenv("MMS_SCALE_VERIFY_MME_SHADOW")) {
+        drain.Reset(); // Timing query has no role during a device reset/export.
+        CheckEffectPreviewShadowExport(app, directory);
     }
     if(presentAddress)MH_RemoveHook(presentAddress);
     if(gpuTiming)scale_gpu::Shutdown();

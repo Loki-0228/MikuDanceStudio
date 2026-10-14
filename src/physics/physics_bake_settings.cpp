@@ -1,6 +1,6 @@
 // MikuDanceStudio: physics bake parameter presets (UTF-8 JSON), standalone module.
 //
-// The wire format is the one fixed in docs/PHYSICS_BAKING_REQUIREMENTS.md:
+// The wire format is the one fixed in docs/guides/physics-baking.md:
 //
 //     {
 //       "format": "MikuDanceStudioPhysicsPreset",

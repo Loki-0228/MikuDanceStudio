@@ -27,6 +27,9 @@ def main():
     parser.add_argument('--camera-motion', action='store_true')
     parser.add_argument('--no-outline-cache', action='store_true')
     parser.add_argument('--cpu-skinning', action='store_true')
+    parser.add_argument('--verify-mme-shadow', action='store_true')
+    parser.add_argument('--no-mme-shadow', action='store_true')
+    parser.add_argument('--no-file-watch', action='store_true')
     parser.add_argument('--gpu-draw-timing', action='store_true')
     parser.add_argument('--gpu-samples', type=int, default=16)
     parser.add_argument('--seconds', type=float, default=1.5)
@@ -73,6 +76,15 @@ def main():
     env.pop('MMS_SCALE_CPU_SKINNING', None)
     if args.cpu_skinning:
         env['MMS_SCALE_CPU_SKINNING'] = '1'
+    env.pop('MMS_SCALE_VERIFY_MME_SHADOW', None)
+    env.pop('MMS_NO_MME_PREVIEW_SHADOW', None)
+    if args.verify_mme_shadow:
+        env['MMS_SCALE_VERIFY_MME_SHADOW'] = '1'
+    if args.no_mme_shadow:
+        env['MMS_NO_MME_PREVIEW_SHADOW'] = '1'
+    env.pop('MMS_NO_MME_FILE_WATCH', None)
+    if args.no_file_watch:
+        env['MMS_NO_MME_FILE_WATCH'] = '1'
     if args.trace_targets:
         env['MMS_SCALE_TRACE_TARGETS'] = '1'
     if args.quick:
@@ -100,6 +112,9 @@ def main():
                'gpu_timing': args.gpu_timing, 'gpu_samples_per_block': args.gpu_samples if args.gpu_timing else 0,
                'vertex_cache_disabled': args.no_vertex_cache,
                'cpu_skinning': args.cpu_skinning,
+               'mme_shadow_verified': args.verify_mme_shadow,
+               'mme_shadow_disabled': args.no_mme_shadow,
+               'file_watch_disabled': args.no_file_watch,
                'vertex_cache_verified': args.verify_vertex_cache,
                'camera_motion': args.camera_motion,
                'outline_cache_disabled': args.no_outline_cache,

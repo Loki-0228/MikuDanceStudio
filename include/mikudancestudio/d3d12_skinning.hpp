@@ -94,6 +94,12 @@ public:
     bool SubmitAndReadback(const std::vector<Vertex>& vertices, const std::vector<Bone>& bones,
                            const std::vector<Material>& materials, Parameters parameters,
                            std::vector<Output>& output, Ticket* ticket = nullptr);
+    // D3D9 layout: 32 + 16 * additionalUvCount body bytes, then 16 outline
+    // bytes per vertex. Packs existing output bits on the GPU before readback;
+    // the normal OutputResource layout and native rendering stay unchanged.
+    bool SubmitAndReadbackCompact(const std::vector<Vertex>& vertices, const std::vector<Bone>& bones,
+                                  const std::vector<Material>& materials, Parameters parameters,
+                                  unsigned additionalUvCount, std::vector<unsigned char>& output);
     // Copies an already submitted output to CPU. Usable by the production D3D9
     // bridge as well as by validation; rendering keeps consuming OutputResource.
     bool Readback(Ticket ticket, std::vector<Output>& output);

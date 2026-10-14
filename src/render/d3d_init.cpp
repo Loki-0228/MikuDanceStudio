@@ -28,6 +28,8 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/default_effect.hpp"
 #include "mikudancestudio/effect_apng.hpp"
+#include "mikudancestudio/effect_preview_shadow.hpp"
+#include "mikudancestudio/effect_file_watch.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/processor_settings.hpp"
@@ -314,6 +316,8 @@ bool InitD3D(MMDApp* app, HWND hwnd, bool english, HMODULE hModule) {
     // MME is now loaded by its D3D proxy. Verify/install once before resources
     // can be lost; unknown MME builds continue without the compatibility fix.
     InstallEffectApngCompatibility();
+    effect_file_watch::Install();
+    effect_preview_shadow::Install();
     // Report what actually runs: a REF/D3DDEVTYPE_SW success is the software
     // rasterizer, which makes a FollowRenderer MMV resolve to the CPU mode.
     processor::RecordDeviceResult(true, createdType != D3DDEVTYPE_HAL,

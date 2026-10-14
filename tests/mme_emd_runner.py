@@ -12,6 +12,7 @@ from mme_display_fixtures import fixture
 
 def main():
     executable, mme, output = map(lambda value: Path(value).resolve(), sys.argv[1:4])
+    file_watch = '--file-watch' in sys.argv[4:]
     run = output / str(time.time_ns())
     results = []
     effect = '''float4x4 WorldViewProjection : WORLDVIEWPROJECTION;
@@ -42,7 +43,8 @@ technique Main < string MMDPass = "object"; > {
         env['APPDATA'] = str(directory / 'Roaming')
         env['MIKUDANCESTUDIO_AUTOSAVE_CONFIG'] = str(directory / 'autosave.ini')
         with (directory / 'result.log').open('wb') as log:
-            result = subprocess.run([str(directory / 'MikuMikuDance.exe'), str(model), '--emd-autoload'],
+            arguments = ['--file-watch', str(models / 'fx/assigned.fx')] if file_watch else ['--emd-autoload']
+            result = subprocess.run([str(directory / 'MikuMikuDance.exe'), str(model), *arguments],
                                     cwd=directory, env=env, stdout=log, stderr=subprocess.STDOUT,
                                     creationflags=subprocess.CREATE_NO_WINDOW, timeout=40)
         summary = {'case': name, 'exit_code': result.returncode, 'log': str(directory / 'result.log')}

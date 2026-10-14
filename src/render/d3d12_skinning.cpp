@@ -107,6 +107,7 @@ struct Skinning::Impl {
     ComPtr<ID3D12Fence> fence;
     ComPtr<ID3D12RootSignature> root;
     ComPtr<ID3D12PipelineState> pipeline;
+    ComPtr<ID3D12PipelineState> packPipeline;
     HANDLE event=nullptr;
     std::uint64_t next=0;
     std::string error;
@@ -115,7 +116,8 @@ struct Skinning::Impl {
     struct Frame {
         ComPtr<ID3D12CommandAllocator> allocator;
         ComPtr<ID3D12GraphicsCommandList> commands;
-        ComPtr<ID3D12Resource> vertices,vertexUpload,bones,materials,output,readback;
+        ComPtr<ID3D12Resource> vertices,vertexUpload,bones,materials,output,readback,packed;
+        bool packedReady=false;
         std::uint64_t geometryRevision=0;
         bool verticesReady=false;
         std::uint64_t waitFence=0,generation=0;
@@ -139,11 +141,11 @@ struct Skinning::Impl {
         for(auto& f:frames) {
             f.allocator.Reset(); f.commands.Reset();
             f.vertices.Reset(); f.vertexUpload.Reset(); f.bones.Reset();
-            f.materials.Reset(); f.output.Reset(); f.readback.Reset();
+            f.materials.Reset(); f.output.Reset(); f.readback.Reset(); f.packed.Reset(); f.packedReady=false;
             f.geometryRevision=0; f.verticesReady=false;
             f.waitFence=0; f.generation=0; f.outputReady=false;
         }
-        pipeline.Reset(); root.Reset(); fence.Reset(); queue.Reset(); device.Reset();
+        packPipeline.Reset(); pipeline.Reset(); root.Reset(); fence.Reset(); queue.Reset(); device.Reset();
         if(event) {CloseHandle(event); event=nullptr;}
         next=0; adapterId=0; adapter.clear();
     }
@@ -173,6 +175,30 @@ struct Skinning::Impl {
         queue->ExecuteCommandLists(1,lists);
         Check(queue->Signal(fence.Get(),++next),"Signal");
         frame.waitFence=next; return next;
+    }
+    void PreparePackPipeline() {
+        if(packPipeline) return;
+        // Integer copies preserve NaNs, signed zero and every output bit.
+        static constexpr char source[]=R"(
+ByteAddressBuffer source : register(t0);
+RWByteAddressBuffer packed : register(u0);
+cbuffer Parameters : register(b0) { uint count, bodyBytes; };
+[numthreads(64,1,1)]
+void main(uint3 tid : SV_DispatchThreadID) {
+    if(tid.x>=count) return;
+    uint inputOffset=tid.x*112, outputOffset=tid.x*(bodyBytes+16);
+    for(uint offset=0;offset<bodyBytes;offset+=16)
+        packed.Store4(outputOffset+offset,source.Load4(inputOffset+offset));
+    packed.Store4(outputOffset+bodyBytes,source.Load4(inputOffset+96));
+})";
+        ComPtr<ID3DBlob> shader,errors;
+        const auto hr=graphics_runtime::Compile(source,sizeof(source)-1,"skinning_readback_pack",
+            nullptr,nullptr,"main","cs_5_1",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&shader,&errors);
+        if(FAILED(hr) && errors) throw std::runtime_error(static_cast<const char*>(errors->GetBufferPointer()));
+        Check(hr,"compile readback packing");
+        D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};pso.pRootSignature=root.Get();
+        pso.CS={shader->GetBufferPointer(),shader->GetBufferSize()};
+        Check(device->CreateComputePipelineState(&pso,IID_PPV_ARGS(&packPipeline)),"Create packing pipeline");
     }
     // Builds the device and the shared objects on one adapter; throws on failure.
     void Setup(IDXGIAdapter1* selected) {
@@ -336,7 +362,7 @@ bool Skinning::ReleaseWorkingBuffers() {
         for(auto& f:s.frames) s.Wait(f.waitFence);
         for(auto& f:s.frames) {
             f.vertices.Reset(); f.vertexUpload.Reset(); f.bones.Reset();
-            f.materials.Reset(); f.output.Reset(); f.readback.Reset();
+            f.materials.Reset(); f.output.Reset(); f.readback.Reset(); f.packed.Reset(); f.packedReady=false;
             f.geometryRevision=0; f.verticesReady=false;
             f.waitFence=0; f.generation=0; f.outputReady=false;
         }
@@ -370,6 +396,46 @@ bool Skinning::SubmitAndReadback(const std::vector<Vertex>& vertices,const std::
         Check(f.readback->Map(0,&range,&mapped),"Map readback");
         std::memcpy(output.data(),mapped,bytes);
         D3D12_RANGE noWrite{0,0}; f.readback->Unmap(0,&noWrite);
+        return true;
+    } catch(const std::exception& e) {s.error=e.what();return false;}
+}
+bool Skinning::SubmitAndReadbackCompact(const std::vector<Vertex>& vertices,const std::vector<Bone>& bones,
+                                        const std::vector<Material>& materials,Parameters p,
+                                        unsigned additionalUvCount,std::vector<unsigned char>& output) {
+    auto& s=*impl;
+    try {
+        if(additionalUvCount>4) throw std::runtime_error("Invalid compact UV count");
+        RequireInput(s.pipeline.Get(),vertices,bones,materials);
+        s.PreparePackPipeline();
+        const unsigned slot=static_cast<unsigned>(s.next%3);auto& f=s.frames[slot];
+        s.Wait(f.waitFence);
+        const auto bodyBytes=32u+16u*additionalUvCount;
+        const auto bytes=vertices.size()*(bodyBytes+16u);
+        if(s.Buffer(f.packed,bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)) f.packedReady=false;
+        s.Buffer(f.readback,bytes,D3D12_HEAP_TYPE_READBACK,D3D12_RESOURCE_STATE_COPY_DEST);
+        const auto count=s.RecordCompute(f,vertices,bones,materials,p);
+        auto b=Transition(f.output.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        f.commands->ResourceBarrier(1,&b);
+        if(f.packedReady) {
+            b=Transition(f.packed.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            f.commands->ResourceBarrier(1,&b);
+        }
+        f.commands->SetPipelineState(s.packPipeline.Get());
+        f.commands->SetComputeRootShaderResourceView(0,f.output->GetGPUVirtualAddress());
+        f.commands->SetComputeRootUnorderedAccessView(3,f.packed->GetGPUVirtualAddress());
+        const UINT constants[]={count,bodyBytes};
+        f.commands->SetComputeRoot32BitConstants(4,2,constants,0);
+        f.commands->Dispatch((count+63)/64,1,1);
+        b=Transition(f.packed.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);
+        f.commands->ResourceBarrier(1,&b);
+        f.commands->CopyBufferRegion(f.readback.Get(),0,f.packed.Get(),0,bytes);
+        f.generation=s.Execute(f);f.outputReady=true;f.packedReady=true;
+        s.Wait(f.generation);output.resize(bytes);
+        void* mapped=nullptr;D3D12_RANGE range{0,bytes};
+        Check(f.readback->Map(0,&range,&mapped),"Map compact readback");
+        std::memcpy(output.data(),mapped,bytes);
+        D3D12_RANGE noWrite{0,0};f.readback->Unmap(0,&noWrite);
         return true;
     } catch(const std::exception& e) {s.error=e.what();return false;}
 }
@@ -429,6 +495,9 @@ bool Skinning::Submit(const std::vector<Vertex>&,const std::vector<Bone>&,
 bool Skinning::SubmitAndReadback(const std::vector<Vertex>&,const std::vector<Bone>&,
                                  const std::vector<Material>&,Parameters,
                                  std::vector<Output>&,Ticket*){return false;}
+bool Skinning::SubmitAndReadbackCompact(const std::vector<Vertex>&,const std::vector<Bone>&,
+                                        const std::vector<Material>&,Parameters,unsigned,
+                                        std::vector<unsigned char>&){return false;}
 bool Skinning::Readback(Ticket,std::vector<Output>&){return false;}
 bool Skinning::Wait(Ticket){return false;}
 ID3D12Resource* Skinning::OutputResource(Ticket) const{return nullptr;}

@@ -1,7 +1,7 @@
 // ===========================================================================
 // Late-port functions (ledger: 418 ported / 0 stub)
 // MAINTENANCE: production-keep despite the historical path; C06 in
-// docs/CLEANUP_INVENTORY.md tracks a possible move, not deletion.
+// docs/records/development/workspace.md tracks a possible move, not deletion.
 // ===========================================================================
 // Everything defined with a body below is a verified full port of its
 // original VA (bodies were kept here when they had no natural subsystem

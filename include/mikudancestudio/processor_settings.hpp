@@ -1,7 +1,7 @@
 // ===========================================================================
 // processor_settings.hpp - global processor policy (host side)
 //
-// One menu entry governs three roles (docs/PROCESSOR_SETTINGS_PROPOSAL.md):
+// One menu entry governs three roles (docs/records/performance/devices.md):
 //   Renderer  主渲染设备 - main D3D9 device, shadows, edges, transparency,
 //             final MME output.       Options: Automatic, Adapter.
 //   Vertices  顶点计算设备 - native model vertex transform back end.

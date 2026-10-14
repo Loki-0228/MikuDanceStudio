@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <chrono>
+#include <cstdlib>
 using namespace mikudancestudio;
 int wmain(int argc,wchar_t** argv) {
     if(argc!=2) return 2;
@@ -58,6 +60,46 @@ int wmain(int argc,wchar_t** argv) {
         }
         std::vector<gpu::Output> actual;
         if(!gpu.Readback(ticket,actual)) { std::puts(gpu.Error());return 8; }
+        for(unsigned uv=0;uv<=4;++uv) {
+            std::vector<unsigned char> compact;
+            if(!gpu.SubmitAndReadbackCompact(input.vertices,input.bones,input.materials,
+                    input.parameters,uv,compact)) {std::puts(gpu.Error());return 20;}
+            const unsigned body=32+16*uv,packedStride=body+16;
+            if(compact.size()!=actual.size()*packedStride)return 21;
+            for(std::size_t i=0;i<actual.size();++i) {
+                if(std::memcmp(compact.data()+packedStride*i,&actual[i],body) ||
+                   std::memcmp(compact.data()+packedStride*i+body,actual[i].edgePosition,16))return 22;
+            }
+            std::printf("PACKED_PARITY pose=%u uv=%u vertices=%zu bytes=%zu exact=1\n",pose,uv,actual.size(),compact.size());
+        }
+        if(pose==0 && std::getenv("MMS_PACKED_READBACK_BENCHMARK")) {
+            input.parameters.geometryRevision=0; // production D3D9 upload policy
+            const unsigned body=32+16*m.pmxAdditionalUvCount;
+            std::vector<unsigned char> compact,bodyCopy(actual.size()*body),edgeCopy(actual.size()*16);
+            for(unsigned block=0;block<4;++block) {
+                const bool packed=block==1 || block==2;
+                const auto run=[&] {
+                    if(packed) {
+                        if(!gpu.SubmitAndReadbackCompact(input.vertices,input.bones,input.materials,input.parameters,m.pmxAdditionalUvCount,compact))return false;
+                    } else if(!gpu.SubmitAndReadback(input.vertices,input.bones,input.materials,input.parameters,actual))return false;
+                    for(std::size_t i=0;i<actual.size();++i) {
+                        const auto* src=packed ? compact.data()+i*(body+16) : reinterpret_cast<const unsigned char*>(&actual[i]);
+                        std::memcpy(bodyCopy.data()+i*body,src,body);
+                        std::memcpy(edgeCopy.data()+i*16,src+(packed ? body : 96),16);
+                    }
+                    return true;
+                };
+                for(unsigned warm=0;warm<8;++warm)if(!run())return 23;
+                const auto start=std::chrono::steady_clock::now();unsigned frames=0;double elapsed=0;
+                do {
+                    if(!run())return 24;++frames;
+                    elapsed=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
+                }while(elapsed<2);
+                std::printf("PACKED_PERF block=%u compact=%u frames=%u milliseconds=%.6f readback_bytes=%zu\n",
+                    block,unsigned(packed),frames,elapsed*1000/frames,actual.size()*(packed ? body+16 : 112));
+            }
+            input.parameters.geometryRevision=pose+1;
+        }
         auto* main=mdl::ResourceAs<IDirect3DVertexBuffer9>(m.vertexBuffer);
         auto* edge=mdl::ResourceAs<IDirect3DVertexBuffer9>(m.vertexBuffer2);
         void* mainData=nullptr;void* edgeData=nullptr;

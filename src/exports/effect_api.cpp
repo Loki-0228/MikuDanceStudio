@@ -83,10 +83,11 @@ using mikudancestudio::MMDApp;
 // x64 reference RVA 0xA6FA0: try CP932, then the renderer's explicit
 // locales. The process-wide Japanese locale cannot encode Chinese paths.
 void EffectFilename(MMDApp* app, char* out, const wchar_t* path) {
-#if !MMD_ORIGINAL_PROFILE
     // Native MME receives this path through MMHack and probes the same-name
     // EMD with ANSI file APIs. CP932 bytes for shared Chinese/Japanese glyphs
     // identify a different file on a Chinese Windows installation.
+    // This plugin boundary is shared by both builds; file-format encoding
+    // remains governed separately by the original-profile save policy.
     if (GetModuleHandleW(L"MMEffect.dll")) {
         std::string nativePath;
         if (mikudancestudio::text_encoding::EncodeExact(path, CP_ACP, nativePath) && nativePath.size() < 256) {
@@ -94,7 +95,6 @@ void EffectFilename(MMDApp* app, char* out, const wchar_t* path) {
             return;
         }
     }
-#endif
     char encoded[3 * 256]{};
     BOOL usedDefault = FALSE;
     if (WideCharToMultiByte(932, 0, path, -1, encoded, sizeof(encoded),

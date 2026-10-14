@@ -13,6 +13,8 @@
 #include "mikudancestudio/text_encoding.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/effect_display.hpp"
+#include "mikudancestudio/effect_preview_shadow.hpp"
+#include "mikudancestudio/effect_file_watch.hpp"
 #include "mikudancestudio/effect_api.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/d3dx_dyn.hpp"
@@ -490,6 +492,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
 #include "antialias_scene_checks.hpp"
 #include "antialias_startup_checks.hpp"
 #include "mme_ground_shadow_checks.hpp"
+#include "effect_file_watch_checks.hpp"
 ULONGLONG startupClock = 0;
 void StartupLog(const char* format, ...) noexcept {
     std::printf("STARTUP %llu ", GetTickCount64() - startupClock);
@@ -545,10 +548,11 @@ int wmain(int argc, wchar_t** argv) {
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     const bool emdAutoload = argc == 3 && std::wcscmp(argv[2], L"--emd-autoload") == 0;
+    const bool fileWatch = argc == 4 && std::wcscmp(argv[2], L"--file-watch") == 0;
     const bool emmLoad = argc == 4 && std::wcscmp(argv[2], L"--emm-load") == 0;
     const bool aaScene = argc == 4 && std::wcscmp(argv[2], L"--antialias-scene") == 0;
     const bool groundShadow = argc == 4 && std::wcscmp(argv[2], L"--ground-shadow") == 0;
-    if (emdAutoload || emmLoad || aaScene || groundShadow || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
+    if (emdAutoload || fileWatch || emmLoad || aaScene || groundShadow || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
         auto* compile = reinterpret_cast<void*>(GetProcAddress(d3dx::Get().module, "D3DXCreateEffectFromFileW"));
         Check(compile && MH_CreateHook(compile, &ObserveCompile, reinterpret_cast<void**>(&originalCompile)) == MH_OK &&
               MH_EnableHook(compile) == MH_OK, "observe actual MME effect compilation");
@@ -574,6 +578,10 @@ int wmain(int argc, wchar_t** argv) {
     } else LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
     for (int i = 0; i < 3; ++i) { app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app); }
+    if (fileWatch) {
+        CheckEffectFileWatch(app, argv[3]);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
     if (aaScene) {
         CheckAntialiasScene(app, argv[3]);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;

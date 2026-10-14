@@ -3,7 +3,7 @@
 // Multi-model frame benchmark.  One PMX/PMD model can be loaded into several
 // independent model slots (--copies) with a fixed layout, or a PMM scene can
 // be loaded as before.  Usage and the JSON schema live in
-// docs/FRAME_BENCHMARK.md.
+// docs/development/benchmarks.md.
 //
 // MMV stages use the host's existing CPU timers. --require-mmv/--forbid-mmv
 // verify the plugin state before sampling. Skin-only/native drivers do not
@@ -798,7 +798,7 @@ static_assert(sizeof(kPhaseNames) / sizeof(kPhaseNames[0]) == perf::Count,
 
 // Same driver for before/after builds.  No scene saves, message-loop FPS cap,
 // heap scans. The separate MME target uses the same driver. Measures forced editor frames, not animation playback
-// FPS.  See docs/FRAME_BENCHMARK.md for the CLI contract and JSON schema.
+// FPS.  See docs/development/benchmarks.md for the CLI contract and JSON schema.
 int wmain(int argc, wchar_t** argv) {
     if (argc < 2) return kExitUsage;
     Options options;

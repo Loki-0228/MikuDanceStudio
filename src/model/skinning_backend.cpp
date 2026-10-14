@@ -40,6 +40,7 @@ bool candidatesReady = false;
 std::unique_ptr<gpu::Skinning> compute;
 GpuModelInput input;
 std::vector<gpu::Output> output;
+std::vector<unsigned char> compactOutput;
 
 
 using Signature = std::tuple<const void*, const void*, const void*, const void*, const void*,
@@ -156,6 +157,7 @@ static void ResetSelection() {
     compute.reset();
     input = {};
     output = {};
+    compactOutput = {};
     candidates.clear();
     nextCandidate = 0;
     candidatesReady = false;
@@ -268,10 +270,17 @@ bool SameBuffers(const BufferSnapshot& cpu, const BufferSnapshot& gpu) {
 Result UpdateGpu(gpu::Skinning& device, MMDApp* app, unsigned char* model, const float world[16]) {
     auto& record = *mdl::Mdl(model);
     if (!PrepareGpuModelInput(app, model, world, input)) return Result::Unsupported;
-    if (!device.SubmitAndReadback(input.vertices, input.bones, input.materials,
-                                 input.parameters, output) || output.size() != record.vertexCount)
-        return Result::Unavailable;
     const unsigned stride = record.physicsMode == 2 ? 32 + 16 * record.pmxAdditionalUvCount : 32;
+    // Restrict the extra dispatch to large meshes with at least 42% fewer
+    // transfer bytes. Small meshes and UV2-4 keep the existing readback path.
+    const bool compact=record.vertexCount>=262144 && stride<=48;
+    if(compact) {
+        if(!device.SubmitAndReadbackCompact(input.vertices,input.bones,input.materials,
+                input.parameters,(stride-32)/16,compactOutput) ||
+           compactOutput.size()!=std::size_t(record.vertexCount)*(stride+16)) return Result::Unavailable;
+    } else if (!device.SubmitAndReadback(input.vertices, input.bones, input.materials,
+                                        input.parameters, output) || output.size() != record.vertexCount)
+        return Result::Unavailable;
     auto* main = mdl::ResourceAs<IDirect3DVertexBuffer9>(record.vertexBuffer);
     auto* edge = mdl::ResourceAs<IDirect3DVertexBuffer9>(record.vertexBuffer2);
     void* vertices = nullptr;
@@ -280,11 +289,14 @@ Result UpdateGpu(gpu::Skinning& device, MMDApp* app, unsigned char* model, const
     if (FAILED(edge->Lock(0, sizeof(mdl::EdgeVertex) * record.vertexCount, &edges, 0))) {
         main->Unlock(); return Result::Unavailable;
     }
-    for (std::size_t i = 0; i < output.size(); ++i) {
-        std::memcpy(static_cast<char*>(vertices) + stride * i, &output[i], stride);
+    for (std::size_t i = 0; i < record.vertexCount; ++i) {
+        const auto* source=compact ? compactOutput.data()+(stride+16)*i :
+            reinterpret_cast<const unsigned char*>(&output[i]);
+        std::memcpy(static_cast<char*>(vertices) + stride * i, source, stride);
         auto& destination = static_cast<mdl::EdgeVertex*>(edges)[i];
-        std::memcpy(destination.position, output[i].edgePosition, sizeof destination.position);
-        if (record.physicsMode == 2) destination.diffuse = output[i].edgeColor;
+        const auto* outline=source+(compact ? stride : offsetof(gpu::Output,edgePosition));
+        std::memcpy(destination.position, outline, sizeof destination.position);
+        if (record.physicsMode == 2) std::memcpy(&destination.diffuse,outline+12,4);
     }
     edge->Unlock();
     main->Unlock();
