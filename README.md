@@ -2,7 +2,7 @@
 
 [English](#english) | [中文](#中文) | [日本語](#日本語)
 
-[v2026.10.13.1 release notes / 发布日志 / リリースノート](docs/RELEASE_NOTES_20261013.md)
+[v2026.10.14.6 release notes / 发布日志 / リリースノート](docs/RELEASE_NOTES_20261014.md)
 
 ## Downloads and package differences
 
@@ -11,14 +11,17 @@
 | Area | Full `full` | Minimal `minimal` |
 | --- | --- | --- |
 | PMD and PMX loading, original animation tools, rigid-body physics, language fixes, MME interface | Included | Included |
+| Image sequences, periodic backups, crash backup attempts, and morph force paste | Included | Included |
+| Recent projects, timeline force-paste button, and viewport render scaling | Included | Omitted |
+| FXAA, TAA, SMAA, and optional NVIDIA fix DLL | Included | Original anti-aliasing switch only |
 | New transparency sorting | Optional, disabled by default | Omitted; original single-pass material order |
-| Shadow reconstruction, dynamic precision, filtering | No-clipping coverage; optional adaptive spline filter, disabled by default | Original projection and SM2/SM3 shaders; no enhanced-filter control |
-| Bone scaling, new curve editor, morph curves | Included | Omitted; original Bezier interpolation retained |
+| Shadow reconstruction, dynamic precision, filtering | Clipping prevention and dynamic resolution; optional shared shadow-map filtering, disabled by default | Original projection and SM2/SM3 shaders; no enhanced-filter control |
+| Bone scaling, nine-channel bone curves, and morph curves | Included | Omitted; original Bezier interpolation retained |
 | DX12, MMV host, mesh capture, Alembic, additional baking | Included | Omitted |
 | Media | Modern imports and MP4/MOV export through Windows media components | WAV audio, AVI backgrounds and AVI export |
 | PMM, VMD, VPD saving | Can include MMS extensions | Standard data only; imported MMS extensions are ignored |
 
-Both ZIPs contain only `MikuMikuDance.exe` and the license files in `licenses/`. Neither includes models, user settings, MME, or `MMV4MMS.dll`. MMV remains under separate testing. In `v2026.10.13.1`, the full executable is 4,968,960 bytes and the minimal executable is 2,192,384 bytes, about 56% smaller. This is not a playback speed comparison.
+The full ZIP contains `MikuMikuDance.exe`, the optional `MMSNvidiaAAFix.dll`, and license files in `licenses/`. The minimal ZIP contains the executable and licenses. Neither includes models, user settings, MME, or `MMV4MMS.dll`. MMV remains under separate testing.
 
 The minimal build checks CP932 encoding and field lengths for names and references stored in files, and rejects values it cannot represent. Model editing saves PMD only and rejects lossy PMX-to-PMD conversion. Save extended full-build projects as separate copies when using the minimal build, because scale, curve, and mesh-cache extensions are discarded. Round-trip loading and saving with the actual MMD 9.32 executable has not yet been validated. See [minimal build limits](docs/ORIGINAL_PROFILE.md).
 
@@ -32,16 +35,18 @@ Extract the two builds into separate directories and run the executable in each 
 | --- | --- | --- |
 | PMD、PMX 载入，原有骨骼、表情、相机、灯光和刚体物理 | 保留 | 保留 |
 | 原生功能、输入、编码及 MME 兼容修复 | 保留 | 保留 |
+| 图片序列、周期备份、崩溃备份尝试、表情强制粘贴 | 保留 | 保留 |
+| 最近工程、时间轴强制粘贴按钮、视口渲染比例 | 保留 | 不包含 |
+| FXAA、TAA、SMAA、可选 NVIDIA 补丁 DLL | 保留 | 仅保留原抗锯齿开关 |
 | 新透明排序 | 可选低、标准、高、最高；默认关闭 | 不编入排序与剥层实现，使用原始单遍材质顺序 |
 | 阴影重构、动态精度和滤波 | 保留防裁切与动态精度；可选「滤波加强」，默认关闭 | 使用原版投影及 SM2/SM3 着色器，无「滤波加强」 |
-| 骨骼缩放、新曲线编辑器和表情曲线 | 保留 | 不编入，保留原有 Bezier 插值 |
+| 骨骼缩放、九通道骨骼曲线和表情曲线 | 保留 | 不编入，保留原有 Bezier 插值 |
 | DX12、MMV 宿主、通用 mesh 捕获、Alembic 和新增烘焙 | 保留 | 不编入对应实现 |
 | 音视频 | 保留现代音视频导入与 MP4/MOV 输出，依赖 Windows 媒体组件 | WAV 音频、AVI 背景与 AVI 输出 |
 | PMM、VMD、VPD 保存 | 可写 MMS 扩展数据 | 仅写标准内容，忽略读取到的 MMS 扩展 |
 | MME | 保留原生 DX9 接口，插件需另行安装 | 保留原生 DX9 接口，插件需另行安装 |
-| 程序体积（v2026.10.13.1 x64 产物） | 4,968,960 字节，约 4.97 MB | 2,192,384 字节，约 2.19 MB |
 
-两个 ZIP 均仅包含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，不附带用户配置、模型、MME 或 MMV 插件。完整包包含 MMV 宿主接口；`MMV4MMS.dll` 仍处于单独测试阶段，不在此次公开附件中。最小包体积比完整包约小 56%，这不是运行速度的对比结果。
+完整包 ZIP 包含 `MikuMikuDance.exe`、可选的 `MMSNvidiaAAFix.dll` 和 `licenses/` 下的许可文件；最小包包含主程序和许可文件。两者均不附带用户配置、模型、MME 或 `MMV4MMS.dll`。完整包包含 MMV 宿主接口，MMV 插件仍处于单独测试阶段。
 
 最小包仍保留三语界面等便利修复，并非原版 MMD 的逐字节复刻。它按原版格式的名称编码和字段长度检查保存内容：名称与文件内引用须能完整表示为 CP932，超出范围时拒绝保存。模型编辑只提供 PMD 保存；最小包拒绝 PMX 到 PMD 的有损转换。
 
@@ -56,14 +61,17 @@ Extract the two builds into separate directories and run the executable in each 
 | 項目 | 完全版 `full` | 最小版 `minimal` |
 | --- | --- | --- |
 | PMD・PMX 読み込み、従来のアニメーション編集、剛体物理、言語関連の修正、MME インターフェース | 含む | 含む |
+| 連番画像、定期バックアップ、クラッシュ時のバックアップ試行、モーフの強制貼り付け | 含む | 含む |
+| 最近使ったプロジェクト、タイムラインの強制貼り付けボタン、ビューポート描画倍率 | 含む | 含まない |
+| FXAA、TAA、SMAA、任意の NVIDIA 修正 DLL | 含む | 従来のアンチエイリアス切り替えのみ |
 | 新しい透明ソート | 任意で有効化、初期設定は無効 | 含まない。従来の単一パスの材質順序を使用 |
-| シャドウ処理の再構成、動的精度、フィルタリング | クリッピング防止、動的精度、任意の平滑化（初期設定は無効） | 従来の投影と SM2/SM3 シェーダー。平滑化スイッチなし |
-| ボーンスケール、新しい曲線エディタ、モーフ曲線 | 含む | 含まない。従来の Bezier 補間を維持 |
+| シャドウ処理の再構成、動的精度、フィルタリング | クリッピング防止、動的精度、共有シャドウマップのフィルター強化（初期設定は無効） | 従来の投影と SM2/SM3 シェーダー。平滑化スイッチなし |
+| ボーンスケール、9 チャンネルのボーン曲線、モーフ曲線 | 含む | 含まない。従来の Bezier 補間を維持 |
 | DX12、MMV ホスト、メッシュ取得、Alembic、追加のベイク機能 | 含む | 含まない |
 | 音声・動画 | Windows メディアコンポーネントによる各種形式の読み込みと MP4・MOV 出力 | WAV 音声、AVI 背景、AVI 出力 |
 | PMM・VMD・VPD 保存 | MMS 拡張を保存可能 | 標準データのみ保存。読み込んだ MMS 拡張は無視 |
 
-どちらの ZIP も `MikuMikuDance.exe` と `licenses/` 内のライセンスファイルのみを含みます。モデル、ユーザー設定、MME、`MMV4MMS.dll` は含まれません。MMV は別途テスト中です。`v2026.10.13.1` の実行ファイルは完全版が 4,968,960 バイト、最小版が 2,192,384 バイトで、最小版は約 56% 小さくなっています。これは再生速度の比較ではありません。
+完全版 ZIP には `MikuMikuDance.exe`、任意の `MMSNvidiaAAFix.dll`、`licenses/` 内のライセンスファイルが含まれます。最小版には実行ファイルとライセンスが含まれます。モデル、ユーザー設定、MME、`MMV4MMS.dll` は同梱しません。MMV は別途テスト中です。
 
 最小版は、ファイル内に保存する名前と参照先の CP932 表現およびフィールド長を確認し、表現できない内容の保存を拒否します。モデル編集の保存形式は PMD のみで、情報が失われる PMX から PMD への変換も拒否します。完全版の拡張を含むプロジェクトを最小版で保存すると、スケール、曲線、メッシュキャッシュの拡張が失われるため、別名で保存してください。実際の MMD 9.32 を使った双方向の読み込みと再保存は、まだ検証できていません。[最小版の制限](docs/ORIGINAL_PROFILE.md)も参照してください。
 
@@ -73,19 +81,22 @@ Extract the two builds into separate directories and run the executable in each 
 
 ## English
 
-MikuDanceStudio (MMS) is a Windows desktop application for creating and editing MMD dance animations. [v2026.10.13.1](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.13.1) provides Windows x64 full and minimal packages, with MMS additions in the full package and original MMD features plus related fixes in the minimal package. Both ZIPs contain only `MikuMikuDance.exe` and the license files in `licenses/`, so if you use both versions, extract them into separate directories and run each directory's executable.
+MikuDanceStudio (MMS) is a Windows desktop application for creating and editing MMD dance animations. [v2026.10.14.6](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.14.6) provides Windows x64 full and minimal packages. The full package includes MMS additions; the minimal package retains original MMD features and shared fixes.
 
-### Changes in v2026.10.13.1
+### Changes in v2026.10.14.6
 
-This release includes three fixes shared by the full and minimal builds:
+Changes since the previous official release, `v2026.10.12.1`:
 
-- The vertical bone rotation handle now follows MMD's axis direction when viewed from the side. This builds on the rotation-growth fix already included in `.7`.
-- PMD models with a reordered shared Toon file table now retain their textured appearance when bone selection is enabled. The fix also covers fallback to shared Toon textures. Other reported PMD white-scene cases still need confirmation.
-- Repeated clicks on overlapping rotation-only and translation-enabled bones now cycle through the eligible bones in model order. Rapid clicks work in both the main and floating viewports.
+- Both packages add image sequence export, configurable periodic backups, and backup attempts after a crash.
+- Both packages add morph force paste with `Ctrl+F` and bottom-panel width adjustment, and fix fixed-axis VMD rotation, ground-shadow color, accessory state, and export viewport restoration.
+- The full package adds recent projects, a timeline force-paste button, and nine-channel bone curves. It also fixes child-bone deformation under nonuniform parent scale.
+- The full package adds viewport render scaling and updates HUD placement and FPS counting.
+- The full package provides FXAA, motion-vector TAA, and four SMAA options. PMM v2 extensions preserve the AA switch, algorithm, and last SMAA choice.
+- TAA and SMAA T2x retain deformed position history on supported GPUs. Exporting frame 0 fills missing samples, while continuous image sequences reuse history.
+- Shadow updates restore native projection and depth sampling, add shared shadow-map filtering, and fix MME material order and effect loading at the highest transparency-sorting level.
+- The full ZIP includes an optional NVIDIA double-sided rendering fix DLL, managed through the Help menu.
 
-See the [release notes](docs/RELEASE_NOTES_20261013.md#english) for the changes and package comparison.
-
-For package scope and save limits, see [Downloads and package differences](#downloads-and-package-differences). The following feature list describes the full build.
+See the [release notes](docs/RELEASE_NOTES_20261014.md#english) for the full list. For package scope and save limits, see [Downloads and package differences](#downloads-and-package-differences). The following feature list describes the full build.
 
 ### Features
 
@@ -118,7 +129,19 @@ For package scope and save limits, see [Downloads and package differences](#down
 - **UI and compatibility**: English/Chinese/Japanese interface, Unicode file
   paths, timeline, accessory editing, undo/redo
 
-#### Anti-aliasing and project settings (current source)
+#### Image sequence export and backups
+
+Both packages support image sequence export with a directory, filename prefix, image format, and frame range. The format choices match single-image export, and numbering width follows the output range.
+
+Auto-save settings control the interval in minutes, backup directory, maximum count, and replacement of older backups. The default is `backups` beside the executable, without overwriting manually saved projects. Crash handling also attempts a backup; completion depends on the crash state and destination access.
+
+#### Viewport and shadow controls
+
+The full build can match the viewport to the window, render a lower-resolution preview, or use supersampling without changing export dimensions. Lower-resolution previews use nearest-neighbor upscaling. The HUD and toolbars render at display resolution across the full preview area, including letterbox bars. FPS counts completed, successfully submitted scene frames.
+
+Self-shadowing restores MMD 9.32 projection and depth sampling. Dynamic resolution and fixed resolution share the same shadow-range setting. Optional stronger filtering, disabled by default, applies two B-spline passes to the shadow map before native materials, MME, and compatible MMV versions receive it. A failed filter falls back to the current frame's original map.
+
+#### Anti-aliasing and project settings
 
 The full build offers original MMD anti-aliasing (MSAA), FXAA, motion-vector TAA,
 and SMAA. Click **SMAA** to apply the last SMAA choice. The initial choice is
@@ -141,16 +164,9 @@ image. Sampling does not advance animation or physics and does not add files.
 PMM v2 extensions store the AA switch, algorithm, and last SMAA choice. Loading
 a project does not overwrite local defaults. See [PMM settings](docs/PMM_V2_EXTENSIONS.md).
 
-Place the optional `MMSNvidiaAAFix.dll` beside `MikuMikuDance.exe` to show its
-installation command in **Help**. Windows asks for administrator approval when
-you install it. The DLL applies and verifies this program's NVIDIA driver fix;
-MMS does not contain the registration code or check driver settings at startup.
-If no usable NVIDIA driver is found, installation stops with a warning. AMD and
-Intel graphics cards do not need this fix.
-After installation, keeping the DLL changes the command to **Uninstall**, including
-after restarting MMS. Uninstalling displays a red warning that MSAA may again show
-white edges or seams on double-sided materials. It removes only this program's fix.
-You can delete the DLL instead; its menu item disappears and the driver setting remains.
+The full ZIP includes the optional `MMSNvidiaAAFix.dll`. Keep it beside `MikuMikuDance.exe` to manage the fix from **Help**. When the menu opens, the DLL checks this program's driver setting and offers **Install** or **Uninstall**. Either operation requests Windows administrator approval and takes effect the next time MMS starts.
+
+The fix applies to NVIDIA only. Installation stops if no usable NVIDIA driver is available; AMD and Intel do not receive this setting. Uninstalling warns that MSAA may show white edges or seams again and removes only this program's setting. Deleting the DLL hides the menu entry without undoing an installed setting.
 
 #### MMV plug-in (under testing; not released)
 
@@ -158,14 +174,9 @@ MMV is an optional plug-in that uses an MME-style effect assignment workflow. It
 
 ### Curve editor and PMM/VMD extensions
 
-The native curve editor edits model expression, camera, lighting, self-shadow,
-gravity, and accessory tracks. Curve data can be exported in a VMD tail
-extension; accessory and scene settings are stored in PMM v2 extension records.
-PMM v2 also preserves MMS project settings without changing the standard file
-header. Bone-scale data uses a VMD tail extension while keeping the standard
-VMD sections readable by older tools. Re-saving an extended project in original
-MMD may discard its MMS-only extension data. See [curve editor](docs/ANIMATION_CURVE_EDITOR.md)
-and [PMM v2 extensions](docs/PMM_V2_EXTENSIONS.md).
+The native curve editor edits nine bone channels for position, XYZ rotation, and scale, plus morph, camera, lighting, self-shadow, gravity, and accessory tracks. It supports key insertion that preserves the curve shape, numeric control points, slope and weight dragging, and keyframe navigation.
+
+PMM v2 preserves bone curves, project settings, and scene and accessory curve records without changing the standard file header. VMD tail extensions store supported curves and bone-scale data while retaining the standard VMD sections. Re-saving an extended project in original MMD may discard MMS-only data. See [curve editor](docs/ANIMATION_CURVE_EDITOR.md) and [PMM v2 extensions](docs/PMM_V2_EXTENSIONS.md).
 
 Processor choices are saved per Windows user and take effect on the next
 startup. They are not stored in PMM, VMM, or VEM files.
@@ -267,7 +278,7 @@ them by editing the code.
 
 - **Native bone scaling**: Uniform and XYZ controls support local, global and view axes for every bone. PMM preserves full scale data; VMD stores scale in a versioned tail extension while preserving its standard prefix. See [bone scaling](docs/BONE_SCALING.md).
 - **Extended self-shadow range**: Removes the original MMD restriction on the range where self-shadows can be generated.
-- **Dynamic shadow scaling**: The self-shadow panel can match shadow-map resolution to the distance of visible meshes. It leaves the light and shadow coverage unchanged. With this option enabled, the slider adjusts precision around the matched result: the midpoint (5000) is neutral, left reduces precision, and right increases it, within the selected shadow-quality and device limits. Turning it off restores the slider's original shadow-range function.
+- **Dynamic shadow scaling**: Matches shadow-map resolution to the projected density of visible geometry within the shadow-quality and device limits. Dynamic and fixed resolution share one shadow-range slider; there is no separate precision value. The full build preserves shadow coverage at high precision to reduce clipping.
 - **Error reporting**: The program writes no log files; a fatal error raises a
   modal window whose text can be copied with Ctrl+C, and the PDB under
   `build/symbols/` resolves source lines.
@@ -314,19 +325,22 @@ Bullet Physics (zlib), Alembic and Imath (BSD-3-Clause), MinHook (BSD-2-Clause),
 
 ## 中文
 
-MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌面应用。[v2026.10.13.1](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.13.1) 提供 Windows x64 完整包与最小包，完整包保留 MMS 新增功能，最小包保留 MMD 原有功能及相关缺陷修复。两个 ZIP 均仅含 `MikuMikuDance.exe` 和 `licenses/` 下的许可文件，同时使用两版时须分别解压到不同目录，并运行各自目录中的主程序。
+MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌面应用。[v2026.10.14.6](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.14.6) 提供 Windows x64 完整包与最小包：完整包包含 MMS 新增功能，最小包保留 MMD 原有功能及共享修复。
 
-### v2026.10.13.1 更新
+### v2026.10.14.6 更新
 
-本版包含三项完整包与最小包共用的修复：
+相对上次正式发布 `v2026.10.12.1`，本次主要变化如下：
 
-- 修正骨骼竖向旋转柄从模型侧面操作时的轴向，使其与原版 MMD 一致。此项是在 `.7` 已有的旋转放大修复基础上纠正方向。
-- 修复共享 Toon 文件表顺序不同的 PMD 在开启骨骼「选择」后丢失贴图颜色、呈灰白色的问题，也覆盖回退到共享 Toon 的情况。其他 PMD 全白报告仍待确认。
-- 旋转骨骼与可移动骨骼重叠时，重复点击按模型内顺序循环选择。主视口和独立视口均支持快速连续点击。
+- 两个版本均增加图片序列输出、可配置的周期备份和崩溃备份尝试。
+- 两个版本均增加表情 `Ctrl+F` 强制粘贴和底部面板调宽，修复固定轴 VMD 旋转、地面阴影颜色、配件状态及导出后视口恢复。
+- 完整包增加最近工程、时间轴强制粘贴按钮和九通道骨骼曲线，修复非等比父级缩放下的子骨骼形变。
+- 完整包增加视口渲染比例，并调整 HUD 布局和 FPS 统计。
+- 完整包提供 FXAA、运动矢量 TAA 和四档 SMAA；PMM v2 扩展保存抗锯齿开关、算法和上次 SMAA 选择。
+- TAA、SMAA T2x 在支持的显卡上保留 GPU 变形位置历史；第 0 帧输出补足采样，连续图片序列复用历史。
+- 阴影更新恢复原生投影及深度采样，增加共享阴影图滤波，修复 MME 材质顺序和最高透明排序的效果加载。
+- 完整包附带可选 NVIDIA 双面绘制补丁 DLL，可通过帮助菜单安装或卸载。
 
-更新内容与包的区别见[三语发布日志](docs/RELEASE_NOTES_20261013.md#中文)。
-
-完整包与最小包在同一分支维护，共同缺陷同步修复并分别验收。两档功能与保存限制见[下载与版本区别](#下载与版本区别)，下列新增功能以完整包为准。
+完整变化见[三语发布日志](docs/RELEASE_NOTES_20261014.md#中文)。两档功能与保存限制见[下载与版本区别](#下载与版本区别)，下列新增功能以完整包为准。
 
 ### 功能
 
@@ -339,7 +353,19 @@ MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌
 - **多媒体**：通过 Windows Media Foundation 导入多种音频格式和 MP4/MOV 视频，具体格式取决于系统媒体组件。支持 Wave 音频播放、DirectShow AVI（使用已安装的传统编码器）、Media Foundation MP4/H.264 录制，以及透明 MOV 录制。导出页列出系统已注册的 H.264 编码器并支持等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
 - **UI 与兼容**：英中日三语界面、Unicode 文件路径、时间轴、附件编辑、撤销/重做
 
-#### 抗锯齿与工程设置（当前源码）
+#### 图片序列与自动备份
+
+两个版本均支持图片序列输出，可设置目录、文件名前缀、图片格式和帧范围。格式与单帧图片输出一致，连号位数随输出范围调整。
+
+「自动保存设置…」可配置分钟间隔、备份目录、数量上限和覆盖旧备份。默认写入程序同级的 `backups`，不覆盖手动保存的工程。崩溃处理也会尝试备份，能否完成取决于当时的程序状态及目录可写性。
+
+#### 视口与阴影控制
+
+完整包支持自动匹配窗口、低比例预览和超采样，不改变导出尺寸。低比例画面使用最近邻放大；HUD 和工具条在放大后按显示分辨率绘制，包含黑边区域。FPS 统计实际完成并成功提交的场景帧。
+
+自阴影恢复 MMD 9.32 的投影和深度采样。动态精度与固定精度共用阴影范围设置。「滤波加强」默认关闭，开启后先对阴影图进行两遍基础样条滤波，再交给原生材质、MME 和支持新接口的 MMV；失败时使用当帧原始阴影图。
+
+#### 抗锯齿与工程设置
 
 完整版本提供 MMD 原始（MSAA）、FXAA、带运动矢量的 TAA 和 SMAA。
 直接点击「SMAA」应用上次所选，首次默认为「SMAA 1x（斜线与拐角增强）」。
@@ -365,13 +391,9 @@ MME 着色器和透明贴图保留覆盖检查。程序按实际能力检测 NVI
 本机默认设置。临时硬件回退和未知档位不会覆盖工程原记录，用户重新选择后才更新。
 具体格式见 [PMM v2 项目扩展](docs/PMM_V2_EXTENSIONS.md)。
 
-将可选的 `MMSNvidiaAAFix.dll` 放在 `MikuMikuDance.exe` 同目录，「帮助」菜单即显示
-「安装 NVIDIA 双面绘制补丁」。点击安装时，Windows 会请求管理员授权。
-DLL 自行设置并验证当前程序的 NVIDIA 驱动配置；MMS 不包含注册代码，也不在启动时检测驱动补丁状态。
-未检测到可用的 NVIDIA 驱动时，会提示无法安装并停止操作；AMD / Intel 显卡无需此补丁。
-安装后保留 DLL，菜单会改为「卸载 NVIDIA 双面绘制补丁」，重启 MMS 后仍然有效。
-卸载前会用红字提示：开启 MSAA 时，双面材质可能再次出现白边、接缝或绘制异常。
-卸载仅移除当前目录 MMS 的补丁设置。也可以删除 DLL，驱动设置仍保留，但菜单入口会消失。
+完整包附带可选的 `MMSNvidiaAAFix.dll`。将其保留在 `MikuMikuDance.exe` 同目录，即可通过「帮助」菜单管理补丁。打开菜单时，DLL 查询当前程序的驱动设置，并显示安装或卸载选项。两种操作均请求 Windows 管理员授权，下次启动 MMS 时生效。
+
+此设置只应用于 NVIDIA；没有可用 NVIDIA 驱动时停止安装，AMD、Intel 不应用该设置。卸载前会提示 MSAA 白边或接缝可能再次出现，卸载仅移除当前程序的设置。删除 DLL 会隐藏菜单入口，但不会撤销已安装的驱动设置。
 
 #### MMV 插件（测试中，尚未发布）
 
@@ -379,7 +401,9 @@ MMV 是采用类似 MME 的效果分配工作流的可选插件，可接管或�
 
 ### 曲线编辑器与 PMM/VMD 扩展
 
-原生曲线编辑器可编辑模型自作表情、相机、照明、自阴影、重力和附件轨道。曲线数据可通过 VMD 尾部扩展导出；附件及场景设置保存在 PMM v2 扩展记录中。PMM v2 在不改变标准文件头的前提下保存 MMS 工程设置。骨骼缩放数据也通过 VMD 尾部扩展保存，标准 VMD 数据段保持不变。原版 MMD 重新保存扩展工程时可能丢弃 MMS 专有扩展数据。详见[曲线编辑器](docs/ANIMATION_CURVE_EDITOR.md)和[PMM v2 扩展](docs/PMM_V2_EXTENSIONS.md)。
+原生曲线编辑器支持骨骼位移、XYZ 角度和缩放的九通道曲线，也可编辑表情、相机、照明、自阴影、重力和附件轨道。支持保持曲线形状的插帧、控制点数值输入、斜率与权重拖动及关键帧跳转。
+
+PMM v2 在保留标准文件头的前提下保存骨骼曲线、工程设置及场景、附件曲线记录。支持的曲线和骨骼缩放也可写入 VMD 尾部扩展，标准数据段保持不变。原版 MMD 重新保存扩展工程时可能丢弃 MMS 专有数据。详见[曲线编辑器](docs/ANIMATION_CURVE_EDITOR.md)和[PMM v2 扩展](docs/PMM_V2_EXTENSIONS.md)。
 
 运算器选择按 Windows 用户跨工程保存，下次启动生效，不写入 PMM、VMM 或 VEM。
 
@@ -492,7 +516,7 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 
 - **原生骨骼缩放**：所有骨骼支持整体及 XYZ 缩放，统一使用局部、全局和视图坐标系。PMM 保存完整数据，VMD 在保留标准前缀的同时，将缩放写入同一文件尾部。见[骨骼缩放说明](docs/BONE_SCALING.md)。
 - **扩展自阴影产生范围**：取消原版 MMD 对自阴影产生范围的限制。
-- **动态缩放**：自阴影栏目可按画面中可见网格的远近匹配阴影贴图分辨率，不联动光源或阴影覆盖范围。开启后，滑条在匹配结果基础上继续增减精度，中点（5000）为基准，向左降低、向右提高，受美影设置和显卡上限限制。关闭后，滑条恢复原有的阴影范围调整功能。
+- **动态缩放**：按可见几何的投影密度匹配阴影贴图分辨率，受美影设置和显卡上限限制。动态与固定精度共用同一阴影范围滑条，不再保存独立精度值；完整包在高精度下保留覆盖范围，减少裁切。
 - **错误提示**：程序不写日志文件；遇到致命错误时会弹出对话框，可按 `Ctrl+C` 复制内容。
   开发者可结合 `build/symbols/` 下对应构建的 PDB 定位源码。
 - **输入法与快捷键**：开启中文或日文输入法时，字母快捷键仍有效，包括 `P`（播放/停止）
@@ -531,19 +555,22 @@ ctest --test-dir build -C Release -R keyboard_input_regressions --output-on-fail
 
 ## 日本語
 
-MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・編集する Windows デスクトップアプリです。[v2026.10.13.1](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.13.1) では Windows x64 向けに、MMS の追加機能を含む完全版と、MMD 本来の機能および関連する不具合修正を含む最小版を配布しています。どちらの ZIP も `MikuMikuDance.exe` と `licenses/` 内のライセンスファイルのみを含むため、両方を使う場合は別々のフォルダーに展開し、それぞれの実行ファイルを起動してください。
+MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・編集する Windows デスクトップアプリです。[v2026.10.14.6](https://github.com/Loki-0228/MikuDanceStudio/releases/tag/v2026.10.14.6) では Windows x64 向けに、MMS の追加機能を含む完全版と、MMD 本来の機能および共通修正を含む最小版を配布しています。
 
-### v2026.10.13.1 の変更
+### v2026.10.14.6 の変更
 
-このリリースには、完全版と最小版で共通の修正が含まれています。
+前回の正式リリース `v2026.10.12.1` 以降の主な変更です。
 
-- モデルを横から見たときのボーン縦回転ハンドルの回転軸を、オリジナル MMD と一致させました。`.7` の回転操作による拡大の修正に加え、今回は回転方向を修正しています。
-- 共有トゥーンのファイル表が通常と異なる順序の PMD で、ボーンの「選択」を有効にするとテクスチャの色が失われ、灰白色になる問題を修正しました。共有トゥーンへのフォールバックも対象です。ほかの PMD 白化報告については、引き続き確認が必要です。
-- 回転のみ可能なボーンと移動可能なボーンが重なっている場合、繰り返しクリックするとモデル内の順序で選択が切り替わります。メイン画面と別ウィンドウのどちらでも素早い連続クリックに対応します。
+- 両パッケージに連番画像出力、設定可能な定期バックアップ、クラッシュ時のバックアップ試行を追加しました。
+- 両パッケージにモーフの `Ctrl+F` 強制貼り付けと下部パネルの幅調整を追加。固定軸 VMD の回転、地面影の色、アクセサリ状態、出力後のビューポート復元を修正しました。
+- 完全版に最近使ったプロジェクト、タイムラインの強制貼り付けボタン、9 チャンネルのボーン曲線を追加。親の非等方スケール下で生じる子ボーンの変形も修正しました。
+- 完全版にビューポート描画倍率を追加し、HUD の配置と FPS の集計を変更しました。
+- 完全版で FXAA、モーションベクトルを使う TAA、4 種類の SMAA を提供します。AA の有効状態、方式、前回の SMAA 選択は PMM v2 拡張に保存します。
+- TAA と SMAA T2x は対応 GPU 上に変形後座標の履歴を保持します。フレーム 0 の出力では不足するサンプルを補い、連番画像では履歴を再利用します。
+- 影の投影と深度サンプリングを復元し、共有シャドウマップのフィルタリングを追加。MME の材質順序と透明ソート「最高」のエフェクト読み込みを修正しました。
+- 完全版 ZIP に任意の NVIDIA 両面描画修正 DLL を同梱。ヘルプメニューからインストール・アンインストールできます。
 
-変更内容とパッケージの違いは[リリースノート](docs/RELEASE_NOTES_20261013.md#日本語)を参照してください。
-
-パッケージの機能と保存の制限は[ダウンロードとパッケージの違い](#ダウンロードとパッケージの違い)を参照してください。以下の機能一覧は完全版の説明です。
+変更の全体は[リリースノート](docs/RELEASE_NOTES_20261014.md#日本語)を参照してください。機能と保存の制限は[ダウンロードとパッケージの違い](#ダウンロードとパッケージの違い)に記載しています。以下の機能一覧は完全版の説明です。
 
 ### 機能
 
@@ -559,14 +586,29 @@ MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・�
 - **UI**：英語・中国語・日本語 UI、タイムライン、
   Unicode ファイルパス、アクセサリ編集、元に戻す／やり直し
 
-#### アンチエイリアスとプロジェクト設定（現在のソース）
+#### 連番画像と自動バックアップ
+
+両パッケージで連番画像を出力できます。保存先、ファイル名の接頭辞、画像形式、フレーム範囲を設定でき、形式は単一画像出力と共通です。連番の桁数は出力範囲に合わせて調整します。
+
+自動保存設定では、間隔（分）、保存先、保存数の上限、古いバックアップの上書きを設定できます。既定の保存先は実行ファイルと同じ場所の `backups` で、手動保存したプロジェクトは上書きしません。クラッシュ時にもバックアップを試みますが、完了するかどうかはプログラムの状態や保存先への書き込み可否に依存します。
+
+#### ビューポートと影の設定
+
+完全版はウィンドウサイズへの自動調整、低解像度プレビュー、スーパーサンプリングに対応し、出力サイズは変更しません。低解像度画像は最近傍補間で拡大し、HUD とツールバーは黒帯を含む領域に表示解像度で描画します。FPS は描画が完了し、正常に送出されたシーンフレームを数えます。
+
+セルフシャドウは MMD 9.32 の投影と深度サンプリングを復元し、動的精度と固定精度で同じ影範囲設定を使います。「フィルター強化」は既定で無効です。有効時は影マップに 2 パスの B スプラインフィルターを適用してから、標準材質、MME、新インターフェース対応の MMV に渡します。失敗時はそのフレームの元の影マップを使います。
+
+#### アンチエイリアスとプロジェクト設定
 
 完全版は MMD オリジナル（MSAA）、FXAA、モーションベクトルを使う TAA、SMAA に対応します。
 「SMAA」を直接クリックすると前回の選択を適用します。初期値は「SMAA 1x（斜線・コーナー強化）」です。
 項目にカーソルを合わせて右へ移動すると、1x と T2x、それぞれの標準・斜線とコーナーの強化を選べます。
 T2x はモーションベクトルで位置を合わせた 2 フレームのサンプルを合成します。
-TAA と T2x は変形後の頂点を取得するため、複雑な MME エフェクトでは負荷が高くなります。
-SMAA 1x はこの処理を必要としません。モーション取得に対応しない描画は空間 AA に切り替えます。
+頂点テクスチャ参照に対応する GPU では、TAA と T2x の現在・前フレームの変形後座標を GPU 上に保持します。
+入力が一致する材質で取得結果を共有し、元のインデックスバッファを再利用します。
+不透明と確認できた標準材質では追加のカバレッジ描画を省き、MME とアルファ付きテクスチャでは確認を維持します。
+NVIDIA、AMD、Intel を実際の機能で判定し、頂点テクスチャ参照に非対応の場合は CPU での取得を維持します。
+複雑な MME には追加の負荷が残ります。SMAA 1x はモーション取得を行わず、モーションに対応しない描画は空間 AA に切り替えます。
 
 フレーム 0 だけの画像出力でも、時刻と姿勢を保ったまま不足するサンプルを描画します。
 アニメーションや物理を進めず、画像数も増やしません。連続画像では履歴を保つため、
@@ -574,16 +616,9 @@ T2x の最初の画像は 2 回、以後は画像ごとに 1 回だけシーン�
 AA の有効状態、方式、前回の SMAA 選択は PMM v2 拡張に保存されます。
 読み込み時にローカルの既定設定を書き換えません。
 
-任意の `MMSNvidiaAAFix.dll` を `MikuMikuDance.exe` と同じフォルダーに置くと、ヘルプに
-インストール項目が表示されます。実行時に Windows が管理者権限の承認を求めます。
-DLL 自身がこのプログラム専用の NVIDIA ドライバー設定を変更し、結果を確認します。
-MMS 本体に登録処理は含まれず、起動時のドライバー設定確認も行いません。
-利用可能な NVIDIA ドライバーが見つからない場合は警告を表示し、インストールを中止します。
-AMD / Intel のグラフィックスカードには、この修正は不要です。
-インストール後も DLL を残すと、MMS の再起動後もメニューにアンインストール項目が表示されます。
-実行前に、MSAA 使用時に両面材質の白い縁や継ぎ目などが再発する可能性を赤字で警告します。
-解除するのは、このフォルダーの MMS に適用した修正のみです。DLL を削除した場合は、
-メニュー項目が消えますが、適用した設定は残ります。
+完全版 ZIP に任意の `MMSNvidiaAAFix.dll` を同梱しています。`MikuMikuDance.exe` と同じフォルダーに置くと、ヘルプメニューから修正を管理できます。メニューを開くと DLL が現在のプログラムのドライバー設定を確認し、インストールまたはアンインストールを表示します。どちらも Windows の管理者権限を要求し、次回の MMS 起動時に反映されます。
+
+この設定は NVIDIA 専用です。利用可能な NVIDIA ドライバーがない場合はインストールを中止し、AMD・Intel には適用しません。アンインストール前に MSAA の白い縁や継ぎ目が再発する可能性を表示し、現在のプログラムの設定だけを解除します。DLL の削除はメニュー項目を非表示にするだけで、適用済みの設定は解除しません。
 
 #### MMV プラグイン（テスト中・未公開）
 
@@ -591,11 +626,9 @@ MMV は MME に似たエフェクト割り当て方式を使う任意のプラ�
 
 ### 曲線エディタと PMM/VMD 拡張
 
-- **曲線エディタ**：モデルの自作表情、カメラ、照明、セルフシャドウ、重力、アクセサリのトラックを編集できます。アニメーション機能にはプロジェクト全体のフレームレート修正もあります。
-- **PMM 拡張**：標準ヘッダーを変えずに、MMS のプロジェクト設定とシーン／アクセサリ曲線を v2 拡張レコードに保存します。
-- **VMD 拡張**：標準データを維持したまま、末尾拡張に追加曲線やボーンスケールを保存します。オリジナル MMD で拡張プロジェクトを再保存すると、MMS 固有データが失われることがあります。
+ネイティブの曲線エディタで、ボーンの移動、XYZ 回転、拡大縮小の 9 チャンネルに加え、モーフ、カメラ、照明、セルフシャドウ、重力、アクセサリのトラックを編集できます。形状を維持するキー挿入、制御点の数値入力、傾きとウェイトのドラッグ、キーフレームへの移動に対応します。
 
-詳しくは[曲線エディタ](docs/ANIMATION_CURVE_EDITOR.md)と[PMM v2 拡張](docs/PMM_V2_EXTENSIONS.md)を参照してください。
+PMM v2 は標準ヘッダーを維持して、ボーン曲線、プロジェクト設定、シーンとアクセサリの曲線を保存します。対応する曲線とボーンスケールは VMD の末尾拡張にも保存でき、標準データ部分は保持します。オリジナル MMD で再保存すると MMS 固有データが失われることがあります。[曲線エディタ](docs/ANIMATION_CURVE_EDITOR.md)と[PMM v2 拡張](docs/PMM_V2_EXTENSIONS.md)を参照してください。
 
 処理デバイスの選択は Windows ユーザーごとに保存され、次回起動時に反映されます。PMM、VMM、VEM には保存されません。
 
@@ -665,7 +698,7 @@ cmake --install build --config Release --prefix build/Release
 
 - **ボーンスケール**：すべてのボーンを一括または XYZ 軸ごとに拡大縮小できます。ローカル・グローバル・ビュー座標に対応し、PMM に保存します。VMD は標準部分を維持し、同じファイルの末尾にスケール拡張を保存します。[詳細](docs/BONE_SCALING.md)。
 - **セルフシャドウ範囲の拡張**：オリジナル MMD にあるセルフシャドウ生成範囲の制限をなくしました。
-- **動的スケーリング**：セルフシャドウ欄で、画面内のメッシュまでの距離に応じてシャドウマップの解像度を調整できます。光源と影の範囲は変更しません。有効時のスライダーは自動判定した解像度を基準に精度を調整し、中央（5000）が基準、左が低精度、右が高精度です。美影設定と GPU の上限が適用されます。無効にすると、スライダーは従来の影の範囲調整に戻ります。
+- **動的スケーリング**：表示中のジオメトリの投影密度に応じて、シャドウ品質と GPU の上限内で影マップの解像度を調整します。動的精度と固定精度は同じ影範囲スライダーを使い、独立した精度値は保存しません。完全版は高精度時も影の範囲を保持して欠けを抑えます。
 - **エラー表示**：ログファイルは出力せず、致命的エラー時はモーダルなエラーウィンドウを
   表示します（Ctrl+C で内容をコピーでき、`build/symbols/` の PDB でソース行を特定できます）。
 - **入力メソッドとショートカット**：中国語／日本語の入力メソッドを ON にしたままでも
