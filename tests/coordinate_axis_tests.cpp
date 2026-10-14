@@ -45,6 +45,7 @@
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/viewport_corner_settings.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/ui_language.hpp"
@@ -337,6 +338,7 @@ LRESULT CALLBACK ToolPressWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 }  // namespace
 
 int main() {
+    viewport_corner_settings::ResetCacheForTest(viewport_tool_layout::Corner::BottomRight);
     HWND window = CreateWindowW(L"STATIC", L"Coordinate axis regression",
                                 WS_POPUP, 0, 0, kWidth, kHeight + 192, nullptr,
                                 nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -409,20 +411,6 @@ int main() {
     device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
     device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
     device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-
-    // Selector rectangle one button-row band above the operation buttons:
-    // the rotate/move/scale rows are 30 tall at bottom-120, bottom-80 and
-    // bottom-40, so the caption sits a 10-pixel band above the top row.
-    const RECT strip{app->ViewportRect().right - 130,
-                     app->ViewportRect().bottom - 165,
-                     app->ViewportRect().right - 10,
-                     app->ViewportRect().bottom - 135};
-    const float stripCenterX =
-        (static_cast<float>(strip.left) + static_cast<float>(strip.right)) *
-        0.5f;
-    const float stripCenterY =
-        (static_cast<float>(strip.top) + static_cast<float>(strip.bottom)) *
-        0.5f;
 
     // ---- every caption is in the atlas, in the sheet's serif face ---------
     // The selector spells its three states in capitalized English, and the
@@ -852,6 +840,16 @@ int main() {
             app->state.optflag[0] = static_cast<unsigned char>(panel);
             Check(InitSceneFontTexture(app.get()),
                   "build the HUD font atlas for every UI language");
+            // The toolbar can compress to a different height in each panel.
+            // HUD drawing and hit testing use the remaining presentation area,
+            // which can extend below the scene's aspect-ratio rectangle.
+            const RECT overlay = FrameOverlayRect(app.get());
+            Check(FrameOverlayScale(app.get()) == 1.0f,
+                  "caption fixture has room for the normal HUD size");
+            const RECT strip{overlay.right - 130, overlay.bottom - 165,
+                             overlay.right - 10, overlay.bottom - 135};
+            const float stripCenterX = float(overlay.right) - 70.0f;
+            const float stripCenterY = float(overlay.bottom) - 150.0f;
             float previousCenterX = -1.0f;
             for (int state = 0; state < 3; ++state) {
                 app->state.coordinateSystem = state;
@@ -953,12 +951,12 @@ int main() {
     app->state.fpsOverlayEnabled = 0;
 
     // The caption sits one button-row band above the top operation row,
-    // which after the rows' move up 40 is the bottom-165..-135 strip.
+    // measured from the HUD area after the toolbar has been laid out.
     PrepareFrameTextOverlay(app.get());
     const TextBatch lifted = ReadTextBatch(app.get(), -1);
     const float captionCentreY = (lifted.minY + lifted.maxY) * 0.5f;
     const float wantCentreY =
-        static_cast<float>(app->ViewportRect().bottom) - 150.0f;
+        static_cast<float>(FrameOverlayRect(app.get()).bottom) - 150.0f;
     if (!(std::fabs(captionCentreY - wantCentreY) <= 2.0f)) {
         std::fprintf(stderr,
                      "FAIL: caption centre y is %.1f, expected %.1f\n",

@@ -3,6 +3,7 @@
 #define NOMINMAX
 #include <Windows.h>
 #include <d3d9.h>
+#include <commctrl.h>
 #include <cmath>
 #include <array>
 #include <cstdio>
@@ -16,6 +17,23 @@
 #include "mikudancestudio/scene_ownership.hpp"
 using namespace mikudancestudio;
 namespace mikudancestudio { void SampleGlobalPlaybackTracks(MMDApp*); }
+namespace {
+struct ChildPaintProbe {
+    MMDApp* app;
+    int paints = 0;
+    bool beforeSceneReady = false;
+};
+LRESULT CALLBACK ObserveChildPaint(HWND window, UINT message, WPARAM wp, LPARAM lp,
+                                  UINT_PTR, DWORD_PTR context) {
+    auto& probe = *reinterpret_cast<ChildPaintProbe*>(context);
+    if (message == WM_PAINT) {
+        ++probe.paints;
+        probe.beforeSceneReady |= probe.app->SceneMutationInProgress() ||
+                                  probe.app->WindowLayoutReady() == 0;
+    }
+    return DefSubclassProc(window, message, wp, lp);
+}
+}
 int main(int argc, char** argv) {
     std::setvbuf(stdout,nullptr,_IONBF,0);
     if(!d3dx::Get().Load())return 2;
@@ -91,7 +109,7 @@ int main(int argc, char** argv) {
     HWND parentCombo=CreateWindowW(L"COMBOBOX",L"",WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST,
         0,0,100,100,window,reinterpret_cast<HMENU>(panel::kMainComboNormal),nullptr,nullptr);
     HWND boneCombo=CreateWindowW(L"COMBOBOX",L"",WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST,
-        0,0,100,100,window,reinterpret_cast<HMENU>(panel::kBoneRegisterCombo),nullptr,nullptr);
+        0,40,100,100,window,reinterpret_cast<HMENU>(panel::kBoneRegisterCombo),nullptr,nullptr);
     SendMessageW(parentCombo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"None"));
     SendMessageW(parentCombo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"Test model"));
     model->comboSelIndex=1;std::strcpy(bones[0].name,"root");std::strcpy(bones[1].name,"target");
@@ -111,10 +129,32 @@ int main(int argc, char** argv) {
     // window off screen and inactive while exercising the visible UI path.
     SetWindowPos(window,HWND_BOTTOM,-32000,-32000,256,256,SWP_NOACTIVATE|SWP_SHOWWINDOW);
     RedrawWindow(window,nullptr,nullptr,RDW_VALIDATE|RDW_ALLCHILDREN);
-    { ScopedSceneMutation mutation(*app); }
-    const bool childRepaint=GetUpdateRect(parentCombo,nullptr,FALSE)!=0&&
-        GetUpdateRect(boneCombo,nullptr,FALSE)!=0;
-    std::printf("scene-mutation-child-repaint=%s\n",childRepaint?"PASS":"FAIL");failures+=!childRepaint;
+    ChildPaintProbe parentPaint{app.get()}, bonePaint{app.get()};
+    const bool observers = SetWindowSubclass(parentCombo, ObserveChildPaint, 1,
+        reinterpret_cast<DWORD_PTR>(&parentPaint)) &&
+        SetWindowSubclass(boneCombo, ObserveChildPaint, 1,
+        reinterpret_cast<DWORD_PTR>(&bonePaint));
+    if (!observers) return 2;
+    app->WindowLayoutReady() = 1;
+    bool nestedDeferred = false;
+    {
+        ScopedSceneMutation outer(*app);
+        { ScopedSceneMutation inner(*app); }
+        nestedDeferred = app->SceneMutationInProgress() && app->WindowLayoutReady() == 0 &&
+                         parentPaint.paints == 0 && bonePaint.paints == 0;
+    }
+    // The outer scope repaints synchronously. A nonempty update region here
+    // would mean the child still needs painting, not that repaint succeeded.
+    const bool childRepaint = parentPaint.paints > 0 && bonePaint.paints > 0 &&
+        !parentPaint.beforeSceneReady && !bonePaint.beforeSceneReady &&
+        !GetUpdateRect(parentCombo, nullptr, FALSE) && !GetUpdateRect(boneCombo, nullptr, FALSE);
+    std::printf("scene-mutation-nested-repaint-deferred=%s\n", nestedDeferred ? "PASS" : "FAIL");
+    failures += !nestedDeferred;
+    std::printf("scene-mutation-child-repaint=%s parent=%d bone=%d\n",
+                childRepaint ? "PASS" : "FAIL", parentPaint.paints, bonePaint.paints);
+    failures += !childRepaint;
+    RemoveWindowSubclass(parentCombo, ObserveChildPaint, 1);
+    RemoveWindowSubclass(boneCombo, ObserveChildPaint, 1);
     ShowWindow(window,SW_HIDE);
     auto closeEnough=[](float a,float b){return std::fabs(a-b)<1e-3f;};
     auto sample=[&](bool refresh=true){
