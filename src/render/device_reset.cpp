@@ -1,6 +1,7 @@
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/build_profile.hpp"
@@ -53,6 +54,7 @@ void ReleaseSubSlot(ComPtr& slot) {
 }  // namespace
 
 bool PostDeviceReset(MMDApp* app) {
+    model_vertex_cache::Clear();
     device_lost_wait::ResetScope recovery(app);
     viewport_render_scale::Release(app);
     antialias::Release(app);

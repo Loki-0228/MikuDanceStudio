@@ -1,5 +1,6 @@
 #include <memory>
 #include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x004B77E0 - LoadPMX  (original: sub_4B77E0, 32KB)
@@ -1960,6 +1961,7 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
     model.loadComplete = 1;
     text_encoding::SetMaterialNames(model,std::move(materialNames));
     PostLoadInit(m);                                        // 0x49C850
+    model_vertex_cache::RegisterLoaded(m);
     // Report once per model, including PMM loads whose showInfo flag is off.
     // Headless importers have no owner window and can inspect the same text
     // with PmxJointWarnings without displaying a modal dialog.

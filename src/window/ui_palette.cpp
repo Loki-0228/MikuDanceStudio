@@ -253,12 +253,9 @@ void BoneScaleReadoutTick(MMDApp* app) {
     RECT client;
     if (hwnd == nullptr || !GetClientRect(hwnd, &client))
         return;
-    const int x = app->FloatingWindow() != nullptr
-        ? 0 : app->SidebarWidth() + 9;
     // Only the status band the readout lives in; the erase flag is FALSE like
     // the other band invalidations (PostLanguageSweep2).
-    const RECT frame = FrameOverlayRect(app);
-    RECT band{x + 10, frame.top - 25, client.right, frame.top - 1};
+    RECT band = FramePanelLayout(app).topBand;
     InvalidateRect(hwnd, &band, FALSE);
 }
 
@@ -553,22 +550,63 @@ void HandlePaletteChanged2(HDC hdc) {
     const LONG right = rc.right;   // ebp
     const LONG blitX = rc.right;   // v26 (BitBlt x base)
 
-    const RECT frame = FrameOverlayRect(app);
-    const std::int32_t hideTop = frame.top;
-    const std::int32_t hideBottom = frame.bottom;
+    const auto panels = FramePanelLayout(app);
+    // Existing text positions remain logical single-row coordinates. The
+    // shared layout maps each group into its final row below.
+    const std::int32_t hideTop = panels.topBand.top + 25;
+    const std::int32_t hideBottom = panels.bottomBand.bottom - 32;
 
-    FillPanelBottom(hdc, xBase, hideTop - 25, right, hideTop - 1,
+    FillPanelBottom(hdc, xBase, panels.topBand.top, right, panels.topBand.bottom - 1,
                     0x969696u, 0x646464u, 1);                    // 0x42C1C7
-    FillPanelBottom(hdc, xBase, hideBottom, right, hideBottom + 32,
+    FillPanelBottom(hdc, xBase, panels.bottomBand.top, right, panels.bottomBand.bottom,
                     0x787878u, 0xC8C8C8u, 1);                    // 0x42C1E8
 
     // 49x24 playing-icon blit from the offscreen DC handle at this+0x2F4.
     HDC compat = CreateCompatibleDC(nullptr);                    // 0x42C1EF
     SelectObject(compat,
                  reinterpret_cast<HGDIOBJ>(app->state.bmpRes119));  // this+0x2F4 (756)
-    BitBlt(hdc, blitX - 58, hideTop - 24, 49, 24, compat, 0, 0,
+    StretchBlt(hdc, MMD_ORIGINAL_PROFILE ? blitX - 58 : panels.TopX(58),
+           panels.TopY(-24), ViewportPanelLayout::Pixels(49 * panels.topScale),
+           ViewportPanelLayout::Pixels(24 * panels.topScale), compat, 0, 0, 49, 24,
            0xCC0020u);                                           // 0x42C226 (SRCCOPY)
     DeleteDC(compat);                                            // 0x42C22D
+
+    const auto paint = [&](int size, int x, int y, auto draw) {
+        if (MMD_ORIGINAL_PROFILE) return draw(size, x, y);
+        const bool bottom = y >= hideBottom;
+        const float scale = bottom ? panels.bottomScale : panels.topScale;
+        const int column = x - xBase;
+        const int mappedX = bottom ? panels.BottomX(column)
+            : xBase + ViewportPanelLayout::Pixels(column * scale);
+        const int mappedY = bottom ? panels.BottomY(column, y - hideBottom)
+            : panels.topBand.top + 25 + ViewportPanelLayout::Pixels((y - panels.topBand.top - 25) * scale);
+        const int saved = SaveDC(hdc);
+        const RECT clip = bottom ? panels.bottomBand : RECT{
+            panels.topBand.left, panels.topBand.top, panels.TitleRight(), panels.topBand.top + 25};
+        IntersectClipRect(hdc, clip.left, clip.top, clip.right, clip.bottom);
+        const int width = draw(std::max(1, ViewportPanelLayout::Pixels(size * scale)), mappedX, mappedY);
+        RestoreDC(hdc, saved);
+        return ViewportPanelLayout::Pixels(width / scale);
+    };
+    const auto drawUi = [&](MMDApp* owner, const char* text, HDC dc, int size, int x, int y,
+            unsigned char r, unsigned char g, unsigned char b, int bold) {
+        return paint(size, x, y, [&](int h, int px, int py) {
+            return DrawUiGlyph(owner, text, dc, h, px, py, r, g, b, bold);
+        });
+    };
+    const auto drawLegacy = [&](MMDApp* owner, const char* text, HDC dc, int size, int x, int y,
+            unsigned char r, unsigned char g, unsigned char b, int bold) {
+        return paint(size, x, y, [&](int h, int px, int py) {
+            return DrawGlyph(owner, text, dc, h, px, py, r, g, b, bold);
+        });
+    };
+    const auto drawWide = [&](const wchar_t* text, HDC dc, int size, int x, int y,
+            unsigned char r, unsigned char g, unsigned char b, int bold,
+            const wchar_t* face = L"Microsoft YaHei UI") {
+        return paint(size, x, y, [&](int h, int px, int py) {
+            return DrawWideUiGlyph(text, dc, h, px, py, r, g, b, bold, face);
+        });
+    };
 
     // Play flag test, recomputed by the original in each branch
     // (this+0x330 loaded once at 0x42C233, this+0x9ED90 per branch; no side
@@ -580,7 +618,7 @@ void HandlePaletteChanged2(HDC hdc) {
     if (app->state.optflag[0] != 0) {   // 0x2F8: camera/light mode
         if (app->EnglishUI() != 0) {                             // 0xA0B4C
             if (playing) {
-                    DrawUiGlyph(app, "Playing", hdc, 20, xBase + 10, hideTop - 25,
+                    drawUi(app, "Playing", hdc, 20, xBase + 10, hideTop - 25,
                           0xFF, 0xFF, 0xFF, 1);                  // 0x42C287
             } else {
                 // Accessory slot array this+0x9DD70 [byte this+0x9E170].
@@ -592,39 +630,39 @@ void HandlePaletteChanged2(HDC hdc) {
                 if (acc != nullptr)
                     label += L" / " + text_encoding::Display(acc->name);
                 // Keep the title's font stable when an accessory is selected.
-                DrawWideUiGlyph(label.c_str(), hdc, 20, xBase + 10,
+                drawWide(label.c_str(), hdc, 20, xBase + 10,
                                 hideTop - 25 - (chinese && acc == nullptr ? 3 : 0),
                                 0xFF, 0xFF, 0xFF, chinese ? 1 : 0,
                                 chinese ? L"Microsoft YaHei UI" : L"Arial");
             }
-            DrawUiGlyph(app, "camera", hdc, 14, xBase + 90, hideBottom + 10,
+            drawUi(app, "camera", hdc, 14, xBase + 90, hideBottom + 10,
                       0, 0, 0, 1);                               // 0x42C33B
-            DrawUiGlyph(app, "angle", hdc, 14, xBase + 365, hideBottom + 10,
+            drawUi(app, "angle", hdc, 14, xBase + 365, hideBottom + 10,
                       0, 0, 0, 1);                               // 0x42C361
             return;
         }
         if (playing) {
-            DrawGlyph(app, kS52C6DC, hdc, 16, xBase + 10, hideTop - 20,
+            drawLegacy(app, kS52C6DC, hdc, 16, xBase + 10, hideTop - 20,
                       0xFF, 0xFF, 0xFF, 1);                      // 0x42C39A
         } else {
             mdl::AccessoryRecord* acc =
                 app->AccessorySlot(app->SelectedAccessorySlot());
             if (acc == nullptr) {
-                DrawGlyph(app, kS52C8B0, hdc, 16, xBase + 10, hideTop - 20,
+                drawLegacy(app, kS52C8B0, hdc, 16, xBase + 10, hideTop - 20,
                           0xFF, 0xFF, 0xFF, 1);                  // 0x42C429
             } else {
                 const auto label = L"カメラ・照明・アクセサリ / " + text_encoding::Display(acc->name);
-                DrawWideUiGlyph(label.c_str(), hdc, 16, xBase + 10, hideTop - 20,
+                drawWide(label.c_str(), hdc, 16, xBase + 10, hideTop - 20,
                                 0xFF, 0xFF, 0xFF, 1);
             }
         }
-        DrawGlyph(app, kS52C8A4, hdc, 14, xBase + 72, hideBottom + 11,
+        drawLegacy(app, kS52C8A4, hdc, 14, xBase + 72, hideBottom + 11,
                   0, 0, 0, 1);                                   // 0x42C44C
     } else {                                                     // bone mode
         if (app->EnglishUI() != 0) {
             int tail = xBase + 10;              // MMS: right edge of the name line
             if (playing) {
-                tail += DrawUiGlyph(app, "Playing", hdc, 20, xBase + 10, hideTop - 25,
+                tail += drawUi(app, "Playing", hdc, 20, xBase + 10, hideTop - 25,
                           0xFF, 0xFF, 0xFF, 1);                  // 0x42C492
             } else {
                 unsigned char* model = app->SelectedModel();
@@ -637,7 +675,7 @@ void HandlePaletteChanged2(HDC hdc) {
                         const auto& bone = record.boneTable[boneIdx];
                         label += L" : " + text_encoding::BoneLabel(bone, UiUsesEnglishNames(app->EnglishUI()));
                     }
-                    const int width = DrawWideUiGlyph(label.c_str(), hdc, 20,
+                    const int width = drawWide(label.c_str(), hdc, 20,
                                                        xBase + 10, hideTop - 25,
                                                        0xFF, 0xFF, 0xFF, 1);
                     tail = xBase + 10 + width;  // MMS
@@ -651,16 +689,16 @@ void HandlePaletteChanged2(HDC hdc) {
                         (traceTarget >= 0);                      // 0x42C553..0x42C572
                     if (traceActive) {
                         if (app->state.viewDirty != 0) {  // 0xA05D1
-                            const int traceWidth = DrawUiGlyph(app,
+                            const int traceWidth = drawUi(app,
                                 "camera bone trace mode (release trace button)",
                                 hdc, 16, xBase + width + 30, hideTop - 25,
                                 0xFF, 0xFF, 0xFF, 1);            // 0x42C5A7
-                            DrawUiGlyph(app, "camera bone trace mode (release trace button)",
+                            drawUi(app, "camera bone trace mode (release trace button)",
                                       hdc, 16, xBase + width + 29, hideTop - 26,
                                       0xFF, 0x32, 0x32, 1);      // 0x42C5CE
                             tail = xBase + width + 30 + traceWidth;  // MMS
                         } else {
-                            const int traceWidth = DrawUiGlyph(app,
+                            const int traceWidth = drawUi(app,
                                 "camera bone trace mode",
                                 hdc, 16, xBase + width + 30, hideTop - 25,
                                 0xFF, 0xFF, 0xFF, 1);            // 0x42C5E9
@@ -669,15 +707,15 @@ void HandlePaletteChanged2(HDC hdc) {
                     }
                 }
             }
-            DrawUiGlyph(app, "bone place", hdc, 14, xBase + 66, hideBottom + 10,
+            drawUi(app, "bone place", hdc, 14, xBase + 66, hideBottom + 10,
                       0, 0, 0, 1);                               // 0x42C60C
-            DrawUiGlyph(app, "angle", hdc, 14, xBase + 365, hideBottom + 10,
+            drawUi(app, "angle", hdc, 14, xBase + 365, hideBottom + 10,
                       0, 0, 0, 1);                               // 0x42C361
             return;
         }
         int tail = xBase + 10;                  // MMS: right edge of the name line
         if (playing) {
-            tail += DrawGlyph(app, kS52C6DC, hdc, 20, xBase + 10, hideTop - 25,
+            tail += drawLegacy(app, kS52C6DC, hdc, 20, xBase + 10, hideTop - 25,
                       0xFF, 0xFF, 0xFF, 1);                      // 0x42C645
         } else {
             unsigned char* model = app->SelectedModel();
@@ -685,7 +723,7 @@ void HandlePaletteChanged2(HDC hdc) {
                 const mikudancestudio::mdl::ModelRecord& record =
                     *mikudancestudio::mdl::Mdl(model);
                 const auto label = text_encoding::ModelLabel(record, UiUsesEnglishNames(app->EnglishUI()));
-                const int width = DrawWideUiGlyph(label.c_str(), hdc, 16,
+                const int width = drawWide(label.c_str(), hdc, 16,
                                                    xBase + 10, hideTop - 20,
                                                    0xFF, 0xFF, 0xFF, 1);
                 tail = xBase + 10 + width;      // MMS
@@ -696,14 +734,14 @@ void HandlePaletteChanged2(HDC hdc) {
                     (traceTarget >= 0);                          // 0x42C6F9..0x42C721
                 if (traceActive) {
                     if (app->state.viewDirty != 0) {  // 0xA05D1
-                        const int traceWidth = DrawGlyph(app, kS52C808, hdc, 16,
+                        const int traceWidth = drawLegacy(app, kS52C808, hdc, 16,
                                   xBase + width + 30,
                                   hideTop - 20, 0xFF, 0xFF, 0xFF, 1);  // 0x42C756
-                        DrawGlyph(app, kS52C808, hdc, 16, xBase + width + 29,
+                        drawLegacy(app, kS52C808, hdc, 16, xBase + width + 29,
                                   hideTop - 21, 0xFF, 0x32, 0x32, 1);  // 0x42C77D
                         tail = xBase + width + 30 + traceWidth;  // MMS
                     } else {
-                        const int traceWidth = DrawGlyph(app, kS52C7EC, hdc, 16,
+                        const int traceWidth = drawLegacy(app, kS52C7EC, hdc, 16,
                                   xBase + width + 30,
                                   hideTop - 20, 0xFF, 0xFF, 0xFF, 1);  // 0x42C798
                         tail = xBase + width + 30 + traceWidth;  // MMS
@@ -711,12 +749,12 @@ void HandlePaletteChanged2(HDC hdc) {
                 }
             }
         }
-        DrawGlyph(app, kS52C7E0, hdc, 14, xBase + 68, hideBottom + 11,
+        drawLegacy(app, kS52C7E0, hdc, 14, xBase + 68, hideBottom + 11,
                   0, 0, 0, 1);                                   // 0x42C7BD
     }
 
     // Shared tail of the JP paths: "角度" at xBase+0x171 (369).
-    DrawGlyph(app, kS52C728, hdc, 14, xBase + 369, hideBottom + 11,
+    drawLegacy(app, kS52C728, hdc, 14, xBase + 369, hideBottom + 11,
               0, 0, 0, 1);                                       // 0x42C7E3
 }
 

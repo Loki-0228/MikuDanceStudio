@@ -70,32 +70,16 @@ void PostLanguageSweep2(MMDApp* app) {
     RefreshForcePasteControls(app);
     // Target window: this+0xA0D38 doubles as an HWND when non-zero.
     HWND hwnd = reinterpret_cast<HWND>(app->state.floatingWindow);
-    RECT client;
-    int x;
-    if (hwnd != nullptr) {                          // 0x40D113
-        GetClientRect(hwnd, &client);
-        x = 0;
-    } else {                                        // 0x40D089
+    if (hwnd == nullptr) {                           // 0x40D089
         hwnd = reinterpret_cast<HWND>(app->state.hwnd);
-        GetClientRect(hwnd, &client);
-        x = app->state.sidebarWidth + 9;  // 0xA06C8
     }
 
-    // Panel strip: (x+10, hideTop-22) .. (client.right-450, hideTop-1).
-    const RECT frame = FrameOverlayRect(app);
-    const std::int32_t hideTop = frame.top;
-    RECT rc;
-    rc.left = x + 10;
-    rc.bottom = hideTop - 1;
-    rc.top = hideTop - 22;
-    rc.right = client.right - 450;
+    // Include both rows when a panel wraps into the letterbox margin.
+    const auto panels = FramePanelLayout(app);
+    RECT rc = panels.topBand;
     InvalidateRect(hwnd, &rc, FALSE);               // 0x40D0DD
 
-    // Value column: (x+68, hideBottom) .. (x+139, hideBottom+30).
-    rc.top = frame.bottom;
-    rc.left = x + 68;
-    rc.right = x + 139;
-    rc.bottom = rc.top + 30;
+    rc = panels.bottomBand;
     InvalidateRect(hwnd, &rc, FALSE);               // 0x40D109
 }
 

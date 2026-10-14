@@ -41,7 +41,7 @@ void BakePreview::RenderNative(){
     nativeBakePreview=true;RenderFrameScene(app_);Present();
 }
 
-RECT FramePresentationRect(MMDApp* app) {
+static RECT BasePresentationRect(MMDApp* app) {
     RECT result = app->ViewportRect();
     if (app->RecordingWindow() != nullptr) return result;
     const HWND window = app->FullscreenMode() != 0 || !app->FloatingWindow()
@@ -67,18 +67,31 @@ RECT FramePresentationRect(MMDApp* app) {
     return result;
 }
 
+ViewportPanelLayout FramePanelLayout(MMDApp* app) {
+    const bool adaptive = !build_profile::original && !app->FullscreenMode() &&
+        !app->RecordingWindow() && (app->MainWindow() || app->FloatingWindow());
+    return MakeViewportPanelLayout(build_profile::original ? app->ViewportRect() : BasePresentationRect(app),
+        app->ViewportRect(), adaptive, app->state.optflag[0] == 0,
+        adaptive && app->state.optflag[0] == 0 ? ViewportScaleCaptionWidth(app) : 36);
+}
+
+RECT FramePresentationRect(MMDApp* app) {
+    return build_profile::original ? BasePresentationRect(app) : FramePanelLayout(app).overlay;
+}
+
 RECT FrameOverlayRect(MMDApp* app) {
     return build_profile::original ? app->ViewportRect() : FramePresentationRect(app);
 }
 
 float FrameOverlayScale(MMDApp* app) {
     const float scale = app->Renderer() ? app->Renderer()->viewScale : 1.0f;
-    const RECT scene = app->ViewportRect(), frame = FrameOverlayRect(app);
-    const LONG width = scene.right - scene.left;
-    if (build_profile::original || width <= 0) return scale;
+    const RECT frame = FrameOverlayRect(app);
+    if (build_profile::original) return scale;
     const float frameWidth = float(frame.right - frame.left), frameHeight = float(frame.bottom - frame.top);
+    // One HUD unit is one window pixel. Keep that size until the FPS and
+    // operation block cannot sit side by side, or the block is too tall.
     return frameWidth > 0 && frameHeight > 0
-        ? std::min({scale * frameWidth / float(width), frameWidth / 180.0f, frameHeight / 177.0f}) : scale;
+        ? std::min({1.0f, frameWidth / 360.0f, frameHeight / 177.0f}) : 1.0f;
 }
 
 void FillFramePresentationMargins(MMDApp* app, IDirect3DDevice9* device) {

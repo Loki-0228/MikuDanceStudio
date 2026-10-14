@@ -208,9 +208,8 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
     Check(app->antialiasing.lastSmaaAlgorithm==antialias::Algorithm::SmaaT2xEnhanced,
         "switching to FXAA preserves the last selected SMAA variant");
     SendMessageW(app->MainWindow(),WM_COMMAND,antialias::kSmaaCommand,0);
-    Check(app->antialiasing.algorithm==antialias::Algorithm::SmaaT2xEnhanced,
-        "direct SMAA parent command restores the last selected variant");
-    select(antialias::Algorithm::Fxaa);
+    Check(app->antialiasing.algorithm==antialias::Algorithm::Fxaa,
+        "former SMAA parent command cannot apply a remembered variant");
     CommandDispatch(nullptr,MAKEWPARAM(277,0));capture("fxaa-disabled");
     Check(app->antialiasing.algorithm==antialias::Algorithm::Fxaa && !app->antialiasing.enabled,
         "main item toggles without forgetting algorithm");
@@ -269,17 +268,41 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
         const int smaaPosition=GetMenuItemCount(popup)-1;
         auto smaaPopup=GetSubMenu(popup,smaaPosition);
         Check(smaaPopup && GetMenuItemCount(smaaPopup)==4,"four SMAA variants are available in the right-hand submenu");
-        Check((GetMenuState(smaaPopup,antialias::kFirstCommand+unsigned(app->antialiasing.lastSmaaAlgorithm),MF_BYCOMMAND)&MF_CHECKED)!=0,
-            "SMAA submenu marks the remembered variant even while another algorithm is active");
+        const auto checkSmaaSelection=[&](antialias::Algorithm active) {
+            // Selecting a variant refreshes the native submenu, so do not keep
+            // the old handle between command dispatches.
+            const auto child=GetSubMenu(popup,smaaPosition);
+            const bool smaaActive=active>=antialias::Algorithm::Smaa && active<antialias::Algorithm::Count;
+            Check(((GetMenuState(popup,antialias::kSmaaCommand,MF_BYCOMMAND)&MF_CHECKED)!=0)==smaaActive,
+                "SMAA parent is marked only when a SMAA variant is selected");
+            Check(GetMenuDefaultItem(child,FALSE,0)==UINT(-1),"SMAA submenu has no default choice");
+            for(const auto variant:{antialias::Algorithm::SmaaStandard,antialias::Algorithm::Smaa,
+                                   antialias::Algorithm::SmaaT2xStandard,antialias::Algorithm::SmaaT2xEnhanced}) {
+                Check(((GetMenuState(child,antialias::kFirstCommand+unsigned(variant),MF_BYCOMMAND)&MF_CHECKED)!=0)==(active==variant),
+                    "SMAA child marks the current algorithm instead of the remembered variant");
+            }
+            for(const auto other:{antialias::Algorithm::MmdOriginal,antialias::Algorithm::Fxaa,antialias::Algorithm::Taa}) {
+                Check(((GetMenuState(popup,antialias::kFirstCommand+unsigned(other),MF_BYCOMMAND)&MF_CHECKED)!=0)==(active==other),
+                    "the algorithm submenu marks only the selected family");
+            }
+        };
+        checkSmaaSelection(antialias::Algorithm::Fxaa);
         Check((GetMenuState(popup,antialias::kFirstCommand+unsigned(antialias::Algorithm::Fxaa),MF_BYCOMMAND)&MF_CHECKED)!=0,
             "selected algorithm has radio check");
         SendMessageW(app->MainWindow(),WM_MENUSELECT,MAKEWPARAM(smaaPosition,MF_POPUP),reinterpret_cast<LPARAM>(popup));
         MSG smaaEnter{};smaaEnter.message=WM_KEYDOWN;smaaEnter.wParam=VK_RETURN;
-        Check(antialias::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&smaaEnter))==1,
-            "Enter on the SMAA label applies the remembered variant");
+        Check(antialias::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&smaaEnter))==0,
+            "Enter on the SMAA label is left to native submenu navigation");
         MSG smaaPending{};
-        Check(PeekMessageW(&smaaPending,app->MainWindow(),WM_COMMAND,WM_COMMAND,PM_REMOVE) && LOWORD(smaaPending.wParam)==antialias::kSmaaCommand,
-            "SMAA split menu posts its direct selection command");
+        Check(!PeekMessageW(&smaaPending,app->MainWindow(),WM_COMMAND,WM_COMMAND,PM_REMOVE),
+            "opening the SMAA submenu does not post a selection command");
+        Check(app->antialiasing.algorithm==antialias::Algorithm::Fxaa,
+            "opening the SMAA submenu preserves the current algorithm");
+        for(const auto active:{antialias::Algorithm::SmaaStandard,antialias::Algorithm::Smaa,
+                               antialias::Algorithm::SmaaT2xStandard,antialias::Algorithm::SmaaT2xEnhanced,
+                               antialias::Algorithm::Taa,antialias::Algorithm::MmdOriginal,antialias::Algorithm::Fxaa}) {
+            select(active);checkSmaaSelection(active);
+        }
         SendMessageW(app->MainWindow(),WM_MENUSELECT,MAKEWPARAM(index,MF_POPUP),reinterpret_cast<LPARAM>(parent));
         MSG enter{};enter.message=WM_KEYDOWN;enter.wParam=VK_RETURN;
         Check(antialias::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&enter))==1,"Enter on parent keeps toggle action");

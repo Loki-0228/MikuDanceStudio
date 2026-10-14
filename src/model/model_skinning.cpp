@@ -2,6 +2,7 @@
 #include "mikudancestudio/geometry_workers.hpp"
 #include "mikudancestudio/gpu_model.hpp"
 #include "mikudancestudio/skinning_backend.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 // ===========================================================================
 // VA 0x004B0C50 / 0x004A9400 - per-frame model VB deformation
 // ===========================================================================
@@ -341,7 +342,7 @@ void CopyPmxAdditionalUvs(const mdl::PmxVertex& source,
 // group weight folded in after the morph value, one multiply at a time).
 // Bone (2) and material (8) morphs live in ModelApplyMorphs instead.
 void AccumPmxVertexMorph(mdl::PmxVertex* vertices,
-                         std::uint32_t vertexCount,
+                         std::uint32_t firstVertex, std::uint32_t lastVertex,
                          const mdl::MorphRecord& morph, float value,
                          float groupWeight) {
     if (morph.type == 1) {
@@ -354,7 +355,7 @@ void AccumPmxVertexMorph(mdl::PmxVertex* vertices,
             // the model's vertex count, so a corrupt entry overwrites adjacent
             // model memory. This port drops such an entry.
             // Defect MB-05.
-            if (entry.vertexIndex >= vertexCount)
+            if (entry.vertexIndex < firstVertex || entry.vertexIndex >= lastVertex)
                 continue;
             mdl::PmxVertex& vertex = vertices[entry.vertexIndex];
             vertex.position[0] += entry.offset[0] * value * groupWeight;
@@ -376,7 +377,8 @@ void AccumPmxVertexMorph(mdl::PmxVertex* vertices,
         // values are unchecked as well. The port drops the entry.
         // Defect MB-05.
         if (entry.vertexIndex < 0 ||
-            static_cast<std::uint32_t>(entry.vertexIndex) >= vertexCount)
+            static_cast<std::uint32_t>(entry.vertexIndex) < firstVertex ||
+            static_cast<std::uint32_t>(entry.vertexIndex) >= lastVertex)
             continue;
         mdl::PmxVertex& vertex = vertices[entry.vertexIndex];
         if (family == 0) {
@@ -395,15 +397,14 @@ void AccumPmxVertexMorph(mdl::PmxVertex* vertices,
 // flattened UV base tables restore every morph-targeted component first,
 // then each morph (including morph zero - unlike PMD) accumulates its
 // weighted offsets; group morphs scale the vertex/UV morphs they reference.
-void ApplyPmxVertexMorphs(unsigned char* model) {
-    MMD_PERF_SCOPE(Morph);
+void ApplyPmxVertexMorphRange(unsigned char* model, std::uint32_t firstVertex,
+                            std::uint32_t lastVertex) {
     mdl::ModelRecord& record = *mdl::Mdl(model);
     mdl::MorphRecord* morphs = mdl::Morphs(model);
     mdl::PmxVertex* vertices = record.pmxVertices;
     if (morphs == nullptr || vertices == nullptr)
         return;
 
-    const std::uint32_t vertexCount = record.vertexCount;
     const mdl::PmdVertexMorphEntry* base = mdl::BaseVertexMorphTable(model);
     const std::uint32_t baseCount = mdl::BaseVertexMorphCount(model);
     if (base != nullptr) {
@@ -413,7 +414,7 @@ void ApplyPmxVertexMorphs(unsigned char* model) {
             // 0x1400C205D), then writes the restored position through the resulting
             // offset. This port drops the entry.
             // Defect MB-05.
-            if (base[i].vertexIndex >= vertexCount)
+            if (base[i].vertexIndex < firstVertex || base[i].vertexIndex >= lastVertex)
                 continue;
             mdl::PmxVertex& vertex = vertices[base[i].vertexIndex];
             vertex.position[0] = base[i].offset[0];
@@ -435,8 +436,9 @@ void ApplyPmxVertexMorphs(unsigned char* model) {
             // values are likewise unchecked. The port drops the entry.
             // Defect MB-05.
             if (entries[i].vertexIndex < 0 ||
+                static_cast<std::uint32_t>(entries[i].vertexIndex) < firstVertex ||
                 static_cast<std::uint32_t>(entries[i].vertexIndex) >=
-                    vertexCount)
+                    lastVertex)
                 continue;
             mdl::PmxVertex& vertex = vertices[entries[i].vertexIndex];
             if (family == 0) {
@@ -457,7 +459,7 @@ void ApplyPmxVertexMorphs(unsigned char* model) {
         if (weight == 0.0f)
             continue;
         if (morph.type != 0) {
-            AccumPmxVertexMorph(vertices, vertexCount, morph, weight, 1.0f);
+            AccumPmxVertexMorph(vertices, firstVertex, lastVertex, morph, weight, 1.0f);
             continue;
         }
         const int groupCount = morph.groupCount;
@@ -472,9 +474,32 @@ void ApplyPmxVertexMorphs(unsigned char* model) {
             // Defect MB-06.
             if (ref.morphIndex < 0 || ref.morphIndex >= morphCount)
                 continue;
-            AccumPmxVertexMorph(vertices, vertexCount, morphs[ref.morphIndex],
+            AccumPmxVertexMorph(vertices, firstVertex, lastVertex, morphs[ref.morphIndex],
                                 weight, ref.weight);
         }
+    }
+}
+
+void ApplyPmxVertexMorphs(unsigned char* model) {
+    MMD_PERF_SCOPE(Morph);
+    const auto& record = *mdl::Mdl(model);
+    if (!record.pmxVertices || !mdl::Morphs(model)) return;
+    const std::uint32_t vertexCount = record.vertexCount;
+    std::uint64_t restoreCount = mdl::BaseVertexMorphCount(model);
+    for (const auto count : mdl::UvMorphCounts(model).byFamily)
+        if (count > 0) restoreCount += count;
+    // Each vertex belongs to one worker. Duplicate entries and overlapping
+    // group morphs retain their original accumulation order within that worker.
+    // Tables are read-only; all writes stay inside the assigned vertex range.
+#pragma omp parallel if(vertexCount >= 32768 && restoreCount >= 16384) num_threads(GeometryWorkerCount())
+    {
+#ifdef _OPENMP
+        const unsigned workers = omp_get_num_threads(), worker = omp_get_thread_num();
+        ApplyPmxVertexMorphRange(model, std::uint64_t(vertexCount) * worker / workers,
+                                std::uint64_t(vertexCount) * (worker + 1) / workers);
+#else
+        ApplyPmxVertexMorphRange(model, 0, vertexCount);
+#endif
     }
 }
 
@@ -759,9 +784,55 @@ bool UpdatePmxModelVertexBuffers(MMDApp* app, unsigned char* model,
     }
     DumpModelVertexBuffers(app, model, mainVertices, edgeVertices, count,
                            stride);
+    model_vertex_cache::RememberCpuBody(model, mainVertices, count, stride);
     mainVb->Unlock();
     edgeVb->Unlock();
     return true;
+}
+
+bool UpdateCachedOutline(MMDApp* app, unsigned char* model, float distance,
+                         const model_vertex_cache::OutlineVertex* body, std::size_t count) {
+    const auto& state = *mdl::Mdl(model);
+    if (count != state.vertexCount || !state.vertexBuffer2) return false;
+    const bool pmx = state.physicsMode == 2;
+    struct EdgeMaterial { std::uint32_t color; float size; };
+    std::vector<EdgeMaterial> materials;
+    if (pmx) {
+        if (!state.pmxVertices || !state.materials) return false;
+        materials.resize(state.materialCount);
+        for (unsigned i = 0; i < state.materialCount; ++i)
+            materials[i] = {PackPmxEdgeColor(mdl::Materials(model)[i], app->state.selfShadowEnabled != 0),
+                            mdl::Materials(model)[i].edgeSize};
+    } else if (!state.rawVertices) return false;
+    auto* buffer = static_cast<IDirect3DVertexBuffer9*>(state.vertexBuffer2);
+    mdl::EdgeVertex* edges = nullptr;
+    if (FAILED(buffer->Lock(0, UINT(count * sizeof(mdl::EdgeVertex)), reinterpret_cast<void**>(&edges), 0)))
+        return false;
+    // Match the complete CPU worker's operation order. The retained positions
+    // and normals were copied before that worker unlocked its output; this
+    // path never maps or reads the main D3D9 vertex buffer.
+#pragma omp parallel for schedule(static) if(count >= 16384) num_threads(GeometryWorkerCount())
+    for (std::int64_t i = 0; i < std::int64_t(count); ++i) {
+        const auto& main = body[i]; auto& edge = edges[i];
+        if (pmx) {
+            const auto& material = materials[main.material & 0x7fffffffu];
+            edge.diffuse = material.color;
+            for (int c = 0; c < 3; ++c) {
+                if (main.material & 0x80000000u)
+                    edge.position[c] = main.position[c] - main.normal[c] * 0.004999999888241291f;
+                else {
+                    float amount = distance * main.normal[c];
+                    amount *= main.edgeScale; amount *= material.size;
+                    edge.position[c] = main.position[c] + amount;
+                }
+            }
+        } else {
+            const float amount = main.material & 0x80000000u ? -0.004999999888241291f : distance;
+            for (int c = 0; c < 3; ++c)
+                edge.position[c] = EdgeComponent(main.position[c], main.normal[c], amount);
+        }
+    }
+    return SUCCEEDED(buffer->Unlock());
 }
 
 }  // namespace
@@ -773,6 +844,7 @@ float ModelOutlineDistance(MMDApp* app, unsigned char* model, const float world[
 
 bool UpdateModelVertexBuffersCpu(MMDApp* app, unsigned char* model,
                               const float frameWorld[16]) {
+    model_vertex_cache::Invalidate(model);
     if (app == nullptr || model == nullptr || frameWorld == nullptr)
         return false;
     mdl::ModelRecord& state = *mdl::Mdl(model);
@@ -811,6 +883,7 @@ bool UpdateModelVertexBuffersCpu(MMDApp* app, unsigned char* model,
     SkinPmd(model, PmdEdgeDistance(app, model, frameWorld), auxTable,
             edgeVertices, mainVertices);
     DumpModelVertexBuffers(app, model, mainVertices, edgeVertices, count, 32);
+    model_vertex_cache::RememberCpuBody(model, mainVertices, count, 32);
     mainVb->Unlock();
     edgeVb->Unlock();
     return true;
@@ -822,8 +895,11 @@ void UpdateModelVertexBuffers(MMDApp* app, unsigned char* model,
     if (!app || !model || !frameWorld) return;
     const auto& state = *mdl::Mdl(model);
     if (!state.loadComplete || !state.vertexCount) return;
-    if (!skinning::UpdateModel(app, model, frameWorld, UpdateModelVertexBuffersCpu))
-        UpdateModelVertexBuffersCpu(app, model, frameWorld);
+    const float distance = PmdEdgeDistance(app, model, frameWorld);
+    if (model_vertex_cache::Reuse(app, model, distance, UpdateCachedOutline)) return;
+    bool updated = skinning::UpdateModel(app, model, frameWorld, UpdateModelVertexBuffersCpu);
+    if (!updated) updated = UpdateModelVertexBuffersCpu(app, model, frameWorld);
+    if (updated) model_vertex_cache::Remember(app, model, distance);
 }
 bool PrepareGpuModelInput(MMDApp* app,unsigned char* model,const float world[16],GpuModelInput& out,bool geometry) {
     if(!app || !model || !world) return false;
@@ -831,7 +907,10 @@ bool PrepareGpuModelInput(MMDApp* app,unsigned char* model,const float world[16]
     if(!m.loadComplete || !m.vertexCount || !m.boneCount || !m.materialCount) return false;
     const bool pmx=m.physicsMode==2;
     if(pmx && m.pmxAdditionalUvCount>4) return false;
-    if(geometry) {if(pmx) ApplyPmxVertexMorphs(model); else ApplyPmdVertexMorphs(model);}
+    if(geometry) {
+        model_vertex_cache::Invalidate(model);
+        if(pmx) ApplyPmxVertexMorphs(model); else ApplyPmdVertexMorphs(model);
+    }
     out.parameters={PmdEdgeDistance(app,model,world),app->state.selfShadowEnabled!=0,!pmx};
     out.vertices.resize(m.vertexCount); out.bones.resize(m.boneCount); out.materials.resize(m.materialCount);
     auto& api=d3dx::Get(); if(!api.Load()) return false;

@@ -1611,6 +1611,35 @@ void TestMixedRigidAffine() {
 }  // namespace
 
 int main() {
+    {
+        std::uint32_t random = 0x7a4101u;
+        const auto value = [&] {
+            random = random * 1664525u + 1013904223u;
+            return float(int(random % 200001u) - 100000) / 173.f;
+        };
+        for (unsigned sample = 0; sample < 10000; ++sample) {
+            float matrix[16], position[3], normal[3];
+            for (auto& x : matrix) x = value();
+            for (auto& x : position) x = value();
+            for (auto& x : normal) x = value();
+            if (sample % 7 == 0) for (auto& x : matrix) x = -0.f;
+            affine::BoneAux aux{};
+            affine::Skinned expected{}, actual{};
+            affine::TransformPosition(expected.position, position, matrix);
+            affine::TransformNormal(expected.normal, normal, matrix);
+            affine::SkinBdef1({matrix, &aux}, position, normal, actual);
+            Check(BitEqual(&expected, &actual, sizeof(actual)),
+                  "BDEF1 XYZ vectorization retains scalar output bits");
+            for (auto& x : aux.normalMatrix) x = value();
+            aux.flags = affine::kBoneFlagAffine;
+            affine::TransformNormalBone(expected.normal, normal, matrix, aux);
+            affine::Normalize3(expected.normal);
+            affine::SkinBdef1({matrix, &aux}, position, normal, actual);
+            Check(BitEqual(&expected, &actual, sizeof(actual)),
+                  "affine BDEF1 XYZ vectorization retains scalar output bits");
+        }
+        std::puts("PASS BDEF1 vectorization: 20000 scalar parity cases");
+    }
     TestPolarDecomposition();
     std::puts("PASS polar decomposition (A = H * R, H symmetric positive)");
     TestPolarAxisCoverage();

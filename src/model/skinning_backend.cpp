@@ -4,6 +4,7 @@
 #include <d3d9.h>
 #include <wrl/client.h>
 #include "mikudancestudio/skinning_backend.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/gpu_model.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/mmd_app.hpp"
@@ -149,6 +150,7 @@ const std::vector<gpu::Adapter>& AvailableAdapters() {
 const Preference& GetPreference() { return preference; }
 const Status& GetStatus() { return status; }
 static void ResetSelection() {
+    model_vertex_cache::Clear();
     automaticEntries.clear();
     automaticFailed = false;
     compute.reset();
@@ -532,7 +534,10 @@ void InitializeAutomatic(MMDApp* app, IDirect3DDevice9* device) {
 }
 const std::vector<StartupMeasurement>& GetStartupMeasurements() { return startupMeasurements; }
 
-void ForgetModel(unsigned char* model) { automaticEntries.erase(model); }
+void ForgetModel(unsigned char* model) {
+    model_vertex_cache::Forget(model);
+    automaticEntries.erase(model);
+}
 const AutomaticReport* GetAutomaticReport(unsigned char* model) {
     const auto found = automaticEntries.find(model);
     return found == automaticEntries.end() ? nullptr : &found->second.report;

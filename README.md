@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | PMD and PMX loading, original animation tools, rigid-body physics, language fixes, MME interface | Included | Included |
 | Image sequences, periodic backups, crash backup attempts, and morph force paste | Included | Included |
+| Equivalent skinning and morph optimizations, unchanged-model reuse, and camera-only outline updates | Included | Included |
 | Recent projects, timeline force-paste button, and viewport render scaling | Included | Omitted |
 | FXAA, TAA, SMAA, and optional NVIDIA fix DLL | Included | Original anti-aliasing switch only |
 | New transparency sorting | Optional, disabled by default | Omitted; original single-pass material order |
@@ -36,6 +37,7 @@ Extract the two builds into separate directories and run the executable in each 
 | PMD、PMX 载入，原有骨骼、表情、相机、灯光和刚体物理 | 保留 | 保留 |
 | 原生功能、输入、编码及 MME 兼容修复 | 保留 | 保留 |
 | 图片序列、周期备份、崩溃备份尝试、表情强制粘贴 | 保留 | 保留 |
+| 蒙皮与表情的等价计算优化、未变化模型缓存、相机移动时仅更新描边 | 保留 | 保留 |
 | 最近工程、时间轴强制粘贴按钮、视口渲染比例 | 保留 | 不包含 |
 | FXAA、TAA、SMAA、可选 NVIDIA 补丁 DLL | 保留 | 仅保留原抗锯齿开关 |
 | 新透明排序 | 可选低、标准、高、最高；默认关闭 | 不编入排序与剥层实现，使用原始单遍材质顺序 |
@@ -62,6 +64,7 @@ Extract the two builds into separate directories and run the executable in each 
 | --- | --- | --- |
 | PMD・PMX 読み込み、従来のアニメーション編集、剛体物理、言語関連の修正、MME インターフェース | 含む | 含む |
 | 連番画像、定期バックアップ、クラッシュ時のバックアップ試行、モーフの強制貼り付け | 含む | 含む |
+| スキニング・モーフの等価な計算最適化、変化のないモデルの再利用、カメラ移動時の輪郭のみの更新 | 含む | 含む |
 | 最近使ったプロジェクト、タイムラインの強制貼り付けボタン、ビューポート描画倍率 | 含む | 含まない |
 | FXAA、TAA、SMAA、任意の NVIDIA 修正 DLL | 含む | 従来のアンチエイリアス切り替えのみ |
 | 新しい透明ソート | 任意で有効化、初期設定は無効 | 含まない。従来の単一パスの材質順序を使用 |
@@ -147,16 +150,16 @@ Auto-save settings control the interval in minutes, backup directory, maximum co
 
 #### Viewport and shadow controls
 
-The full build can match the viewport to the window, render a lower-resolution preview, or use supersampling without changing export dimensions. Lower-resolution previews use nearest-neighbor upscaling. The HUD and toolbars render at display resolution across the full preview area, including letterbox bars. FPS counts completed, successfully submitted scene frames.
+The full build can match the viewport to the window, render a lower-resolution preview, or use supersampling without changing export dimensions. Lower-resolution previews use nearest-neighbor upscaling. The HUD and toolbars render at display resolution across the full preview area, including letterbox bars. Numeric input fields shorten before text shrinks. When a toolbar does not fit on one row, it uses two rows if the adjacent letterbox bar has enough room. FPS text and HUD controls keep their normal size, shrinking only when the preview area cannot fit them. FPS counts completed, successfully submitted scene frames.
 
 Self-shadowing restores MMD 9.32 projection and depth sampling. Dynamic resolution and fixed resolution share the same shadow-range setting. Optional stronger filtering, disabled by default, applies two B-spline passes to the shadow map before native materials, MME, and compatible MMV versions receive it. A failed filter falls back to the current frame's original map.
 
 #### Anti-aliasing and project settings
 
 The full build offers original MMD anti-aliasing (MSAA), FXAA, motion-vector TAA,
-and SMAA. Click **SMAA** to apply the last SMAA choice. The initial choice is
-**SMAA 1x (diagonal and corner enhancement)**. Hover over SMAA and move right
-to choose 1x or T2x, with standard edges or diagonal and corner enhancement.
+and SMAA. **SMAA** only opens its submenu; it has no default choice.
+Choose 1x or T2x in that submenu, with standard edges or diagonal and corner enhancement.
+Selection dots appear beside SMAA and its current variant only while SMAA is selected.
 T2x combines two jittered frames using motion vectors.
 TAA and T2x keep current and previous deformed positions in GPU textures when
 the adapter supports vertex texture sampling. They share captures across
@@ -381,15 +384,15 @@ MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌
 
 #### 视口与阴影控制
 
-完整包支持自动匹配窗口、低比例预览和超采样，不改变导出尺寸。低比例画面使用最近邻放大；HUD 和工具条在放大后按显示分辨率绘制，包含黑边区域。FPS 统计实际完成并成功提交的场景帧。
+完整包支持自动匹配窗口、低比例预览和超采样，不改变导出尺寸。低比例画面使用最近邻放大；HUD 和工具条在放大后按显示分辨率绘制，包含黑边区域。数值输入框会优先缩短，尽量保留文字大小。工具条一行排布不下时，若相邻黑边有足够空间，则改为两行。帧率文字和 HUD 保持正常大小，仅在预览区域容纳不下时缩小。FPS 统计实际完成并成功提交的场景帧。
 
 自阴影恢复 MMD 9.32 的投影和深度采样。动态精度与固定精度共用阴影范围设置。「滤波加强」默认关闭，开启后先对阴影图进行两遍基础样条滤波，再交给原生材质、MME 和支持新接口的 MMV；失败时使用当帧原始阴影图。
 
 #### 抗锯齿与工程设置
 
 完整版本提供 MMD 原始（MSAA）、FXAA、带运动矢量的 TAA 和 SMAA。
-直接点击「SMAA」应用上次所选，首次默认为「SMAA 1x（斜线与拐角增强）」。
-悬停在「SMAA」后向右移动，可选择以下档位：
+「SMAA」只展开子菜单，不设默认档位；只能在三级菜单中选择具体档位。
+只有当前选择 SMAA 时，二级「SMAA」和三级当前档位才同时显示圆点。可选档位如下：
 
 | 菜单选项 | 处理方式 |
 | --- | --- |
@@ -624,15 +627,16 @@ PMM は従来の `0002` 形式を優先します。未使用の予約領域で�
 
 #### ビューポートと影の設定
 
-完全版はウィンドウサイズへの自動調整、低解像度プレビュー、スーパーサンプリングに対応し、出力サイズは変更しません。低解像度画像は最近傍補間で拡大し、HUD とツールバーは黒帯を含む領域に表示解像度で描画します。FPS は描画が完了し、正常に送出されたシーンフレームを数えます。
+完全版はウィンドウサイズへの自動調整、低解像度プレビュー、スーパーサンプリングに対応し、出力サイズは変更しません。低解像度画像は最近傍補間で拡大し、HUD とツールバーは黒帯を含む領域に表示解像度で描画します。数値入力欄の幅を先に詰め、文字の大きさをできるだけ保ちます。ツールバーが一行に収まらず、隣接する黒帯に余裕がある場合は二行に配置します。FPS 表示と HUD は通常の大きさを保ち、プレビュー領域に収まらない場合に限り縮小します。FPS は描画が完了し、正常に送出されたシーンフレームを数えます。
 
 セルフシャドウは MMD 9.32 の投影と深度サンプリングを復元し、動的精度と固定精度で同じ影範囲設定を使います。「フィルター強化」は既定で無効です。有効時は影マップに 2 パスの B スプラインフィルターを適用してから、標準材質、MME、新インターフェース対応の MMV に渡します。失敗時はそのフレームの元の影マップを使います。
 
 #### アンチエイリアスとプロジェクト設定
 
 完全版は MMD オリジナル（MSAA）、FXAA、モーションベクトルを使う TAA、SMAA に対応します。
-「SMAA」を直接クリックすると前回の選択を適用します。初期値は「SMAA 1x（斜線・コーナー強化）」です。
-項目にカーソルを合わせて右へ移動すると、1x と T2x、それぞれの標準・斜線とコーナーの強化を選べます。
+「SMAA」はサブメニューを開くだけで、既定の選択はありません。
+サブメニューで 1x と T2x、それぞれの標準・斜線とコーナーの強化を選びます。
+SMAA を選択している場合だけ、「SMAA」と現在の方式の両方に選択マークを表示します。
 T2x はモーションベクトルで位置を合わせた 2 フレームのサンプルを合成します。
 頂点テクスチャ参照に対応する GPU では、TAA と T2x の現在・前フレームの変形後座標を GPU 上に保持します。
 入力が一致する材質で取得結果を共有し、元のインデックスバッファを再利用します。

@@ -44,6 +44,7 @@
 #include <utility>
 
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/ui_language.hpp"
@@ -62,8 +63,10 @@ void ConsumeNumpadViewPresets(MMDApp*);
 
 namespace {
 
-constexpr int kWidth = 256;
-constexpr int kHeight = 192;
+// Leave enough room for the full-size FPS and operation blocks. Narrow-pane
+// shrinking is covered by viewport_panel_checks and viewport_corner_layout_tests.
+constexpr int kWidth = 640;
+constexpr int kHeight = 480;
 constexpr float kTolerance = 0.002f;
 
 void Check(bool ok, const char* message) {
@@ -335,7 +338,7 @@ LRESULT CALLBACK ToolPressWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 int main() {
     HWND window = CreateWindowW(L"STATIC", L"Coordinate axis regression",
-                                WS_POPUP, 0, 0, kWidth, kHeight, nullptr,
+                                WS_POPUP, 0, 0, kWidth, kHeight + 192, nullptr,
                                 nullptr, GetModuleHandleW(nullptr), nullptr);
     Check(window != nullptr, "create the test window");
     auto* d3d = Direct3DCreate9(D3D_SDK_VERSION);
@@ -354,6 +357,9 @@ int main() {
 
     auto app = std::make_unique<MMDApp>();
     app->state = MMDAppState{};
+    // This fixture has no sidebar. Reserve the normal bottom panels in the
+    // hidden host so its presentation frame ends at the test render target.
+    app->SidebarWidth() = -9;
     auto renderer = std::make_unique<D3DRenderer>();
     std::memset(renderer.get(), 0, sizeof(*renderer));
     app->Renderer() = renderer.get();
@@ -976,7 +982,7 @@ int main() {
     Check(app->TextOverlayPrimitiveCount() == 18,
           "the caption draws one white face over an eight-direction outline");
     const TextBatch outlined = ReadTextBatch(app.get(), -1);
-    const float glyphHeight = kSceneFontRowHeight * renderer->viewScale;
+    const float glyphHeight = kSceneFontRowHeight * FrameOverlayScale(app.get());
     const float outlineGrowth =
         (outlined.maxY - outlined.minY) - glyphHeight;
     if (!(outlineGrowth >= 0.0f && outlineGrowth <= 2.5f)) {
@@ -1479,8 +1485,10 @@ int main() {
         static constexpr float kHudScales[3] = {1.0f, 1.5f, 2.0f};
         static constexpr int kScaleCentreX[4] = {150, 110, 70, 30};
         // The four buttons answer at any HUD scale, one drag mode each.
-        for (float hudScale : kHudScales) {
-            renderer->viewScale = hudScale;
+        for (float sceneScale : kHudScales) {
+            renderer->viewScale = sceneScale;
+            const float hudScale = FrameOverlayScale(app.get());
+            Check(hudScale == 1.0f, "HUD holds its normal size across scene scales");
             for (int column = 0; column < 4; ++column) {
                 app->MouseX() = app->PreviousMouseX() =
                     wideView.right -
@@ -1586,8 +1594,10 @@ int main() {
         // plate) while it is off.
         const float kScaleV0 = 0.783203125f;       // y 401..430 of the sheet
         const float kScaleV1 = 0.83984375f;
-        for (float hudScale : kHudScales) {
-            renderer->viewScale = hudScale;
+        for (float sceneScale : kHudScales) {
+            renderer->viewScale = sceneScale;
+            const float hudScale = FrameOverlayScale(app.get());
+            Check(hudScale == 1.0f, "HUD holds its normal size across scene scales");
             PrepareFrameSpriteOverlay(app.get());
             const SpriteBand row = ReadSpriteBand(app.get(), kScaleV0, kScaleV1);
             Check(row.quads == 4 && row.washQuads == 0,
@@ -1643,8 +1653,10 @@ int main() {
         app->EnglishUI() = kUiEnglish;
         app->state.optflag[0] = 0;
         app->state.coordinateSystem = 0;
-        for (float hudScale : kHudScales) {
-            renderer->viewScale = hudScale;
+        for (float sceneScale : kHudScales) {
+            renderer->viewScale = sceneScale;
+            const float hudScale = FrameOverlayScale(app.get());
+            Check(hudScale == 1.0f, "HUD holds its normal size across scene scales");
             Check(InitSceneFontTexture(app.get()),
                   "rebuild the HUD atlas for the caption position check");
             PrepareFrameTextOverlay(app.get());
@@ -1727,9 +1739,9 @@ int main() {
         const auto channel = [](DWORD pixel, int shift) {
             return static_cast<int>((pixel >> shift) & 0xFF);
         };
-        // Uniform cell centre (screen 106,167): the white button under the
+        // Uniform cell centre: the white button under the
         // wash ends at 255 * (255 - 160) / 255 = 95 per channel.
-        const DWORD washed = ReadPixel(device, read, 106, 167);
+        const DWORD washed = ReadPixel(device, read, kWidth - 150, kHeight - 25);
         for (int c = 0; c < 3; ++c) {
             const int got = channel(washed, 16 - 8 * c);
             if (std::abs(got - 95) > 8) {
@@ -1741,9 +1753,9 @@ int main() {
                 std::exit(1);
             }
         }
-        // X cell centre (screen 146,167): transparent texels must leave the
+        // X cell centre: transparent texels must leave the
         // background untouched.
-        const DWORD clipped = ReadPixel(device, read, 146, 167);
+        const DWORD clipped = ReadPixel(device, read, kWidth - 110, kHeight - 25);
         for (int c = 0; c < 3; ++c)
             Check(std::abs(channel(clipped, 16 - 8 * c) -
                            channel(0xFF406080u, 16 - 8 * c)) <= 2,

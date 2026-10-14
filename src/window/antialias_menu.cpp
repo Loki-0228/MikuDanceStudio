@@ -10,8 +10,7 @@ MMDApp* owner=nullptr;
 HMENU parent=nullptr, popup=nullptr, smaaPopup=nullptr;
 HHOOK hook=nullptr;
 int position=-1;
-bool selected=false,smaaSelected=false;
-int smaaPosition=-1;
+bool selected=false;
 bool Locate(HMENU menu,HMENU& result,int& index) {
     for(int i=0;i<GetMenuItemCount(menu);++i) {
         MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_ID|MIIM_SUBMENU;
@@ -53,16 +52,15 @@ void Populate(MMDApp* app) {
         AppendMenuW(smaaPopup,MF_STRING|(Supported(app,modes[i])?MF_ENABLED:MF_GRAYED),command,smaaLabels[i]);
         MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_FTYPE|MIIM_STATE;item.fType=MFT_RADIOCHECK;
         item.fState=(Supported(app,modes[i])?MFS_ENABLED:MFS_GRAYED)|
-            (app->antialiasing.lastSmaaAlgorithm==modes[i]?MFS_CHECKED:MFS_UNCHECKED);
+            (app->antialiasing.algorithm==modes[i]?MFS_CHECKED:MFS_UNCHECKED);
         SetMenuItemInfoW(smaaPopup,command,FALSE,&item);
     }
     MENUITEMINFOW smaa{sizeof(smaa)};smaa.fMask=MIIM_ID|MIIM_SUBMENU|MIIM_STRING|MIIM_FTYPE|MIIM_STATE;
     smaa.wID=kSmaaCommand;smaa.hSubMenu=smaaPopup;smaa.dwTypeData=const_cast<wchar_t*>(L"SMAA");
     smaa.fType=MFT_RADIOCHECK;
     smaa.fState=((Supported(app,Algorithm::Smaa) || Supported(app,Algorithm::SmaaStandard))?MFS_ENABLED:MFS_GRAYED)|
-        (app->antialiasing.algorithm>=Algorithm::Smaa?MFS_CHECKED:MFS_UNCHECKED);
-    smaaPosition=GetMenuItemCount(popup);
-    InsertMenuItemW(popup,smaaPosition,TRUE,&smaa);
+        (app->antialiasing.algorithm>=Algorithm::Smaa && app->antialiasing.algorithm<Algorithm::Count?MFS_CHECKED:MFS_UNCHECKED);
+    InsertMenuItemW(popup,GetMenuItemCount(popup),TRUE,&smaa);
 }
 void Detach() {
     if(hook){UnhookWindowsHookEx(hook);hook=nullptr;}
@@ -71,7 +69,7 @@ void Detach() {
         SetMenuItemInfoW(parent,position,TRUE,&item);
     }
     if(IsMenu(popup))DestroyMenu(popup);
-    popup=parent=smaaPopup=nullptr;position=smaaPosition=-1;selected=smaaSelected=false;
+    popup=parent=smaaPopup=nullptr;position=-1;selected=false;
 }
 }
 void RefreshMenu(MMDApp* app) {
@@ -89,17 +87,11 @@ LRESULT CALLBACK MenuFilter(int code,WPARAM wp,LPARAM lp) {
     if(code==MSGF_MENU && owner && position>=0) {
         const auto& message=*reinterpret_cast<MSG*>(lp);
         bool activate=message.message==WM_KEYDOWN && message.wParam==VK_RETURN && selected;
-        bool activateSmaa=message.message==WM_KEYDOWN && message.wParam==VK_RETURN && smaaSelected;
         if(message.message==WM_LBUTTONUP) {
             RECT rect{};
             activate=selected && GetMenuItemRect(owner->MainWindow(),parent,position,&rect) && PtInRect(&rect,message.pt);
             // Clicking the arrow opens the submenu; the label remains a toggle.
             if(activate && message.pt.x>=rect.right-GetSystemMetrics(SM_CXMENUCHECK)-8)activate=false;
-            activateSmaa=smaaSelected && GetMenuItemRect(owner->MainWindow(),popup,smaaPosition,&rect) && PtInRect(&rect,message.pt);
-            if(activateSmaa && message.pt.x>=rect.right-GetSystemMetrics(SM_CXMENUCHECK)-8)activateSmaa=false;
-        }
-        if(activateSmaa && !(GetMenuState(popup,kSmaaCommand,MF_BYCOMMAND)&(MF_DISABLED|MF_GRAYED))) {
-            EndMenu();PostMessageW(owner->MainWindow(),WM_COMMAND,kSmaaCommand,0);return 1;
         }
         if(activate){EndMenu();PostMessageW(owner->MainWindow(),WM_COMMAND,277,0);return 1;}
     }
@@ -120,18 +112,15 @@ bool HandleMessage(MMDApp* app,UINT message,WPARAM wp,LPARAM lp) {
     } else if(message==WM_MENUSELECT) {
         selected=reinterpret_cast<HMENU>(lp)==parent &&
             ((HIWORD(wp)&MF_POPUP)?LOWORD(wp)==position:LOWORD(wp)==277);
-        smaaSelected=reinterpret_cast<HMENU>(lp)==popup &&
-            ((HIWORD(wp)&MF_POPUP)?LOWORD(wp)==smaaPosition:LOWORD(wp)==kSmaaCommand);
     } else if(message==WM_EXITMENULOOP || message==WM_DESTROY) {
         Detach();if(message==WM_DESTROY)owner=nullptr;
     } else if(message==WM_COMMAND && HIWORD(wp)==0 &&
               ((LOWORD(wp)>=kFirstCommand && LOWORD(wp)<kFirstCommand+unsigned(Algorithm::Count)) || LOWORD(wp)==kSmaaCommand)) {
+        // The SMAA parent only opens its submenu. Ignore the former shortcut
+        // command so stale queued input cannot apply a remembered variant.
+        if(LOWORD(wp)==kSmaaCommand)return true;
         std::wstring error;
-        auto algorithm=LOWORD(wp)==kSmaaCommand?app->antialiasing.lastSmaaAlgorithm:Algorithm(LOWORD(wp)-kFirstCommand);
-        if(LOWORD(wp)==kSmaaCommand && !Supported(app,algorithm)) {
-            if(algorithm==Algorithm::SmaaT2xStandard)algorithm=Algorithm::SmaaStandard;
-            else if(algorithm==Algorithm::SmaaT2xEnhanced)algorithm=Algorithm::Smaa;
-        }
+        const auto algorithm=Algorithm(LOWORD(wp)-kFirstCommand);
         if(!Select(app,algorithm,error))
             MessageBoxW(app->MainWindow(),error.c_str(),DialogTitle(app),MB_OK|MB_ICONERROR);
         return true;

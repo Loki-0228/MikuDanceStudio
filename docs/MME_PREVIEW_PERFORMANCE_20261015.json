@@ -1,0 +1,227 @@
+{
+  "project": "D:/MMD-Next/tests/ToonGlass_Ray/UserFile/Stage.pmm",
+  "method": "ABBA, fixed frame 0, physics off, MME on, MSAA, 0.5 s warmup and 1.5 s measurement per block, GPU drained at boundaries, PERF on in both builds",
+  "scope": "Short hidden-host diagnostic redraw throughput; not animation playback FPS. Production build has PERF and DIAG off.",
+  "baseline": "bd7ff2e plus shared corrected harness; scalar vertex bounds",
+  "candidate": "Same harness and settings, SSE2 full vertex bounds",
+  "runs": [
+    {
+      "run": "abba-1-baseline",
+      "executable_sha256": "56e5f250284a7fd4e0962ea491e680ed3e3c2b93853a2d41f93bea60f3ca1051",
+      "exit_code": 0,
+      "sources_unchanged": true,
+      "rows": [
+        {
+          "percent": 100,
+          "frames": 67,
+          "fps": 43.8746,
+          "scene_ms": 22.5801,
+          "bounds_ms": 3.832,
+          "shadow_size": 8192
+        },
+        {
+          "percent": 25,
+          "frames": 64,
+          "fps": 42.0043,
+          "scene_ms": 23.6536,
+          "bounds_ms": 3.9923,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 25,
+          "frames": 67,
+          "fps": 44.373,
+          "scene_ms": 22.3949,
+          "bounds_ms": 3.774,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 100,
+          "frames": 65,
+          "fps": 42.9047,
+          "scene_ms": 23.0893,
+          "bounds_ms": 3.9116,
+          "shadow_size": 8192
+        }
+      ]
+    },
+    {
+      "run": "abba-2-candidate",
+      "executable_sha256": "f55918843d1fb6da764b9ec431f08b12438090e43b1e6516a75d75545b6ca0ac",
+      "exit_code": 0,
+      "sources_unchanged": true,
+      "rows": [
+        {
+          "percent": 100,
+          "frames": 73,
+          "fps": 48.0108,
+          "scene_ms": 20.6367,
+          "bounds_ms": 1.9731,
+          "shadow_size": 8192
+        },
+        {
+          "percent": 25,
+          "frames": 75,
+          "fps": 49.5128,
+          "scene_ms": 20.0569,
+          "bounds_ms": 1.8864,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 25,
+          "frames": 73,
+          "fps": 48.4885,
+          "scene_ms": 20.4781,
+          "bounds_ms": 1.886,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 100,
+          "frames": 74,
+          "fps": 48.4316,
+          "scene_ms": 20.45,
+          "bounds_ms": 1.919,
+          "shadow_size": 8192
+        }
+      ]
+    },
+    {
+      "run": "abba-3-candidate",
+      "executable_sha256": "f55918843d1fb6da764b9ec431f08b12438090e43b1e6516a75d75545b6ca0ac",
+      "exit_code": 0,
+      "sources_unchanged": true,
+      "rows": [
+        {
+          "percent": 100,
+          "frames": 68,
+          "fps": 44.9634,
+          "scene_ms": 22.0246,
+          "bounds_ms": 1.9887,
+          "shadow_size": 8192
+        },
+        {
+          "percent": 25,
+          "frames": 76,
+          "fps": 50.0823,
+          "scene_ms": 19.8365,
+          "bounds_ms": 1.8325,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 25,
+          "frames": 73,
+          "fps": 47.9687,
+          "scene_ms": 20.7108,
+          "bounds_ms": 1.9098,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 100,
+          "frames": 75,
+          "fps": 49.4516,
+          "scene_ms": 20.0223,
+          "bounds_ms": 1.8145,
+          "shadow_size": 8192
+        }
+      ]
+    },
+    {
+      "run": "abba-4-baseline",
+      "executable_sha256": "56e5f250284a7fd4e0962ea491e680ed3e3c2b93853a2d41f93bea60f3ca1051",
+      "exit_code": 0,
+      "sources_unchanged": true,
+      "rows": [
+        {
+          "percent": 100,
+          "frames": 67,
+          "fps": 44.2724,
+          "scene_ms": 22.3793,
+          "bounds_ms": 3.5721,
+          "shadow_size": 8192
+        },
+        {
+          "percent": 25,
+          "frames": 66,
+          "fps": 43.508,
+          "scene_ms": 22.8434,
+          "bounds_ms": 3.7271,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 25,
+          "frames": 66,
+          "fps": 43.6031,
+          "scene_ms": 22.8042,
+          "bounds_ms": 3.6503,
+          "shadow_size": 2048
+        },
+        {
+          "percent": 100,
+          "frames": 66,
+          "fps": 43.6573,
+          "scene_ms": 22.7096,
+          "bounds_ms": 3.6606,
+          "shadow_size": 8192
+        }
+      ]
+    }
+  ],
+  "aggregates": {
+    "100": {
+      "baseline": {
+        "frames": 265,
+        "fps": 43.67749431147552,
+        "bounds_ms": 3.743125660377358
+      },
+      "candidate": {
+        "frames": 290,
+        "fps": 47.717814366699145,
+        "bounds_ms": 1.9219358620689655
+      },
+      "fps_increase_percent": 9.250347619327837,
+      "bounds_time_decrease_percent": 48.654252182514014
+    },
+    "25": {
+      "baseline": {
+        "frames": 263,
+        "fps": 43.36930359865103,
+        "bounds_ms": 3.7843102661596957
+      },
+      "candidate": {
+        "frames": 297,
+        "fps": 49.01314169911629,
+        "bounds_ms": 1.878260606060606
+      },
+      "fps_increase_percent": 13.013439534779181,
+      "bounds_time_decrease_percent": 50.36716141230517
+    }
+  },
+  "aa_native": {
+    "mode": "native",
+    "version": "candidate",
+    "exit_code": 0,
+    "seconds": 15.952,
+    "host_sha256": "710f737c27f155ed1ac3fd0543077a20e96dbbc5f872fbbb5559af96b6566f19",
+    "model_sha256": "0982fe329a857c219d70fdd7fa552fd0e81905c034df0ce35e96dcc479493007",
+    "passed": 854
+  },
+  "aa_mme": {
+    "mode": "mme",
+    "version": "candidate",
+    "exit_code": 0,
+    "seconds": 18.07,
+    "host_sha256": "710f737c27f155ed1ac3fd0543077a20e96dbbc5f872fbbb5559af96b6566f19",
+    "model_sha256": "0982fe329a857c219d70fdd7fa552fd0e81905c034df0ce35e96dcc479493007",
+    "passed": 854
+  },
+  "final_stage": {
+    "exit_code": 0,
+    "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\Stage.pmm",
+    "native": false,
+    "accessory": null,
+    "sources_unchanged": true,
+    "executable_sha256": "710f737c27f155ed1ac3fd0543077a20e96dbbc5f872fbbb5559af96b6566f19",
+    "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\mme-preview-20261015\\final-stage-targets\\result.log"
+  },
+  "production_sha256": "4a78ff23fead6ed3508c1a3a9618824d90051c28f2d074a5578e231ba4040854"
+}

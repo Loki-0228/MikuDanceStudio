@@ -3,6 +3,11 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <cstddef>
+#include <cstring>
+#if defined(_M_X64) || defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 namespace mikudancestudio {
 struct NativeShadowBounds {
@@ -22,6 +27,42 @@ struct NativeShadowBounds {
                 index & 4 ? maximum[2] : minimum[2]};
     }
 };
+// Read every position from the already locked vertex buffer. SIMD compares
+// preserve the scalar Include rule: ignore the whole non-finite vertex and
+// keep the earlier bit pattern for equal coordinates (including signed zero).
+inline NativeShadowBounds NativeShadowVertexBounds(const void* data,
+                                                   std::size_t stride,
+                                                   std::size_t count) {
+    NativeShadowBounds bounds;
+    if (!data || stride < 12 || count > (std::numeric_limits<std::size_t>::max)() / stride)
+        return bounds;
+    const auto* bytes = static_cast<const unsigned char*>(data);
+#if defined(_M_X64) || defined(__SSE2__)
+    if (stride >= 16) {
+        __m128 low = _mm_set1_ps(INFINITY), high = _mm_set1_ps(-INFINITY);
+        const __m128 sign = _mm_set1_ps(-0.0f);
+        const __m128 largest = _mm_set1_ps((std::numeric_limits<float>::max)());
+        for (std::size_t i = 0; i < count; ++i, bytes += stride) {
+            const __m128 point = _mm_loadu_ps(reinterpret_cast<const float*>(bytes));
+            if ((_mm_movemask_ps(_mm_cmple_ps(_mm_andnot_ps(sign, point), largest)) & 7) != 7)
+                continue;
+            // MINPS/MAXPS return their second operand on equality.
+            low = _mm_min_ps(point, low);
+            high = _mm_max_ps(point, high);
+        }
+        float minimum[4], maximum[4];
+        _mm_storeu_ps(minimum, low); _mm_storeu_ps(maximum, high);
+        std::memcpy(bounds.minimum.data(), minimum, 12);
+        std::memcpy(bounds.maximum.data(), maximum, 12);
+        return bounds;
+    }
+#endif
+    for (std::size_t i = 0; i < count; ++i, bytes += stride) {
+        float point[3]; std::memcpy(point, bytes, sizeof(point));
+        bounds.Include(point);
+    }
+    return bounds;
+}
 inline float NativeShadowLateralScale(float range, int mode) {
     const float base = std::isfinite(range) ? (std::max)(range, .00001f) : .01784f;
     return base * (mode == 1 ? 2.f : 3.f);

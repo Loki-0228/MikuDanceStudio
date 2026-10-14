@@ -1,4 +1,5 @@
 #include "mikudancestudio/save_compatibility.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 // ===========================================================================
 // dialog_gaps.cpp - remaining dialog/feature gap functions (round N)
 // ===========================================================================
@@ -259,6 +260,7 @@ int SavePmdFile(unsigned char* model, char* path, void* /*localeTable*/) {
 
     // Fold the base vertex morph back into the vertex positions so the
     // written PMD carries the current shape (0x490345..0x490395).
+    model_vertex_cache::Invalidate(model);
     if (mdl::Morphs(model) != nullptr && state.morph0Count != 0) {
         for (std::uint32_t i = 0; i < state.morph0Count; ++i) {
             const mdl::PmdVertexMorphEntry& entry = state.morph0Table[i];

@@ -1,4 +1,5 @@
 #include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x004BF3E0 - ModelLoadPMD  (original: sub_4BF3E0, 0x2C95 bytes)
@@ -980,6 +981,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
     }
     model.loadComplete = 1;
     PostLoadInit(m);                                          // 0x49C850
+    model_vertex_cache::RegisterLoaded(m);
     return true;
 }
 

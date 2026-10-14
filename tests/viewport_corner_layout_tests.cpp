@@ -35,6 +35,7 @@
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/viewport_corner_settings.hpp"
 #include "mikudancestudio/viewport_tool_layout.hpp"
+#include "mikudancestudio/frame_presentation.hpp"
 
 namespace {
 
@@ -177,10 +178,12 @@ void DrawChecks(IDirect3DDevice9* device) {
 
     for (Corner corner : kCorners) {
         settings::ResetCacheForTest(corner);
-        for (float scale : kScales) {
-            renderer->viewScale = scale;
+        for (float sceneScale : kScales) {
+            renderer->viewScale = sceneScale;
             RECT view{100, 50, 1380, 770};
             app->ViewportRect() = view;
+            const float scale = FrameOverlayScale(app.get());
+            Check(scale == 1.0f, "HUD size is independent of scene scale when it fits");
             const layout::Anchor a = layout::Make(view, scale, corner);
             app->SpriteOverlayPrimitiveCount() = 0;
             mikudancestudio::PrepareFrameSpriteOverlay(app.get());
@@ -281,10 +284,12 @@ void HitChecks(IDirect3DDevice9* device) {
 
     for (Corner corner : kCorners) {
         settings::ResetCacheForTest(corner);
-        for (float scale : kScales) {
-            renderer->viewScale = scale;
+        for (float sceneScale : kScales) {
+            renderer->viewScale = sceneScale;
             RECT view{100, 50, 1380, 770};
             app->ViewportRect() = view;
+            const float scale = FrameOverlayScale(app.get());
+            Check(scale == 1.0f, "HUD size is independent of scene scale when it fits");
             const layout::Anchor a = layout::Make(view, scale, corner);
             for (const Row& row : rows) {
                 const int x = static_cast<int>(a.X(

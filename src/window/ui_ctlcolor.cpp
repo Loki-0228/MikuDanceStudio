@@ -95,11 +95,13 @@ LRESULT HandleCtlColor(HWND control, HDC dc) {
         GetClientRect(ctrl, &client);
         GetWindowRect(ctrl, &position);
         MapWindowPoints(nullptr, GetParent(ctrl), reinterpret_cast<POINT*>(&position), 2);
-        const LONG top = FrameOverlayRect(app).bottom - position.top;
+        const auto panels = FramePanelLayout(app);
+        const LONG top = panels.bottomBand.top - position.top;
         TRIVERTEX vertices[2]{};
         vertices[0].x = client.left; vertices[0].y = top;
         vertices[0].Red = vertices[0].Green = vertices[0].Blue = 0x7800;
-        vertices[1].x = client.right; vertices[1].y = top + 32;
+        vertices[1].x = client.right;
+        vertices[1].y = top + panels.bottomBand.bottom - panels.bottomBand.top;
         vertices[1].Red = vertices[1].Green = vertices[1].Blue = 0xC800;
         GRADIENT_RECT gradient{0,1};
         const int saved = SaveDC(dc);

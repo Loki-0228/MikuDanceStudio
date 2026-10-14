@@ -136,19 +136,18 @@ std::array<float, 16> ReferenceShadowProjection(MMDApp* app, const float frame[1
 
 void IncludeMeshBounds(IDirect3DVertexBuffer9* buffer, UINT stride, UINT count,
                        const Matrix* local, NativeShadowBounds& scene) {
+    MMD_PERF_SCOPE(ShadowBounds);
     if (!buffer || !PlausibleD3dObject(buffer) || stride < 12) return;
     D3DVERTEXBUFFER_DESC desc{};
     if (FAILED(buffer->GetDesc(&desc))) return;
     count = (std::min)(count, desc.Size / stride);
     void* data = nullptr;
-    if (!count || FAILED(buffer->Lock(0, 0, &data, D3DLOCK_READONLY))) return;
-    NativeShadowBounds mesh;
+    if (!count) return;
+    { MMD_PERF_SCOPE(ShadowBoundsLock);
+      if (FAILED(buffer->Lock(0, 0, &data, D3DLOCK_READONLY))) return; }
     // Coverage must include every vertex, not a sparse density sample.
     // Accumulate the local AABB first; transform only its eight corners.
-    for (UINT i = 0; i < count; ++i) {
-        const auto* p = reinterpret_cast<const float*>(static_cast<const char*>(data) + i * stride);
-        mesh.Include(p);
-    }
+    const NativeShadowBounds mesh = NativeShadowVertexBounds(data, stride, count);
     buffer->Unlock();
     if (!mesh.Valid()) return;
     for (unsigned corner = 0; corner < 8; ++corner) {

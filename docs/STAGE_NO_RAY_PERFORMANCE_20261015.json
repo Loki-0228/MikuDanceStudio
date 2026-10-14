@@ -1,0 +1,1838 @@
+{
+  "project": "D:/MMD-Next/tests/ToonGlass_Ray/UserFile/StageNoRay.pmm",
+  "method": "PERF=OFF, DIAG=OFF, ABBA, project shadow/AA settings, frozen frame 0, physics off, 0.5 second warmup and 4 second measurement per block, scales 100/25/25/100, GPU drained at boundaries, captures outside timing",
+  "scope": "Hidden-host repeated redraw throughput; not animation playback FPS.",
+  "production_sha256": "dbae57913e3d1f287dd20876e729efec761057c3d9ca3657a57c91b333fdaf15",
+  "modes": {
+    "mme": {
+      "runs": [
+        {
+          "build": "baseline",
+          "folder": "mme-abba-final-1-baseline",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": false,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "9fb86bddf77b63537fd16228b17d5a311fec7b8f57e4ec59b1ff274085413bbe",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\mme-abba-final-1-baseline\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "236",
+              "fps": "58.7673",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "16.5056",
+              "present_ms": "0.465623"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "238",
+              "fps": "59.1966",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "16.4908",
+              "present_ms": "0.371126"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "233",
+              "fps": "57.8721",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "16.8337",
+              "present_ms": "0.41426"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "224",
+              "fps": "55.65",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "17.3956",
+              "present_ms": "0.527678"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "e1e8b14df7492f653514a32dd28c5a2b209d8dedd8a4a0e8e1a3967d039d696c",
+            "frame-0-0-1.bgra": "69e125eba9e042fde6d78e48283b0cefdfbfc74c13506a74d668127de1a9c864",
+            "frame-0-0-2.bgra": "eb5da25e609c4286ef3a8ef728cb8ca12dec977cd8a459211c7505b67426105c",
+            "frame-0-0-3.bgra": "bc8b48ff9aa869ec7eccfe8e0c76b6049fc1e4c8be1cdd82569ef1678f4edd03"
+          }
+        },
+        {
+          "build": "candidate",
+          "folder": "mme-abba-final-2-candidate",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": false,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "5ceac1cff57f7742a38a2a08d19841becd4d94b8773755e48aef8ae994d44865",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\mme-abba-final-2-candidate\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "255",
+              "fps": "63.4428",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "15.405",
+              "present_ms": "0.316181"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "250",
+              "fps": "62.2635",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "15.7233",
+              "present_ms": "0.308133"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "260",
+              "fps": "64.6774",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "15.1971",
+              "present_ms": "0.23561"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "246",
+              "fps": "61.1922",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "15.9205",
+              "present_ms": "0.378646"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "17aeee1ed257d7cbde4baaf652701e924988a8394f48e3d578488ac8333fd82e",
+            "frame-0-0-1.bgra": "049dd4f4463715ecc5a410433bcc45309d421774b9214a4fd56f0b575484b8b7",
+            "frame-0-0-2.bgra": "4b770ff4f69c83ecdcd61622baa8cf43ad845a8807a01f19906004da7509b65d",
+            "frame-0-0-3.bgra": "353b3336db4ebee4f5ea03703864a4d95ae566a76fe47bcaa00e08ac11c48c39"
+          }
+        },
+        {
+          "build": "candidate",
+          "folder": "mme-abba-final-3-candidate",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": false,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "5ceac1cff57f7742a38a2a08d19841becd4d94b8773755e48aef8ae994d44865",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\mme-abba-final-3-candidate\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "259",
+              "fps": "64.4045",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "15.1516",
+              "present_ms": "0.334256"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "258",
+              "fps": "64.1707",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "15.2753",
+              "present_ms": "0.278961"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "252",
+              "fps": "62.7803",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "15.6232",
+              "present_ms": "0.276146"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "260",
+              "fps": "64.803",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "15.1279",
+              "present_ms": "0.263513"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "377b8e2e0f4c76f6fb5e9f902eb174908f5af3e7f527c1f300b4baa29925d900",
+            "frame-0-0-1.bgra": "2fb05ea25b77a5422a091ccb817516b74aefc0c14f520885ed8a831764493b50",
+            "frame-0-0-2.bgra": "145c5f2490033b508a6e9879938b901a186b70ffe490036c3e2f97cb98ecd08a",
+            "frame-0-0-3.bgra": "8f4586ba9dcaefbc4fd48db4f105e7009ae09357fa91c65f0963de6f380a933d"
+          }
+        },
+        {
+          "build": "baseline",
+          "folder": "mme-abba-final-4-baseline",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": false,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "9fb86bddf77b63537fd16228b17d5a311fec7b8f57e4ec59b1ff274085413bbe",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\mme-abba-final-4-baseline\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "229",
+              "fps": "57.0192",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "16.896",
+              "present_ms": "0.595195"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "223",
+              "fps": "55.6225",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "17.4457",
+              "present_ms": "0.49885"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "228",
+              "fps": "56.7976",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "17.093",
+              "present_ms": "0.480314"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "222",
+              "fps": "55.3382",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "17.3774",
+              "present_ms": "0.646824"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "a81e5e5185f09ae4fea13a3c286669edfedb285357e0e00bb4400a86698dc40b",
+            "frame-0-0-1.bgra": "ac0a9fadf79e49d9ee099fc15257e9d23ad44015093666071acd4c20fb78d2dc",
+            "frame-0-0-2.bgra": "f769a404565d4c1a9f152e8fb5a8639a215447dbad26161d296dc547853d89e3",
+            "frame-0-0-3.bgra": "a3b54a3f8fb5544ebf5cbaba053eb8545e20c6ecf7c47a283924beffa880e56e"
+          }
+        }
+      ],
+      "aggregates": {
+        "100": {
+          "baseline": {
+            "ms_per_frame": 17.638729272530785,
+            "samples_ms": [
+              17.016265848524604,
+              17.969451931716083,
+              17.53795212840587,
+              18.070699805920682
+            ],
+            "range_percent": 5.93923428257772
+          },
+          "candidate": {
+            "ms_per_frame": 15.757947939520873,
+            "samples_ms": [
+              15.76222991419042,
+              16.341952078859723,
+              15.526865358787042,
+              15.431384349489994
+            ],
+            "range_percent": 5.8203519240528045
+          },
+          "frame_time_decrease_percent": 10.662793809863036,
+          "throughput_increase_percent": 11.935445784110765
+        },
+        "25": {
+          "baseline": {
+            "ms_per_frame": 17.429548719734363,
+            "samples_ms": [
+              16.89286209005247,
+              17.279483550795632,
+              17.97833610499348,
+              17.60637773427046
+            ],
+            "range_percent": 6.223002528566944
+          },
+          "candidate": {
+            "ms_per_frame": 15.754577787728971,
+            "samples_ms": [
+              16.06077396869755,
+              15.46135126025474,
+              15.583436054149324,
+              15.928563578065095
+            ],
+            "range_percent": 3.8044092119754063
+          },
+          "frame_time_decrease_percent": 9.60995008498946,
+          "throughput_increase_percent": 10.63164595442223
+        }
+      },
+      "all_four_captures_identical": {
+        "frame-0-0-0.bgra": false,
+        "frame-0-0-1.bgra": false,
+        "frame-0-0-2.bgra": false,
+        "frame-0-0-3.bgra": false
+      }
+    },
+    "native": {
+      "runs": [
+        {
+          "build": "baseline",
+          "folder": "native-abba-final-1-baseline",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": true,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "9fb86bddf77b63537fd16228b17d5a311fec7b8f57e4ec59b1ff274085413bbe",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\native-abba-final-1-baseline\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "252",
+              "fps": "62.7512",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "13.2029",
+              "present_ms": "2.70467"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "239",
+              "fps": "59.5481",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "16.4908",
+              "present_ms": "0.282653"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "251",
+              "fps": "62.4732",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "15.7141",
+              "present_ms": "0.274161"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "253",
+              "fps": "62.9781",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "13.1645",
+              "present_ms": "2.68604"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "fc301452b9679bbbf185a1fa788f84b989a9afb4c1e41dbf30f385d7f7b2158b",
+            "frame-0-0-1.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-2.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-3.bgra": "aa8c716db1206824323e620ce3a717d6284e6536b8e2af733fd74323b3c2b601"
+          }
+        },
+        {
+          "build": "candidate",
+          "folder": "native-abba-final-2-candidate",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": true,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "5ceac1cff57f7742a38a2a08d19841becd4d94b8773755e48aef8ae994d44865",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\native-abba-final-2-candidate\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "283",
+              "fps": "70.5315",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "11.4721",
+              "present_ms": "2.68094"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "276",
+              "fps": "68.8839",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "14.233",
+              "present_ms": "0.267758"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "251",
+              "fps": "62.6223",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "15.6632",
+              "present_ms": "0.286934"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "292",
+              "fps": "72.7732",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "11.1374",
+              "present_ms": "2.5795"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "39daef9b4933fc404429080f86117855fa597341579025705781b8836dab143e",
+            "frame-0-0-1.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-2.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-3.bgra": "967208baabee676f56adde48298dc799545af495c146fa0a197c63d4b79d1b58"
+          }
+        },
+        {
+          "build": "candidate",
+          "folder": "native-abba-final-3-candidate",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": true,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "5ceac1cff57f7742a38a2a08d19841becd4d94b8773755e48aef8ae994d44865",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\native-abba-final-3-candidate\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "303",
+              "fps": "75.582",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "10.7928",
+              "present_ms": "2.41452"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "289",
+              "fps": "72.0689",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "13.6027",
+              "present_ms": "0.257188"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "272",
+              "fps": "67.8251",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "14.4544",
+              "present_ms": "0.272672"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "266",
+              "fps": "66.1291",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "12.2541",
+              "present_ms": "2.84103"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "31f62a9795523768fd8f00ff4396520ff6500b2ba0e0dfda105de4632022ed86",
+            "frame-0-0-1.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-2.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-3.bgra": "253d0553c35a5094db0a6d20df457850badb8f6d8644cba094251bc00d127249"
+          }
+        },
+        {
+          "build": "baseline",
+          "folder": "native-abba-final-4-baseline",
+          "result": {
+            "exit_code": 0,
+            "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+            "seconds_per_block": 4.0,
+            "project_settings": true,
+            "environment": {},
+            "native": true,
+            "accessory": null,
+            "sources_unchanged": true,
+            "executable_sha256": "9fb86bddf77b63537fd16228b17d5a311fec7b8f57e4ec59b1ff274085413bbe",
+            "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-no-ray-20261015\\native-abba-final-4-baseline\\result.log"
+          },
+          "rows": [
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "0",
+              "percent": "100",
+              "frames": "219",
+              "fps": "54.5595",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "15.1383",
+              "present_ms": "3.15794"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "1",
+              "percent": "25",
+              "frames": "229",
+              "fps": "56.9949",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "17.2392",
+              "present_ms": "0.2868"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "2",
+              "percent": "25",
+              "frames": "233",
+              "fps": "58.1367",
+              "shadow_size": "2048",
+              "filtered_size": "2048",
+              "scene_ms": "16.9015",
+              "present_ms": "0.279461"
+            },
+            {
+              "enhanced": "0",
+              "adaptive": "0",
+              "block": "3",
+              "percent": "100",
+              "frames": "217",
+              "fps": "54.0042",
+              "shadow_size": "8192",
+              "filtered_size": "8192",
+              "scene_ms": "15.2875",
+              "present_ms": "3.19704"
+            }
+          ],
+          "captures": {
+            "frame-0-0-0.bgra": "e3cf9b0cc5c67ac45306634fde96c2582cbc9886e1b4a10f3e73bacf9a3a1e5e",
+            "frame-0-0-1.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-2.bgra": "b42a016c829a2b280b6209a69425436d311a1d387c9920bee961ced2142f5855",
+            "frame-0-0-3.bgra": "312fadca2a8278c101bf9f895ca1c63bbbfd26a3fb75c0100bdb2366b0fb98b5"
+          }
+        }
+      ],
+      "aggregates": {
+        "100": {
+          "baseline": {
+            "ms_per_frame": 17.07258379168294,
+            "samples_ms": [
+              15.935950228840246,
+              15.878535554422887,
+              18.328613715301643,
+              18.517078301317305
+            ],
+            "range_percent": 15.401000002193351
+          },
+          "candidate": {
+            "ms_per_frame": 14.035125580173965,
+            "samples_ms": [
+              14.178062284227616,
+              13.74132235493286,
+              13.230663385462147,
+              15.121935728748767
+            ],
+            "range_percent": 13.548094757316893
+          },
+          "frame_time_decrease_percent": 17.791438299976015,
+          "throughput_increase_percent": 21.641831376269938
+        },
+        "25": {
+          "baseline": {
+            "ms_per_frame": 16.86657953935502,
+            "samples_ms": [
+              16.793147052550797,
+              16.006863743173074,
+              17.545429503341527,
+              17.200838712895642
+            ],
+            "range_percent": 9.051988023907128
+          },
+          "candidate": {
+            "ms_per_frame": 14.738294921989757,
+            "samples_ms": [
+              14.517180357093602,
+              15.9687523454105,
+              13.875610700315947,
+              14.7438042848444
+            ],
+            "range_percent": 14.30670683647863
+          },
+          "frame_time_decrease_percent": 12.618353427257178,
+          "throughput_increase_percent": 14.44050772922063
+        }
+      },
+      "all_four_captures_identical": {
+        "frame-0-0-0.bgra": false,
+        "frame-0-0-1.bgra": true,
+        "frame-0-0-2.bgra": true,
+        "frame-0-0-3.bgra": false
+      }
+    }
+  },
+  "source_sha256": {
+    "include\\mikudancestudio\\affine_skinning.hpp": "707658e2aa06269c1541734b8863082677e09da45ca2df5bd20dccc4c30a58a3",
+    "src\\model\\model_skinning.cpp": "e3e66692bec5870fa3c790effbabf0efd311cc191ed5277bd00635138249433b"
+  },
+  "pixel_differences": {
+    "mme": [
+      {
+        "frame": "frame-0-0-0.bgra",
+        "run": "mme-abba-final-2-candidate",
+        "pixels": 34804,
+        "bounds": [
+          259,
+          54,
+          984,
+          355
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-0.bgra",
+        "run": "mme-abba-final-3-candidate",
+        "pixels": 29223,
+        "bounds": [
+          259,
+          54,
+          984,
+          327
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-0.bgra",
+        "run": "mme-abba-final-4-baseline",
+        "pixels": 29881,
+        "bounds": [
+          259,
+          54,
+          984,
+          434
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-1.bgra",
+        "run": "mme-abba-final-2-candidate",
+        "pixels": 33096,
+        "bounds": [
+          259,
+          54,
+          984,
+          372
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-1.bgra",
+        "run": "mme-abba-final-3-candidate",
+        "pixels": 27612,
+        "bounds": [
+          259,
+          54,
+          984,
+          372
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-1.bgra",
+        "run": "mme-abba-final-4-baseline",
+        "pixels": 26396,
+        "bounds": [
+          259,
+          54,
+          984,
+          372
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-2.bgra",
+        "run": "mme-abba-final-2-candidate",
+        "pixels": 31436,
+        "bounds": [
+          259,
+          54,
+          984,
+          372
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-2.bgra",
+        "run": "mme-abba-final-3-candidate",
+        "pixels": 26452,
+        "bounds": [
+          259,
+          54,
+          984,
+          372
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-2.bgra",
+        "run": "mme-abba-final-4-baseline",
+        "pixels": 25456,
+        "bounds": [
+          259,
+          54,
+          984,
+          309
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-3.bgra",
+        "run": "mme-abba-final-2-candidate",
+        "pixels": 32002,
+        "bounds": [
+          259,
+          54,
+          984,
+          355
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-3.bgra",
+        "run": "mme-abba-final-3-candidate",
+        "pixels": 27294,
+        "bounds": [
+          259,
+          54,
+          984,
+          355
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-3.bgra",
+        "run": "mme-abba-final-4-baseline",
+        "pixels": 24053,
+        "bounds": [
+          259,
+          54,
+          984,
+          433
+        ],
+        "width": 1463,
+        "height": 914
+      }
+    ],
+    "native": [
+      {
+        "frame": "frame-0-0-0.bgra",
+        "run": "native-abba-final-2-candidate",
+        "pixels": 98,
+        "bounds": [
+          270,
+          120,
+          984,
+          408
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-0.bgra",
+        "run": "native-abba-final-3-candidate",
+        "pixels": 142,
+        "bounds": [
+          269,
+          115,
+          980,
+          408
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-0.bgra",
+        "run": "native-abba-final-4-baseline",
+        "pixels": 127,
+        "bounds": [
+          269,
+          101,
+          980,
+          443
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-1.bgra",
+        "run": "native-abba-final-2-candidate",
+        "pixels": 0,
+        "bounds": null,
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-1.bgra",
+        "run": "native-abba-final-3-candidate",
+        "pixels": 0,
+        "bounds": null,
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-1.bgra",
+        "run": "native-abba-final-4-baseline",
+        "pixels": 0,
+        "bounds": null,
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-2.bgra",
+        "run": "native-abba-final-2-candidate",
+        "pixels": 0,
+        "bounds": null,
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-2.bgra",
+        "run": "native-abba-final-3-candidate",
+        "pixels": 0,
+        "bounds": null,
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-2.bgra",
+        "run": "native-abba-final-4-baseline",
+        "pixels": 0,
+        "bounds": null,
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-3.bgra",
+        "run": "native-abba-final-2-candidate",
+        "pixels": 132,
+        "bounds": [
+          286,
+          100,
+          975,
+          286
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-3.bgra",
+        "run": "native-abba-final-3-candidate",
+        "pixels": 123,
+        "bounds": [
+          330,
+          100,
+          956,
+          354
+        ],
+        "width": 1463,
+        "height": 914
+      },
+      {
+        "frame": "frame-0-0-3.bgra",
+        "run": "native-abba-final-4-baseline",
+        "pixels": 68,
+        "bounds": [
+          270,
+          100,
+          975,
+          286
+        ],
+        "width": 1463,
+        "height": 914
+      }
+    ]
+  },
+  "verification": {
+    "bdef1_scalar_parity_cases": 20000,
+    "parallel_morph_poses": 6,
+    "parallel_morph_vertices_per_pose": 65539,
+    "model_edge_regressions": "passed",
+    "source_project_unchanged": true,
+    "antialias_native": {
+      "mode": "native",
+      "version": "candidate",
+      "exit_code": 0,
+      "seconds": 15.935,
+      "host_sha256": "5ceac1cff57f7742a38a2a08d19841becd4d94b8773755e48aef8ae994d44865",
+      "model_sha256": "0982fe329a857c219d70fdd7fa552fd0e81905c034df0ce35e96dcc479493007",
+      "passed": 854
+    },
+    "antialias_mme": {
+      "mode": "mme",
+      "version": "candidate",
+      "exit_code": 0,
+      "seconds": 17.825,
+      "host_sha256": "5ceac1cff57f7742a38a2a08d19841becd4d94b8773755e48aef8ae994d44865",
+      "model_sha256": "0982fe329a857c219d70fdd7fa552fd0e81905c034df0ce35e96dcc479493007",
+      "passed": 854
+    }
+  },
+  "resolution_diagnosis": {
+    "result": {
+      "exit_code": 0,
+      "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+      "seconds_per_block": 4.0,
+      "project_settings": true,
+      "environment": {},
+      "native": false,
+      "accessory": null,
+      "sources_unchanged": true,
+      "executable_sha256": "5ff99b0155e0a39c75a675281f8e9b346e314cf2845e1cc11e7f52fe865cdeaf",
+      "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-scale-20261015\\trace-restored\\result.log"
+    },
+    "rows": [
+      {
+        "enhanced": "0",
+        "adaptive": "0",
+        "block": "0",
+        "percent": "100",
+        "frames": "271",
+        "fps": "67.5617",
+        "shadow_size": "8192",
+        "filtered_size": "8192",
+        "scene_ms": "14.5248",
+        "present_ms": "0.237302"
+      },
+      {
+        "enhanced": "0",
+        "adaptive": "0",
+        "block": "1",
+        "percent": "25",
+        "frames": "276",
+        "fps": "68.734",
+        "shadow_size": "2048",
+        "filtered_size": "2048",
+        "scene_ms": "14.3491",
+        "present_ms": "0.172968"
+      },
+      {
+        "enhanced": "0",
+        "adaptive": "0",
+        "block": "2",
+        "percent": "25",
+        "frames": "274",
+        "fps": "68.1344",
+        "shadow_size": "2048",
+        "filtered_size": "2048",
+        "scene_ms": "14.4692",
+        "present_ms": "0.181106"
+      },
+      {
+        "enhanced": "0",
+        "adaptive": "0",
+        "block": "3",
+        "percent": "100",
+        "frames": "271",
+        "fps": "67.5564",
+        "shadow_size": "8192",
+        "filtered_size": "8192",
+        "scene_ms": "14.5381",
+        "present_ms": "0.225235"
+      }
+    ],
+    "work": [
+      {
+        "percent": 100,
+        "model_updates": 6,
+        "model_cpu_ms": 7.072,
+        "draws": 618,
+        "primitives": 2893587
+      },
+      {
+        "percent": 25,
+        "model_updates": 6,
+        "model_cpu_ms": 7.385,
+        "draws": 619,
+        "primitives": 2893589
+      },
+      {
+        "percent": 25,
+        "model_updates": 6,
+        "model_cpu_ms": 7.074,
+        "draws": 619,
+        "primitives": 2893589
+      },
+      {
+        "percent": 100,
+        "model_updates": 6,
+        "model_cpu_ms": 7.2,
+        "draws": 618,
+        "primitives": 2893587
+      }
+    ],
+    "targets": [
+      {
+        "percent": 100,
+        "width": 8192,
+        "height": 8192,
+        "viewport_width": 8192,
+        "viewport_height": 8192,
+        "format": 114,
+        "draws": 30,
+        "primitives": 291124
+      },
+      {
+        "percent": 100,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 1024,
+        "viewport_height": 1024,
+        "format": 21,
+        "draws": 37,
+        "primitives": 102625
+      },
+      {
+        "percent": 100,
+        "width": 256,
+        "height": 256,
+        "viewport_width": 256,
+        "viewport_height": 256,
+        "format": 111,
+        "draws": 96,
+        "primitives": 750808
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 115,
+        "draws": 48,
+        "primitives": 375404
+      },
+      {
+        "percent": 100,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 167,
+        "primitives": 997746
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 116,
+        "draws": 49,
+        "primitives": 375464
+      },
+      {
+        "percent": 100,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 114,
+        "draws": 102,
+        "primitives": 204
+      },
+      {
+        "percent": 100,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 116,
+        "draws": 34,
+        "primitives": 68
+      },
+      {
+        "percent": 100,
+        "width": 1,
+        "height": 8,
+        "viewport_width": 1,
+        "viewport_height": 8,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 1,
+        "height": 1024,
+        "viewport_width": 1,
+        "viewport_height": 1024,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 42,
+        "primitives": 84
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 114,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 100,
+        "width": 1,
+        "height": 1,
+        "viewport_width": 1,
+        "viewport_height": 1,
+        "format": 111,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 22,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 100,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 464,
+        "format": 21,
+        "draws": 3,
+        "primitives": 40
+      },
+      {
+        "percent": 25,
+        "width": 2048,
+        "height": 2048,
+        "viewport_width": 2048,
+        "viewport_height": 2048,
+        "format": 114,
+        "draws": 30,
+        "primitives": 291124
+      },
+      {
+        "percent": 25,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 1024,
+        "viewport_height": 1024,
+        "format": 21,
+        "draws": 37,
+        "primitives": 102625
+      },
+      {
+        "percent": 25,
+        "width": 256,
+        "height": 256,
+        "viewport_width": 256,
+        "viewport_height": 256,
+        "format": 111,
+        "draws": 96,
+        "primitives": 750808
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 115,
+        "draws": 48,
+        "primitives": 375404
+      },
+      {
+        "percent": 25,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 21,
+        "draws": 167,
+        "primitives": 997746
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 116,
+        "draws": 49,
+        "primitives": 375464
+      },
+      {
+        "percent": 25,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 114,
+        "draws": 102,
+        "primitives": 204
+      },
+      {
+        "percent": 25,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 116,
+        "draws": 34,
+        "primitives": 68
+      },
+      {
+        "percent": 25,
+        "width": 1,
+        "height": 8,
+        "viewport_width": 1,
+        "viewport_height": 8,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 1,
+        "height": 1024,
+        "viewport_width": 1,
+        "viewport_height": 1024,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 21,
+        "draws": 43,
+        "primitives": 86
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 114,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 25,
+        "width": 1,
+        "height": 1,
+        "viewport_width": 1,
+        "viewport_height": 1,
+        "format": 111,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 22,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 25,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 464,
+        "format": 21,
+        "draws": 3,
+        "primitives": 40
+      },
+      {
+        "percent": 25,
+        "width": 2048,
+        "height": 2048,
+        "viewport_width": 2048,
+        "viewport_height": 2048,
+        "format": 114,
+        "draws": 30,
+        "primitives": 291124
+      },
+      {
+        "percent": 25,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 1024,
+        "viewport_height": 1024,
+        "format": 21,
+        "draws": 37,
+        "primitives": 102625
+      },
+      {
+        "percent": 25,
+        "width": 256,
+        "height": 256,
+        "viewport_width": 256,
+        "viewport_height": 256,
+        "format": 111,
+        "draws": 96,
+        "primitives": 750808
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 115,
+        "draws": 48,
+        "primitives": 375404
+      },
+      {
+        "percent": 25,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 21,
+        "draws": 167,
+        "primitives": 997746
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 116,
+        "draws": 49,
+        "primitives": 375464
+      },
+      {
+        "percent": 25,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 114,
+        "draws": 102,
+        "primitives": 204
+      },
+      {
+        "percent": 25,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 116,
+        "draws": 34,
+        "primitives": 68
+      },
+      {
+        "percent": 25,
+        "width": 1,
+        "height": 8,
+        "viewport_width": 1,
+        "viewport_height": 8,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 1,
+        "height": 1024,
+        "viewport_width": 1,
+        "viewport_height": 1024,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 21,
+        "draws": 43,
+        "primitives": 86
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 114,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 25,
+        "width": 1,
+        "height": 1,
+        "viewport_width": 1,
+        "viewport_height": 1,
+        "format": 111,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 181,
+        "height": 102,
+        "viewport_width": 181,
+        "viewport_height": 102,
+        "format": 22,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 25,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 25,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 464,
+        "format": 21,
+        "draws": 3,
+        "primitives": 40
+      },
+      {
+        "percent": 100,
+        "width": 8192,
+        "height": 8192,
+        "viewport_width": 8192,
+        "viewport_height": 8192,
+        "format": 114,
+        "draws": 30,
+        "primitives": 291124
+      },
+      {
+        "percent": 100,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 1024,
+        "viewport_height": 1024,
+        "format": 21,
+        "draws": 37,
+        "primitives": 102625
+      },
+      {
+        "percent": 100,
+        "width": 256,
+        "height": 256,
+        "viewport_width": 256,
+        "viewport_height": 256,
+        "format": 111,
+        "draws": 96,
+        "primitives": 750808
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 115,
+        "draws": 48,
+        "primitives": 375404
+      },
+      {
+        "percent": 100,
+        "width": 1024,
+        "height": 1024,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 167,
+        "primitives": 997746
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 116,
+        "draws": 49,
+        "primitives": 375464
+      },
+      {
+        "percent": 100,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 114,
+        "draws": 102,
+        "primitives": 204
+      },
+      {
+        "percent": 100,
+        "width": 512,
+        "height": 512,
+        "viewport_width": 512,
+        "viewport_height": 512,
+        "format": 116,
+        "draws": 34,
+        "primitives": 68
+      },
+      {
+        "percent": 100,
+        "width": 1,
+        "height": 8,
+        "viewport_width": 1,
+        "viewport_height": 8,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 1,
+        "height": 1024,
+        "viewport_width": 1,
+        "viewport_height": 1024,
+        "format": 116,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 42,
+        "primitives": 84
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 114,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 100,
+        "width": 1,
+        "height": 1,
+        "viewport_width": 1,
+        "viewport_height": 1,
+        "format": 111,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 725,
+        "height": 406,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 22,
+        "draws": 2,
+        "primitives": 4
+      },
+      {
+        "percent": 100,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 406,
+        "format": 21,
+        "draws": 1,
+        "primitives": 2
+      },
+      {
+        "percent": 100,
+        "width": 1463,
+        "height": 914,
+        "viewport_width": 725,
+        "viewport_height": 464,
+        "format": 21,
+        "draws": 3,
+        "primitives": 40
+      }
+    ],
+    "ms_per_frame": {
+      "100": 14.801865945992374,
+      "25": 14.61262441218422
+    },
+    "note": "Frozen-frame diagnostic only; resolution scales, but no material throughput gain verified. Experimental StretchRect implementation reverted.",
+    "production_executable_sha256": "f1cc743c757e09918dd708707a473202d04c4a9cbd01aaab85fb3904cb001b5b",
+    "excluded_runs": [
+      ".local/artifacts/stage-scale-20261015/trace-work/"
+    ],
+    "restored_scale_regression": {
+      "native": {
+        "passed": 1135,
+        "images": [
+          {
+            "name": "scale-100.bgra",
+            "differing_pixels": 0,
+            "bounds": null
+          },
+          {
+            "name": "scale-150.bgra",
+            "differing_pixels": 0,
+            "bounds": null
+          },
+          {
+            "name": "scale-25.bgra",
+            "differing_pixels": 0,
+            "bounds": null
+          },
+          {
+            "name": "scale-50.bgra",
+            "differing_pixels": 0,
+            "bounds": null
+          }
+        ]
+      },
+      "mme": {
+        "passed": 1106,
+        "images": [
+          {
+            "name": "scale-100.bgra",
+            "differing_pixels": 258,
+            "bounds": [
+              268,
+              469,
+              293,
+              483
+            ]
+          },
+          {
+            "name": "scale-150.bgra",
+            "differing_pixels": 258,
+            "bounds": [
+              268,
+              469,
+              293,
+              483
+            ]
+          },
+          {
+            "name": "scale-25.bgra",
+            "differing_pixels": 258,
+            "bounds": [
+              268,
+              469,
+              293,
+              483
+            ]
+          },
+          {
+            "name": "scale-50.bgra",
+            "differing_pixels": 258,
+            "bounds": [
+              268,
+              469,
+              293,
+              483
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

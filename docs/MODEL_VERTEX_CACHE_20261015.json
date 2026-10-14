@@ -1,0 +1,1782 @@
+{
+  "date": "2026-10-15",
+  "metric": "整批耗时包含最后 GPU 排空，除以帧数；不是动画播放 FPS",
+  "protocol": {
+    "version_order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "preview_order_percent": [
+      100,
+      25,
+      25,
+      100
+    ],
+    "seconds_per_block": 4,
+    "warmup_seconds": 0.5,
+    "frame": 0,
+    "physics": false,
+    "mme": true,
+    "project_display_settings": true,
+    "capture_during_timing": false,
+    "gpu_timestamps_during_timing": false
+  },
+  "hardware": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "amd_hardware_tested": false,
+  "head": "bd7ff2e4a018c62ad5df0a08642f94fd1d58d89e",
+  "working_tree_status": " M CMakeLists.txt\n M README.md\n M include/mikudancestudio/affine_skinning.hpp\n M include/mikudancestudio/native_shadow_projection.hpp\n M include/mikudancestudio/perf_timing.hpp\n M src/features/dialog_gaps.cpp\n M src/model/model_init.cpp\n M src/model/model_skinning.cpp\n M src/model/pmd_load.cpp\n M src/model/pmx_load.cpp\n M src/model/skinning_backend.cpp\n M src/render/adaptive_shadow.cpp\n M src/render/device_reset.cpp\n M src/window/antialias_menu.cpp\n M src/window/enhance_model_io.cpp\n M tests/affine_skinning_tests.cpp\n M tests/antialias_scene_checks.hpp\n M tests/mme_display_tests.cpp\n M tests/morph_runtime_tests.cpp\n M tests/native_shadow_tests.cpp\n M tests/viewport_scale_performance_checks.hpp\n?? docs/MME_PREVIEW_PERFORMANCE_20261015.json\n?? docs/MME_PREVIEW_PERFORMANCE_20261015.md\n?? docs/MODEL_VERTEX_CACHE_20261015.md\n?? docs/STAGE_NO_RAY_GPU_TIMING_20261015.json\n?? docs/STAGE_NO_RAY_GPU_TIMING_20261015.md\n?? docs/STAGE_NO_RAY_PERFORMANCE_20261015.json\n?? docs/STAGE_NO_RAY_PERFORMANCE_20261015.md\n?? include/mikudancestudio/model_vertex_cache.hpp\n?? src/model/model_vertex_cache.cpp\n?? tests/model_vertex_cache_tests.cpp\n?? tests/viewport_scale_gpu_checks.hpp\n?? tests/viewport_scale_performance_runner.py\n?? tests/viewport_scale_target_checks.hpp\n",
+  "source_hashes": {
+    "CMakeLists.txt": "70e4703664f72b685e8dbacb8c46b8c48058eb360acfd22df026e16eb1776b48",
+    "include/mikudancestudio/model_vertex_cache.hpp": "3c7ba47bf32b41c06ae8e6e79f0023be618903fab0d08f51c3c36fe5b3c88468",
+    "src/model/model_vertex_cache.cpp": "446dabeda06babea2ab511888cd6269475511ae5fcedeec7ee4fbd08d0ca537d",
+    "src/model/model_skinning.cpp": "a6782aeb7088ed7bbf2ca3158aafaaf2cd1016b83b2ef358e87d30aa2104469a",
+    "src/model/skinning_backend.cpp": "b641ce0c775eccf6a93ec2de63069664ae656c154b90e54c157c86f62210e16a",
+    "src/model/model_init.cpp": "80384f59e9cd77a495d1de86111a51adf864802073fa18b6aa63bdb123289e73",
+    "src/model/pmd_load.cpp": "1bd6d97f0a06b44917f14ee9d4bf387f6bb2243bd9d4dc8aae7e1d7b1f06b654",
+    "src/model/pmx_load.cpp": "43498bcc5914bbab3c44f9f578ff5eabe463c8cd246a7863639cd8342edb6f98",
+    "src/render/device_reset.cpp": "f3dd1d9819a9b463d19dcc90b4ec18ab31ed1ea589bcce8767ea917c7ae81d34",
+    "src/window/enhance_model_io.cpp": "ed1a6fddb6add5a98f0389301cae94930ee0759e27f9ea8b81d23e47bf50f334",
+    "src/features/dialog_gaps.cpp": "8f841f40bc9b90fa2d256528d6c2d05ec538d1023a65ae44e2f8d8b9c5f9c183",
+    "tests/model_vertex_cache_tests.cpp": "08586683cadbe6665d0714334261599e80715f5bc4ba81b7fae267d93cc1ee4c",
+    "tests/mme_display_tests.cpp": "12ebdfd0a8b3873d08c21e7647431a760348207e3c2b3193bb21cca35ec78ba3",
+    "tests/viewport_scale_performance_checks.hpp": "8874a8584fd17a29589dfaa255ae4e3f4222711a493ea07fbe0f825dc1d953ad",
+    "tests/viewport_scale_performance_runner.py": "5382da1997c102fc2a8e10abd6684e2d3a88b4192b2191fd649bf6639aa68c1b"
+  },
+  "executable_hashes": {
+    "baseline_host": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+    "candidate_host": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+    "production": "031536353bb11ef6015b44ef35ecafc1fa2a16243734c7805023427f128db393"
+  },
+  "production_build_log_sha256": "97cdc214782d196cd686eb00ca78d1dacf12c5f15b2e108e6429fcab75f8618e",
+  "measurements": {
+    "StageNoRay": {
+      "results": {
+        "baseline": {
+          "100": {
+            "ms_per_frame": 22.449819180513735,
+            "frames": 716,
+            "block_ms": [
+              22.4171015584369,
+              21.81848330995119,
+              25.610162112326172,
+              20.540882518476526
+            ],
+            "range_over_median_percent": 22.919464539383934
+          },
+          "25": {
+            "ms_per_frame": 22.081167417982314,
+            "frames": 727,
+            "block_ms": [
+              21.893239805412883,
+              21.709822174846565,
+              23.792868801362854,
+              21.101231045819212
+            ],
+            "range_over_median_percent": 12.346095128650532
+          }
+        },
+        "candidate": {
+          "100": {
+            "ms_per_frame": 8.777599879516725,
+            "frames": 1831,
+            "block_ms": [
+              8.85167252352332,
+              8.60244653579478,
+              8.835171048911507,
+              8.825891635702497
+            ],
+            "range_over_median_percent": 2.822321534996431
+          },
+          "25": {
+            "ms_per_frame": 6.108151072161527,
+            "frames": 2622,
+            "block_ms": [
+              5.905139833711263,
+              5.968617011752206,
+              6.255238762463563,
+              6.324790649429504
+            ],
+            "range_over_median_percent": 6.866095665222527
+          }
+        }
+      },
+      "reduction_percent": {
+        "100": 60.90124464282718,
+        "25": 72.33773488268011
+      },
+      "candidate_preview_reduction_percent": 30.412058466968674,
+      "comparisons": [
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-4-baseline",
+          "block": 0,
+          "changed_pixels": 26894,
+          "bounds": [
+            259,
+            54,
+            983,
+            354
+          ],
+          "max_channel_difference": 124
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-4-baseline",
+          "block": 1,
+          "changed_pixels": 24864,
+          "bounds": [
+            259,
+            54,
+            983,
+            324
+          ],
+          "max_channel_difference": 118
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-4-baseline",
+          "block": 2,
+          "changed_pixels": 25364,
+          "bounds": [
+            259,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 107
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-4-baseline",
+          "block": 3,
+          "changed_pixels": 34416,
+          "bounds": [
+            259,
+            54,
+            983,
+            368
+          ],
+          "max_channel_difference": 140
+        },
+        {
+          "left": "StageNoRay-abba-2-candidate",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 0,
+          "changed_pixels": 48633,
+          "bounds": [
+            259,
+            54,
+            983,
+            344
+          ],
+          "max_channel_difference": 156
+        },
+        {
+          "left": "StageNoRay-abba-2-candidate",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 1,
+          "changed_pixels": 50624,
+          "bounds": [
+            259,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 124
+        },
+        {
+          "left": "StageNoRay-abba-2-candidate",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 2,
+          "changed_pixels": 47436,
+          "bounds": [
+            259,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 139
+        },
+        {
+          "left": "StageNoRay-abba-2-candidate",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 3,
+          "changed_pixels": 51579,
+          "bounds": [
+            259,
+            54,
+            983,
+            456
+          ],
+          "max_channel_difference": 151
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-2-candidate",
+          "block": 0,
+          "changed_pixels": 20237,
+          "bounds": [
+            259,
+            54,
+            983,
+            354
+          ],
+          "max_channel_difference": 123
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-2-candidate",
+          "block": 1,
+          "changed_pixels": 9948,
+          "bounds": [
+            263,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 67
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-2-candidate",
+          "block": 2,
+          "changed_pixels": 16168,
+          "bounds": [
+            259,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 107
+        },
+        {
+          "left": "StageNoRay-abba-1-baseline",
+          "right": "StageNoRay-abba-2-candidate",
+          "block": 3,
+          "changed_pixels": 24358,
+          "bounds": [
+            259,
+            54,
+            983,
+            354
+          ],
+          "max_channel_difference": 123
+        },
+        {
+          "left": "StageNoRay-abba-4-baseline",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 0,
+          "changed_pixels": 47454,
+          "bounds": [
+            259,
+            54,
+            983,
+            344
+          ],
+          "max_channel_difference": 159
+        },
+        {
+          "left": "StageNoRay-abba-4-baseline",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 1,
+          "changed_pixels": 47092,
+          "bounds": [
+            259,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 118
+        },
+        {
+          "left": "StageNoRay-abba-4-baseline",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 2,
+          "changed_pixels": 41880,
+          "bounds": [
+            259,
+            54,
+            983,
+            371
+          ],
+          "max_channel_difference": 118
+        },
+        {
+          "left": "StageNoRay-abba-4-baseline",
+          "right": "StageNoRay-abba-3-candidate",
+          "block": 3,
+          "changed_pixels": 43007,
+          "bounds": [
+            259,
+            54,
+            983,
+            456
+          ],
+          "max_channel_difference": 128
+        }
+      ],
+      "raw_json_sha256": "01e4b3fe70524568ba4accc52de2b96b3548ee0f7bd5dc76f91b63497cdb49d2"
+    },
+    "Stage": {
+      "results": {
+        "baseline": {
+          "100": {
+            "ms_per_frame": 26.00294321429338,
+            "frames": 619,
+            "block_ms": [
+              25.961281345002064,
+              27.74340677937888,
+              25.70839481924428,
+              24.770439947783913
+            ],
+            "range_over_median_percent": 11.507588405023366
+          },
+          "25": {
+            "ms_per_frame": 25.929057598241027,
+            "frames": 619,
+            "block_ms": [
+              25.53867449171653,
+              26.648971749425048,
+              25.850814946941203,
+              25.702844276747665
+            ],
+            "range_over_median_percent": 4.307346071754053
+          }
+        },
+        "candidate": {
+          "100": {
+            "ms_per_frame": 14.535027519641796,
+            "frames": 1104,
+            "block_ms": [
+              14.60561907377006,
+              14.273296517743848,
+              15.056658204824755,
+              14.234956497972941
+            ],
+            "range_over_median_percent": 5.690668711212074
+          },
+          "25": {
+            "ms_per_frame": 10.03412040672325,
+            "frames": 1597,
+            "block_ms": [
+              10.34489893033745,
+              9.706947262155524,
+              9.770873027505008,
+              10.35138822467481
+            ],
+            "range_over_median_percent": 6.407320224845173
+          }
+        }
+      },
+      "reduction_percent": {
+        "100": 44.10237564318437,
+        "25": 61.30163863956265
+      },
+      "candidate_preview_reduction_percent": 30.965934580008735,
+      "comparisons": [
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-4-baseline",
+          "block": 0,
+          "changed_pixels": 17,
+          "bounds": [
+            578,
+            102,
+            625,
+            161
+          ],
+          "max_channel_difference": 3
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-4-baseline",
+          "block": 1,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-4-baseline",
+          "block": 2,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-4-baseline",
+          "block": 3,
+          "changed_pixels": 26,
+          "bounds": [
+            585,
+            84,
+            670,
+            433
+          ],
+          "max_channel_difference": 3
+        },
+        {
+          "left": "Stage-abba-2-candidate",
+          "right": "Stage-abba-3-candidate",
+          "block": 0,
+          "changed_pixels": 17,
+          "bounds": [
+            578,
+            102,
+            625,
+            161
+          ],
+          "max_channel_difference": 3
+        },
+        {
+          "left": "Stage-abba-2-candidate",
+          "right": "Stage-abba-3-candidate",
+          "block": 1,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-2-candidate",
+          "right": "Stage-abba-3-candidate",
+          "block": 2,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-2-candidate",
+          "right": "Stage-abba-3-candidate",
+          "block": 3,
+          "changed_pixels": 11,
+          "bounds": [
+            589,
+            118,
+            608,
+            135
+          ],
+          "max_channel_difference": 3
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-2-candidate",
+          "block": 0,
+          "changed_pixels": 27,
+          "bounds": [
+            578,
+            102,
+            625,
+            433
+          ],
+          "max_channel_difference": 5
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-2-candidate",
+          "block": 1,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-2-candidate",
+          "block": 2,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-1-baseline",
+          "right": "Stage-abba-2-candidate",
+          "block": 3,
+          "changed_pixels": 32,
+          "bounds": [
+            585,
+            118,
+            638,
+            433
+          ],
+          "max_channel_difference": 5
+        },
+        {
+          "left": "Stage-abba-4-baseline",
+          "right": "Stage-abba-3-candidate",
+          "block": 0,
+          "changed_pixels": 27,
+          "bounds": [
+            578,
+            102,
+            625,
+            433
+          ],
+          "max_channel_difference": 5
+        },
+        {
+          "left": "Stage-abba-4-baseline",
+          "right": "Stage-abba-3-candidate",
+          "block": 1,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-4-baseline",
+          "right": "Stage-abba-3-candidate",
+          "block": 2,
+          "changed_pixels": 0,
+          "bounds": null,
+          "max_channel_difference": 0
+        },
+        {
+          "left": "Stage-abba-4-baseline",
+          "right": "Stage-abba-3-candidate",
+          "block": 3,
+          "changed_pixels": 11,
+          "bounds": [
+            595,
+            84,
+            670,
+            214
+          ],
+          "max_channel_difference": 5
+        }
+      ],
+      "raw_json_sha256": "65d7c205ceea62bdc4060b51a5affb7ab84a4c0cb43a413c9e45f3787feb1fd9"
+    }
+  },
+  "real_scene_parity": {
+    "StageNoRay": {
+      "result": {
+        "exit_code": 0,
+        "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+        "seconds_per_block": 1.5,
+        "project_settings": true,
+        "gpu_timing": false,
+        "gpu_samples_per_block": 0,
+        "vertex_cache_disabled": false,
+        "vertex_cache_verified": true,
+        "gpu_per_draw_timing": false,
+        "environment": {},
+        "native": false,
+        "accessory": null,
+        "sources_unchanged": true,
+        "executable_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+        "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\owned-verify-StageNoRay\\result.log"
+      },
+      "checks": [
+        [
+          0,
+          100,
+          12,
+          12
+        ],
+        [
+          1,
+          25,
+          24,
+          24
+        ],
+        [
+          2,
+          25,
+          36,
+          36
+        ],
+        [
+          3,
+          100,
+          48,
+          48
+        ]
+      ],
+      "workload": [
+        "SCALE_WORK percent=100 model_updates=6 model_cpu_ms=0.039 draws=618 primitives=2893587",
+        "SCALE_WORK percent=25 model_updates=6 model_cpu_ms=0.041 draws=619 primitives=2893589",
+        "SCALE_WORK percent=25 model_updates=6 model_cpu_ms=0.140 draws=619 primitives=2893589",
+        "SCALE_WORK percent=100 model_updates=6 model_cpu_ms=0.050 draws=618 primitives=2893587"
+      ],
+      "log_sha256": "0d9961f20a9d528ca093b1d4e15da96dcbc318b976713788a99fda4bad1c504e"
+    },
+    "Stage": {
+      "result": {
+        "exit_code": 0,
+        "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\Stage.pmm",
+        "seconds_per_block": 1.5,
+        "project_settings": true,
+        "gpu_timing": false,
+        "gpu_samples_per_block": 0,
+        "vertex_cache_disabled": false,
+        "vertex_cache_verified": true,
+        "gpu_per_draw_timing": false,
+        "environment": {},
+        "native": false,
+        "accessory": null,
+        "sources_unchanged": true,
+        "executable_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+        "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\owned-verify-Stage\\result.log"
+      },
+      "checks": [
+        [
+          0,
+          100,
+          22,
+          20
+        ],
+        [
+          1,
+          25,
+          44,
+          40
+        ],
+        [
+          2,
+          25,
+          66,
+          60
+        ],
+        [
+          3,
+          100,
+          88,
+          80
+        ]
+      ],
+      "workload": [
+        "SCALE_WORK percent=100 model_updates=11 model_cpu_ms=0.046 draws=794 primitives=6885667",
+        "SCALE_WORK percent=25 model_updates=11 model_cpu_ms=0.048 draws=795 primitives=6885669",
+        "SCALE_WORK percent=25 model_updates=11 model_cpu_ms=0.049 draws=795 primitives=6885669",
+        "SCALE_WORK percent=100 model_updates=11 model_cpu_ms=0.051 draws=794 primitives=6885667"
+      ],
+      "log_sha256": "3e38c0c29aacb35c7de4a706456a59376b728259da6e5aa3b59f71a366e4647a"
+    }
+  },
+  "tests": {
+    "aa-native": {
+      "mode": "native",
+      "version": "candidate",
+      "exit_code": 0,
+      "seconds": 17.762,
+      "host_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+      "model_sha256": "0982fe329a857c219d70fdd7fa552fd0e81905c034df0ce35e96dcc479493007",
+      "passed": 854,
+      "frames": [
+        {
+          "name": "original-aa",
+          "mode": 0,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "disabled",
+          "mode": 0,
+          "frames": 4,
+          "ms": 15
+        },
+        {
+          "name": "fxaa",
+          "mode": 4,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa-reset",
+          "mode": 4,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "taa",
+          "mode": 5,
+          "frames": 18,
+          "ms": 953
+        },
+        {
+          "name": "taa-camera-moved",
+          "mode": 5,
+          "frames": 1,
+          "ms": 78
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 78
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 110
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 156
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 78
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 78
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 46
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 46
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 63
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 125
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 62
+        },
+        {
+          "name": "gpu-parity-reset",
+          "mode": 4,
+          "frames": 1,
+          "ms": 16
+        },
+        {
+          "name": "gpu-parity-warm",
+          "mode": 5,
+          "frames": 3,
+          "ms": 516
+        },
+        {
+          "name": "gpu-parity-motion",
+          "mode": 5,
+          "frames": 1,
+          "ms": 109
+        },
+        {
+          "name": "cpu-parity-reset",
+          "mode": 4,
+          "frames": 1,
+          "ms": 0
+        },
+        {
+          "name": "cpu-parity-warm",
+          "mode": 5,
+          "frames": 3,
+          "ms": 469
+        },
+        {
+          "name": "cpu-parity-motion",
+          "mode": 5,
+          "frames": 1,
+          "ms": 109
+        },
+        {
+          "name": "msaa2",
+          "mode": 1,
+          "frames": 4,
+          "ms": 94
+        },
+        {
+          "name": "msaa4",
+          "mode": 2,
+          "frames": 4,
+          "ms": 94
+        },
+        {
+          "name": "msaa8",
+          "mode": 3,
+          "frames": 4,
+          "ms": 94
+        },
+        {
+          "name": "smaa",
+          "mode": 6,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "smaa-reset",
+          "mode": 6,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "smaa-scale150",
+          "mode": 6,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "smaa-standard",
+          "mode": 7,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "smaa-t2x-standard",
+          "mode": 8,
+          "frames": 2,
+          "ms": 156
+        },
+        {
+          "name": "smaa-t2x-camera",
+          "mode": 8,
+          "frames": 1,
+          "ms": 62
+        },
+        {
+          "name": "smaa-t2x-enhanced",
+          "mode": 9,
+          "frames": 2,
+          "ms": 109
+        },
+        {
+          "name": "smaa-t2x-camera",
+          "mode": 9,
+          "frames": 1,
+          "ms": 62
+        },
+        {
+          "name": "fxaa-disabled",
+          "mode": 4,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa-reenabled",
+          "mode": 4,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa-scale150",
+          "mode": 4,
+          "frames": 4,
+          "ms": 15
+        }
+      ]
+    },
+    "aa-mme": {
+      "mode": "mme",
+      "version": "candidate",
+      "exit_code": 0,
+      "seconds": 19.453,
+      "host_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+      "model_sha256": "0982fe329a857c219d70fdd7fa552fd0e81905c034df0ce35e96dcc479493007",
+      "passed": 854,
+      "frames": [
+        {
+          "name": "original-aa",
+          "mode": 0,
+          "frames": 4,
+          "ms": 31
+        },
+        {
+          "name": "disabled",
+          "mode": 0,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa",
+          "mode": 4,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa-reset",
+          "mode": 4,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "taa",
+          "mode": 5,
+          "frames": 18,
+          "ms": 594
+        },
+        {
+          "name": "taa-camera-moved",
+          "mode": 5,
+          "frames": 1,
+          "ms": 31
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 31
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 31
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 31
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 32
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 31
+        },
+        {
+          "name": "taa-camera-playing",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "gpu-parity-reset",
+          "mode": 4,
+          "frames": 1,
+          "ms": 16
+        },
+        {
+          "name": "gpu-parity-warm",
+          "mode": 5,
+          "frames": 3,
+          "ms": 250
+        },
+        {
+          "name": "gpu-parity-motion",
+          "mode": 5,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "cpu-parity-reset",
+          "mode": 4,
+          "frames": 1,
+          "ms": 16
+        },
+        {
+          "name": "cpu-parity-warm",
+          "mode": 5,
+          "frames": 3,
+          "ms": 343
+        },
+        {
+          "name": "cpu-parity-motion",
+          "mode": 5,
+          "frames": 1,
+          "ms": 94
+        },
+        {
+          "name": "msaa2",
+          "mode": 1,
+          "frames": 4,
+          "ms": 140
+        },
+        {
+          "name": "msaa4",
+          "mode": 2,
+          "frames": 4,
+          "ms": 156
+        },
+        {
+          "name": "msaa8",
+          "mode": 3,
+          "frames": 4,
+          "ms": 156
+        },
+        {
+          "name": "smaa",
+          "mode": 6,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "smaa-reset",
+          "mode": 6,
+          "frames": 4,
+          "ms": 16
+        },
+        {
+          "name": "smaa-scale150",
+          "mode": 6,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "smaa-standard",
+          "mode": 7,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "smaa-t2x-standard",
+          "mode": 8,
+          "frames": 2,
+          "ms": 78
+        },
+        {
+          "name": "smaa-t2x-camera",
+          "mode": 8,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "smaa-t2x-enhanced",
+          "mode": 9,
+          "frames": 2,
+          "ms": 110
+        },
+        {
+          "name": "smaa-t2x-camera",
+          "mode": 9,
+          "frames": 1,
+          "ms": 47
+        },
+        {
+          "name": "fxaa-disabled",
+          "mode": 4,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa-reenabled",
+          "mode": 4,
+          "frames": 4,
+          "ms": 0
+        },
+        {
+          "name": "fxaa-scale150",
+          "mode": 4,
+          "frames": 4,
+          "ms": 16
+        }
+      ]
+    },
+    "vertex_cache": {
+      "passed_reference_cases": 492,
+      "log_sha256": "f15bf8da6f2b0938caa04332aaf753db9c26c381fd219269347a1bfb78ec5c1b"
+    },
+    "final_regressions": [
+      {
+        "name": "model_edge_tests",
+        "exit_code": 0
+      },
+      {
+        "name": "skinning_backend_tests",
+        "exit_code": 0
+      }
+    ]
+  },
+  "runs": {
+    "StageNoRay": [
+      {
+        "version": "baseline",
+        "folder": "StageNoRay-abba-1-baseline",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\StageNoRay-abba-1-baseline\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "179",
+            "fps": "44.6088",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "21.5819",
+            "present_ms": "0.776904"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "183",
+            "fps": "45.6762",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "21.297",
+            "present_ms": "0.56387"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "185",
+            "fps": "46.0621",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "21.1741",
+            "present_ms": "0.495905"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "184",
+            "fps": "45.8327",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "20.4601",
+            "present_ms": "1.30826"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "f7e7905a5be029dd8d05cf11c6db5b27b9c7e263d5de386180387bc548322bc3",
+          "frame-0-0-1.bgra": "c2379317cccae38cb7ebb6c8636e375460e5646da6e7e0479807b7603789be73",
+          "frame-0-0-2.bgra": "01a0fd1be3d630b1d1b28a8e841664732ae7ee7ddae0bb3fc6df7e3d0d299cb5",
+          "frame-0-0-3.bgra": "223387b76d25e21dee2fc3e567705475ed74607445cca5ce87ad70dc1e41ac49"
+        }
+      },
+      {
+        "version": "candidate",
+        "folder": "StageNoRay-abba-2-candidate",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\StageNoRay-abba-2-candidate\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "454",
+            "fps": "112.973",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "8.59492",
+            "present_ms": "0.217791"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "678",
+            "fps": "169.344",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "5.81578",
+            "present_ms": "0.0850658"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "671",
+            "fps": "167.543",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "5.88917",
+            "present_ms": "0.071492"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "467",
+            "fps": "116.246",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "8.36709",
+            "present_ms": "0.198134"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "35714cce5205a7047e52a209fbd8fc9f5210fe72a777583c540a7ebbd83e16d8",
+          "frame-0-0-1.bgra": "3eb0028d355bca4bcb21a7b8d4252467a1fd35eb950eefa06103eed9848cd66b",
+          "frame-0-0-2.bgra": "50c9656c6aecb12d1343e0bb85a08ad3e9b22d99b56d25c26f6fe040ef90cb1f",
+          "frame-0-0-3.bgra": "c3c51376f25bce4cc77c750f61d67839a9383aade0ec7e29bb2d4c4ea865bf16"
+        }
+      },
+      {
+        "version": "candidate",
+        "folder": "StageNoRay-abba-3-candidate",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\StageNoRay-abba-3-candidate\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "455",
+            "fps": "113.184",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "8.57795",
+            "present_ms": "0.217441"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "640",
+            "fps": "159.866",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "6.15302",
+            "present_ms": "0.0980662"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "633",
+            "fps": "158.108",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "6.22638",
+            "present_ms": "0.0940927"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "455",
+            "fps": "113.303",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "8.63512",
+            "present_ms": "0.183942"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "44ed6ff82aac2d3934a9d7349ad8b2b1b55cc683eec268582b162e9bc4cafa30",
+          "frame-0-0-1.bgra": "a0fb787fbd53fda34e3fe33a8745466a1036de68cd3792bbd10ecea8659ca147",
+          "frame-0-0-2.bgra": "13f9fec8fc4b59872482fdf68d524f37b55cf1a8216ee84872ed6f0c3ffdd97c",
+          "frame-0-0-3.bgra": "2ea66e8550215779b2b51897227c71dd9720a6073de7a4ee25e2096577ee7abd"
+        }
+      },
+      {
+        "version": "baseline",
+        "folder": "StageNoRay-abba-4-baseline",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\StageNoRay-abba-4-baseline\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "157",
+            "fps": "39.047",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "23.8461",
+            "present_ms": "1.70628"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "169",
+            "fps": "42.0294",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "23.0242",
+            "present_ms": "0.734779"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "190",
+            "fps": "47.3906",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "20.5855",
+            "present_ms": "0.479684"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "196",
+            "fps": "48.6834",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "19.3251",
+            "present_ms": "1.16691"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "c284b063587cc65eafe2f74051ff6dd7ef8176acd818306c05d36570209267a2",
+          "frame-0-0-1.bgra": "c67d2769b5dba82c706c9370e507fe8f533165c4ef4946723f75f0c5f63d491e",
+          "frame-0-0-2.bgra": "382891823032507badd676172061d5ad8a0b131d4a5b40fc77e2a0675bccae23",
+          "frame-0-0-3.bgra": "09999f4df34c7632ec97b0625cc32c1eb2339cf68fdb036827f9b1bfd8a92da0"
+        }
+      }
+    ],
+    "Stage": [
+      {
+        "version": "baseline",
+        "folder": "Stage-abba-1-baseline",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\Stage.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\Stage-abba-1-baseline\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "155",
+            "fps": "38.5189",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "25.3578",
+            "present_ms": "0.549446"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "157",
+            "fps": "39.1563",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "25.2066",
+            "present_ms": "0.323213"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "151",
+            "fps": "37.5249",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "26.3583",
+            "present_ms": "0.277332"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "145",
+            "fps": "36.0446",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "27.3015",
+            "present_ms": "0.370853"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "5946862343af5a47ee988af5b6aa43eeb62c6aa7b5ae82449ad5a9b23aa18ecf",
+          "frame-0-0-1.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-2.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-3.bgra": "28535e0439056c49a6516c0e33eb6e26da47b7b40576ca8aa899f0beb286425d"
+        }
+      },
+      {
+        "version": "candidate",
+        "folder": "Stage-abba-2-candidate",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\Stage.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\Stage-abba-2-candidate\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "275",
+            "fps": "68.4668",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "14.5331",
+            "present_ms": "0.0543615"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "387",
+            "fps": "96.666",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "10.2694",
+            "present_ms": "0.0736571"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "413",
+            "fps": "103.019",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "9.63107",
+            "present_ms": "0.0742317"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "281",
+            "fps": "70.0609",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "14.172",
+            "present_ms": "0.0832683"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "ff43a849a42b10e504fd8cbde072dbf18b468d156f80cbe2b4e5543a84e3a0de",
+          "frame-0-0-1.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-2.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-3.bgra": "21ddbbcfc4c65ce9019953a8225e1417bbd177fc0d42e1ce1cc0af1ad8c0ce0e"
+        }
+      },
+      {
+        "version": "candidate",
+        "folder": "Stage-abba-3-candidate",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\Stage.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "34a51309411c36126f93899fbf5825df17a1efadc5f06428c8a8b4217fc411b8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\Stage-abba-3-candidate\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "266",
+            "fps": "66.4158",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "14.9511",
+            "present_ms": "0.0877094"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "410",
+            "fps": "102.345",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "9.68845",
+            "present_ms": "0.0807546"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "387",
+            "fps": "96.6054",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "10.2217",
+            "present_ms": "0.127777"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "282",
+            "fps": "70.2496",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "14.0972",
+            "present_ms": "0.121957"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "87bbd71ee99a6d863e4fa14bec0301e0d7120d46a0f08629e89795a3b1b4cce4",
+          "frame-0-0-1.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-2.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-3.bgra": "f9015fedbf2863519b15ea166c4177693e0bcda741e3aaa28688b1f2ee3fa901"
+        }
+      },
+      {
+        "version": "baseline",
+        "folder": "Stage-abba-4-baseline",
+        "result": {
+          "exit_code": 0,
+          "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\Stage.pmm",
+          "seconds_per_block": 4.0,
+          "project_settings": true,
+          "gpu_timing": false,
+          "gpu_samples_per_block": 0,
+          "vertex_cache_disabled": false,
+          "vertex_cache_verified": false,
+          "gpu_per_draw_timing": false,
+          "environment": {},
+          "native": false,
+          "accessory": null,
+          "sources_unchanged": true,
+          "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+          "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015\\Stage-abba-4-baseline\\result.log"
+        },
+        "rows": [
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "0",
+            "percent": "100",
+            "frames": "157",
+            "fps": "38.8978",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "25.2283",
+            "present_ms": "0.440542"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "1",
+            "percent": "25",
+            "frames": "155",
+            "fps": "38.6835",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "25.5828",
+            "present_ms": "0.255297"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "2",
+            "percent": "25",
+            "frames": "156",
+            "fps": "38.9062",
+            "shadow_size": "2048",
+            "filtered_size": "2048",
+            "scene_ms": "25.3837",
+            "present_ms": "0.280546"
+          },
+          {
+            "enhanced": "0",
+            "adaptive": "0",
+            "block": "3",
+            "percent": "100",
+            "frames": "162",
+            "fps": "40.3707",
+            "shadow_size": "8192",
+            "filtered_size": "8192",
+            "scene_ms": "24.1394",
+            "present_ms": "0.583874"
+          }
+        ],
+        "captures": {
+          "frame-0-0-0.bgra": "e658f1a230034cf4f9f19741fc581ff7f242b2b5fc87380a217ad21c80dc93fb",
+          "frame-0-0-1.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-2.bgra": "a77d3a4a07370cb099d73ac3a1d97f45a2d4134449e1aa1ca18bec603b8608ee",
+          "frame-0-0-3.bgra": "1aa20481e38acb8d51338f36710afa76c3acc64c6dc536d71d87287e48e3985d"
+        }
+      }
+    ]
+  },
+  "artifacts": "D:\\MMD-Next\\MMS\\.local\\artifacts\\vertex-cache-20261015",
+  "limitations": [
+    "固定姿态关闭物理的后台渲染，不代表动画播放。",
+    "未变化模型可以命中缓存，运动骨骼、表情或相关相机参数变化仍重新计算。",
+    "同版本重复采样也存在波动，全部正式样本均保留。",
+    "StageNoRay 时间特效使独立运行截图不同，未冻结效果，不宣称最终画面逐像素一致。",
+    "模型几何来源登记后，新增源数据写入入口必须先使缓存失效。",
+    "未做 AMD 实机验证。"
+  ]
+}

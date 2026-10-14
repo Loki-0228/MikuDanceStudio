@@ -326,6 +326,7 @@ add_library(mikudancestudio_core STATIC
     src/model/key_registrars.cpp
     src/model/morph_apply.cpp
     src/model/model_skinning.cpp
+    src/model/model_vertex_cache.cpp
     src/model/skinning_backend.cpp
     src/window/skinning_menu.cpp
     src/window/recent_projects.cpp
@@ -673,6 +674,9 @@ if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     set_target_properties(model_edge_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_test(NAME model_edge_regressions COMMAND model_edge_tests)
+    add_executable(model_vertex_cache_tests EXCLUDE_FROM_ALL tests/model_vertex_cache_tests.cpp)
+    target_link_libraries(model_vertex_cache_tests PRIVATE mikudancestudio_core winmm dsound)
+    set_target_properties(model_vertex_cache_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(model_alpha_tests EXCLUDE_FROM_ALL tests/model_alpha_tests.cpp)
     target_include_directories(model_alpha_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(model_alpha_tests PRIVATE d3d9 user32)

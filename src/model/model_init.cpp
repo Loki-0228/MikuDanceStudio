@@ -13,6 +13,7 @@
 // Pose-history storage is shared with the saved PMM state block on both ABIs.
 // =========================================================================//
 #include "mikudancestudio/bone_scale.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/morph_curve.hpp"
 #include <cstdint>
 #include <cstring>
@@ -25,6 +26,7 @@ namespace mikudancestudio {
 void ModelInitMorphSlots(unsigned char* m);                  // 0x4A89B0
 
 void ModelInitDefaults(unsigned char* m) {                   // 0x4A8DC0
+    model_vertex_cache::Forget(m);
     bone_scale::Forget(m);
     morph_curve::Forget(m);
     mdl::ModelRecord& model = *mdl::Mdl(m);

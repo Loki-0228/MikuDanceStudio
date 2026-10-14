@@ -21,6 +21,48 @@ using namespace mikudancestudio::d3dx;
 using Microsoft::WRL::ComPtr;
 namespace {
 constexpr unsigned kSize=128;
+void CheckVertexBounds() {
+    using namespace mikudancestudio;
+    unsigned checks = 0;
+    const auto compare = [&](const void* data, std::size_t stride, std::size_t count) {
+        NativeShadowBounds reference;
+        const auto* bytes = static_cast<const unsigned char*>(data);
+        for (std::size_t i=0; i<count; ++i) {
+            float point[3]; std::memcpy(point,bytes+i*stride,sizeof(point));
+            reference.Include(point);
+        }
+        const auto actual=NativeShadowVertexBounds(data,stride,count);
+        if (std::memcmp(reference.minimum.data(),actual.minimum.data(),12) ||
+            std::memcmp(reference.maximum.data(),actual.maximum.data(),12))
+            throw std::runtime_error("vertex bounds differ from full scalar scan");
+        ++checks;
+    };
+    for (std::size_t stride : {12u,16u,20u,32u,48u,96u}) for (unsigned offset : {0u,1u,3u}) {
+        std::vector<unsigned char> data(stride*1025+offset);
+        unsigned random=12345;
+        for (unsigned i=0; i<1025; ++i) {
+            float point[3];
+            for (float& value : point) {random=random*1664525u+1013904223u;value=float(int(random%20001)-10000)/17;}
+            if(i%13==0)point[i%3]=std::numeric_limits<float>::quiet_NaN();
+            if(i%17==0)point[i%3]=INFINITY;
+            if(i%19==0)point[i%3]=-INFINITY;
+            std::memcpy(data.data()+offset+i*stride,point,12);
+        }
+        for(std::size_t count : {0u,1u,2u,7u,1024u,1025u})compare(data.data()+offset,stride,count);
+        const float negative[4]={-0.f,-0.f,-0.f,INFINITY},positive[4]={0.f,0.f,0.f,NAN};
+        std::memcpy(data.data()+offset,negative,(std::min)(stride,std::size_t(16)));
+        std::memcpy(data.data()+offset+stride,positive,(std::min)(stride,std::size_t(16)));
+        compare(data.data()+offset,stride,2);
+        std::memcpy(data.data()+offset,positive,(std::min)(stride,std::size_t(16)));
+        std::memcpy(data.data()+offset+stride,negative,(std::min)(stride,std::size_t(16)));
+        compare(data.data()+offset,stride,2);
+    }
+    if(NativeShadowVertexBounds(nullptr,32,1).Valid() ||
+       NativeShadowVertexBounds("",4,1).Valid() ||
+       NativeShadowVertexBounds("",32,(std::numeric_limits<std::size_t>::max)()).Valid())
+        throw std::runtime_error("invalid vertex span produced bounds");
+    std::printf("PASS full vertex bounds: %u scalar parity checks\n",checks);
+}
 void CheckReferenceFit() {
     using namespace mikudancestudio;
     NativeShadowBounds bounds;
@@ -50,6 +92,7 @@ void CheckReferenceFit() {
     std::printf("PASS native grid preservation and %u projective coverage corners\n",checked);
 }
 void CheckProjection() {
+    CheckVertexBounds();
     CheckReferenceFit();
     using namespace mikudancestudio;
     if (ShadowSamplingFactor(.1f) != 4.f || ShadowSamplingFactor(.05f) != 1.f ||
@@ -212,6 +255,7 @@ int wmain(int argc,wchar_t** argv) {
     HWND window=CreateWindowExW(0,L"STATIC",L"native shadow test",WS_OVERLAPPED,0,0,kSize,kSize,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     try {
         CheckProjection();
+        if(!wcscmp(argv[1],L"--bounds-only")){DestroyWindow(window);return 0;}
         ComPtr<IDirect3D9> d3d;d3d.Attach(Direct3DCreate9(D3D_SDK_VERSION));
         if(!d3d)throw std::runtime_error("D3D9 unavailable");
         D3DPRESENT_PARAMETERS pp{};pp.Windowed=TRUE;pp.SwapEffect=D3DSWAPEFFECT_DISCARD;pp.hDeviceWindow=window;

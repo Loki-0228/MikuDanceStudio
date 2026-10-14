@@ -4,7 +4,9 @@
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/shadow_filter.hpp"
+#include "mikudancestudio/perf_timing.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
+#include "mikudancestudio/window_dpi_scope.hpp"
 #include "mikudancestudio/scene_sampling.hpp"
 #include "mikudancestudio/d3d12_native.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
@@ -16,6 +18,7 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/skinning_backend.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/graphics_runtime.hpp"
 #include "mikudancestudio/antialias_motion.hpp"
@@ -37,6 +40,7 @@
 #include <cwctype>
 
 using namespace mikudancestudio;
+namespace mikudancestudio { void LayoutViewportPanels(MMDApp*); int ViewportToolAtPointForTest(MMDApp*); }
 extern "C" char* ExpGetPmdFilename(int);
 namespace {
 void Check(bool ok, const char* label) {
@@ -482,6 +486,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
 #include "viewport_render_scale_scene_checks.hpp"
 #include "viewport_scale_performance_checks.hpp"
 #include "viewport_scale_dialog_checks.hpp"
+#include "viewport_panel_checks.hpp"
 #include "antialias_scene_checks.hpp"
 #include "antialias_startup_checks.hpp"
 #include "mme_ground_shadow_checks.hpp"
@@ -509,6 +514,7 @@ int wmain(int argc, wchar_t** argv) {
     Check(MH_CreateHook(&MessageBoxA, &UnexpectedAnsi, nullptr) == MH_OK, "guard legacy dialogs");
     if(std::getenv("MMS_SURFACE_MISSING_DX12"))Check(MH_CreateHook(&LoadLibraryW,&SurfaceLoadLibrary,reinterpret_cast<void**>(&surfaceLoadLibrary))==MH_OK,"simulate missing DX12 in test process");
     Check(MH_EnableHook(MH_ALL_HOOKS) == MH_OK, "enable hidden-window guards");
+    if(std::getenv("MMS_VIEWPORT_PERF"))runtime_log::Initialize();
     HHOOK guard = SetWindowsHookExW(WH_CBT, HideCreated, nullptr, GetCurrentThreadId());
     Check(guard != nullptr, "prevent window activation");
     auto* app = new MMDApp; g_Block = app;
@@ -556,10 +562,14 @@ int wmain(int argc, wchar_t** argv) {
         const auto& adapters=skinning::AvailableAdapters();Check(!adapters.empty(),"GPU skinning adapter available");
         skinning::SetPreference({skinning::Mode::Adapter,adapters.front().id,adapters.front().name});
     }
-    if (aaScene && std::filesystem::path(argv[1]).extension() == L".pmm") {
+    if ((aaScene || (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0)) &&
+        std::filesystem::path(argv[1]).extension() == L".pmm") {
         wcscpy_s(app->EnvFileName(), kPathFieldCapacity, argv[1]);
         LoadSceneFile();
-        app->SelectedModel() = app->ModelSlot(0);
+        app->SetSelectedModelSlot(0);
+        std::set<const void*> loadedModels;
+        for (int slot=0;slot<kModelSlotCount;++slot)if(auto* model=app->ModelSlot(slot))
+            Check(loadedModels.insert(model).second,"loaded project model slots retain distinct ownership");
         if (const wchar_t* effects = _wgetenv(L"MMS_AA_EMM")) NotifyEffectFileOpen(effects);
     } else LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
@@ -569,9 +579,11 @@ int wmain(int argc, wchar_t** argv) {
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0) {
-        if(std::getenv("MMS_VIEWPORT_PERF")) CheckViewportScalePerformance(app,argv[3]);
+        if(std::getenv("MMS_VIEWPORT_PANELS")) CheckViewportPanels(app,argv[3]);
+        else if(std::getenv("MMS_VIEWPORT_PERF")) CheckViewportScalePerformance(app,argv[3]);
         else if(std::getenv("MMS_VIEWPORT_DIALOG")) CheckViewportScaleDialog(app,argv[3]);
         else CheckViewportRenderScale(app, argv[3]);
+        ResetAppState(app);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (emmLoad) {

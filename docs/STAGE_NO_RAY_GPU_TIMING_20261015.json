@@ -1,0 +1,693 @@
+{
+  "date": "2026-10-15",
+  "scene": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+  "scene_sha256_after": "b026f43c8a12034aaeb010fc91df3ac3d026722e563bc65304552b647b58f696",
+  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "method": {
+    "order": [
+      100,
+      25,
+      25,
+      100
+    ],
+    "gpu_samples_per_block": 32,
+    "cpu_samples_per_block": 128,
+    "drained_seconds_per_block": 4,
+    "gpu_collection": "five coarse native D3D9 timestamps; read only after a 32-frame batch",
+    "gpu_interval": "first scene Clear through completed HUD; excludes CPU model preparation and Present; includes GPU idle gaps",
+    "cpu_collection": "separate batch with CPU observers only; elapsed time includes waits",
+    "throughput": "no observer hooks; complete frames plus final GPU drain; fixed frame zero, physics off; not playback FPS",
+    "per_draw_timestamps": false,
+    "pipeline_idle_query_supported": false,
+    "main_dimensions": {
+      "100": [
+        725,
+        406
+      ],
+      "25": [
+        181,
+        102
+      ]
+    },
+    "shadow_dimensions": {
+      "100": [
+        8192,
+        8192
+      ],
+      "25": [
+        2048,
+        2048
+      ]
+    }
+  },
+  "runs": [
+    {
+      "label": "async-1",
+      "metadata": {
+        "exit_code": 0,
+        "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+        "seconds_per_block": 4.0,
+        "project_settings": true,
+        "gpu_timing": true,
+        "gpu_samples_per_block": 32,
+        "gpu_per_draw_timing": false,
+        "environment": {},
+        "native": false,
+        "accessory": null,
+        "sources_unchanged": true,
+        "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+        "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-gpu-timing-20261015\\async-1\\result.log"
+      },
+      "environment": {
+        "ac_line": 1,
+        "battery_percent": 100,
+        "command": [
+          "C:\\Python314\\python.exe",
+          "tests/viewport_scale_performance_runner.py",
+          "--executable",
+          "build/tests/mme-display/Release/MikuMikuDance.exe",
+          "--mme",
+          "D:/MMD-Next/refs/MME",
+          "--model",
+          "D:/MMD-Next/tests/ToonGlass_Ray/UserFile/StageNoRay.pmm",
+          "--output",
+          "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-gpu-timing-20261015\\async-1",
+          "--project-settings",
+          "--gpu-timing",
+          "--gpu-samples",
+          "32",
+          "--seconds",
+          "4"
+        ],
+        "exit_code": 0
+      },
+      "summary": {
+        "100": {
+          "gpu_frames": 64,
+          "cpu_frames": 256,
+          "gpu_phase_ms": {
+            "scene": 14.0846484375,
+            "antialias": 0.0,
+            "upscale": 0.0,
+            "hud": 0.05780828125
+          },
+          "gpu_render_interval_ms": 14.142456718750001,
+          "cpu_phase_ms": {
+            "scene": 11.9580984375,
+            "antialias": 0.00168164065234375,
+            "upscale": 0.000416015546875,
+            "hud": 0.068777734375
+          },
+          "cpu_prepare_ms": 14.808742578125,
+          "cpu_model_ms": 14.761734765625,
+          "cpu_present_ms": 3.584699609375,
+          "drained_frames": 258,
+          "drained_ms_per_frame": 31.152780602778325,
+          "drained_block_ms_per_frame": [
+            35.17027689559,
+            27.972262704302416
+          ],
+          "drained_block_range_percent_of_median": 22.799254628966008
+        },
+        "25": {
+          "gpu_frames": 64,
+          "cpu_frames": 256,
+          "gpu_phase_ms": {
+            "scene": 12.896878125,
+            "antialias": 1.609375e-05,
+            "upscale": 0.029471875,
+            "hud": 0.06296046875
+          },
+          "gpu_render_interval_ms": 12.9893265625,
+          "cpu_phase_ms": {
+            "scene": 13.020424609375,
+            "antialias": 0.00174882812890625,
+            "upscale": 2.622194140625,
+            "hud": 0.04267265625
+          },
+          "cpu_prepare_ms": 15.01227890625,
+          "cpu_model_ms": 14.951330078125,
+          "cpu_present_ms": 1.13084453125,
+          "drained_frames": 289,
+          "drained_ms_per_frame": 27.892936433419987,
+          "drained_block_ms_per_frame": [
+            28.680249632892806,
+            27.142861020408716
+          ],
+          "drained_block_range_percent_of_median": 5.50807217473885
+        },
+        "gpu_interval_reduction_percent": 8.153676402779341,
+        "drained_frame_reduction_percent": 10.464055234503245
+      },
+      "raw_performance": [
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "0",
+          "percent": "100",
+          "frames": "114",
+          "fps": "28.4331",
+          "shadow_size": "8192",
+          "filtered_size": "8192",
+          "scene_ms": "31.2687",
+          "present_ms": "3.81799"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "1",
+          "percent": "25",
+          "frames": "141",
+          "fps": "34.8672",
+          "shadow_size": "2048",
+          "filtered_size": "2048",
+          "scene_ms": "27.7313",
+          "present_ms": "0.892426"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "2",
+          "percent": "25",
+          "frames": "148",
+          "fps": "36.8421",
+          "shadow_size": "2048",
+          "filtered_size": "2048",
+          "scene_ms": "26.2518",
+          "present_ms": "0.835862"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "3",
+          "percent": "100",
+          "frames": "144",
+          "fps": "35.7497",
+          "shadow_size": "8192",
+          "filtered_size": "8192",
+          "scene_ms": "24.6524",
+          "present_ms": "3.23787"
+        }
+      ],
+      "gpu_block_ms": {
+        "0": 13.5605653125,
+        "1": 13.0037178125,
+        "2": 12.9749353125,
+        "3": 14.724348125
+      },
+      "active_telemetry": {
+        "clocks.current.graphics [MHz]": {
+          "min": 1905.0,
+          "mean": 2498.181818181818,
+          "max": 2565.0
+        },
+        "clocks.current.memory [MHz]": {
+          "min": 8501.0,
+          "mean": 8501.0,
+          "max": 8501.0
+        },
+        "utilization.gpu [%]": {
+          "min": 14.0,
+          "mean": 42.03896103896104,
+          "max": 58.0
+        },
+        "power.draw [W]": {
+          "min": 4.81,
+          "mean": 36.40805194805195,
+          "max": 50.18
+        },
+        "temperature.gpu": {
+          "min": 55.0,
+          "mean": 62.37662337662338,
+          "max": 68.0
+        }
+      },
+      "active_telemetry_filter": "P0 and utilization > 10%; includes loading and warmup, not aligned to blocks",
+      "artifacts": {
+        "gpu-frames.tsv": "bcba21b336acb2feea146db2895a8ee2da3533ced351378cd1b037f781e5df4d",
+        "cpu-frames.tsv": "4d1ff476af8e53d06111423cb4c9dac44b7411759a22a1f53b4e6de71d10033c",
+        "performance.tsv": "4ebb6558c06e1dd11a79d62e5026a4d4117e3643229fd9a39e50f3dde776a53b",
+        "result.json": "c45171ae2e43e136bd91cad631f3f434c99788a1b8a3cc4619ac4a8f81d2d44d",
+        "result.log": "a4dad56fed03eb23ce8486b71a7be5e12f14f85b7f3af4366701477547e9b77a"
+      }
+    },
+    {
+      "label": "async-2",
+      "metadata": {
+        "exit_code": 0,
+        "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+        "seconds_per_block": 4.0,
+        "project_settings": true,
+        "gpu_timing": true,
+        "gpu_samples_per_block": 32,
+        "gpu_per_draw_timing": false,
+        "environment": {},
+        "native": false,
+        "accessory": null,
+        "sources_unchanged": true,
+        "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+        "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-gpu-timing-20261015\\async-2\\result.log"
+      },
+      "environment": {
+        "ac_line": 1,
+        "battery_percent": 100,
+        "command": [
+          "C:\\Python314\\python.exe",
+          "tests/viewport_scale_performance_runner.py",
+          "--executable",
+          "build/tests/mme-display/Release/MikuMikuDance.exe",
+          "--mme",
+          "D:/MMD-Next/refs/MME",
+          "--model",
+          "D:/MMD-Next/tests/ToonGlass_Ray/UserFile/StageNoRay.pmm",
+          "--output",
+          "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-gpu-timing-20261015\\async-2",
+          "--project-settings",
+          "--gpu-timing",
+          "--gpu-samples",
+          "32",
+          "--seconds",
+          "4"
+        ],
+        "exit_code": 0
+      },
+      "summary": {
+        "100": {
+          "gpu_frames": 64,
+          "cpu_frames": 256,
+          "gpu_phase_ms": {
+            "scene": 13.1585875,
+            "antialias": 1.59375e-05,
+            "upscale": 0.0,
+            "hud": 0.040624375000000004
+          },
+          "gpu_render_interval_ms": 13.1992278125,
+          "cpu_phase_ms": {
+            "scene": 6.514958984375,
+            "antialias": 0.0009054687421875,
+            "upscale": 0.00021093779375,
+            "hud": 0.0399421875
+          },
+          "cpu_prepare_ms": 9.491740234375,
+          "cpu_model_ms": 9.4704953125,
+          "cpu_present_ms": 0.6500421875,
+          "drained_frames": 504,
+          "drained_ms_per_frame": 15.95299327528053,
+          "drained_block_ms_per_frame": [
+            15.940421082163306,
+            15.96556546839776
+          ],
+          "drained_block_range_percent_of_median": 0.15761547567010556
+        },
+        "25": {
+          "gpu_frames": 64,
+          "cpu_frames": 256,
+          "gpu_phase_ms": {
+            "scene": 10.5419865625,
+            "antialias": 0.0,
+            "upscale": 0.02628765625,
+            "hud": 0.043648125
+          },
+          "gpu_render_interval_ms": 10.61192234375,
+          "cpu_phase_ms": {
+            "scene": 6.4836359375,
+            "antialias": 0.00084726562890625,
+            "upscale": 0.1424453125,
+            "hud": 0.021985546875
+          },
+          "cpu_prepare_ms": 9.275498046875,
+          "cpu_model_ms": 9.248783203125,
+          "cpu_present_ms": 0.462554296875,
+          "drained_frames": 500,
+          "drained_ms_per_frame": 16.03752612993428,
+          "drained_block_ms_per_frame": [
+            15.901487107074253,
+            16.175759330582377
+          ],
+          "drained_block_range_percent_of_median": 1.7100733633180303
+        },
+        "gpu_interval_reduction_percent": 19.60194570094287,
+        "drained_frame_reduction_percent": -0.5298871076736322
+      },
+      "raw_performance": [
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "0",
+          "percent": "100",
+          "frames": "252",
+          "fps": "62.7336",
+          "shadow_size": "8192",
+          "filtered_size": "8192",
+          "scene_ms": "15.3671",
+          "present_ms": "0.531712"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "1",
+          "percent": "25",
+          "frames": "252",
+          "fps": "62.8872",
+          "shadow_size": "2048",
+          "filtered_size": "2048",
+          "scene_ms": "15.4128",
+          "present_ms": "0.459463"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "2",
+          "percent": "25",
+          "frames": "248",
+          "fps": "61.8209",
+          "shadow_size": "2048",
+          "filtered_size": "2048",
+          "scene_ms": "15.6802",
+          "present_ms": "0.46584"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "3",
+          "percent": "100",
+          "frames": "252",
+          "fps": "62.6348",
+          "shadow_size": "8192",
+          "filtered_size": "8192",
+          "scene_ms": "15.3736",
+          "present_ms": "0.549873"
+        }
+      ],
+      "gpu_block_ms": {
+        "0": 13.04083125,
+        "1": 10.5682946875,
+        "2": 10.65555,
+        "3": 13.357624375
+      },
+      "active_telemetry": {
+        "clocks.current.graphics [MHz]": {
+          "min": 2565.0,
+          "mean": 2565.0,
+          "max": 2565.0
+        },
+        "clocks.current.memory [MHz]": {
+          "min": 8501.0,
+          "mean": 8501.0,
+          "max": 8501.0
+        },
+        "utilization.gpu [%]": {
+          "min": 12.0,
+          "mean": 71.19354838709677,
+          "max": 88.0
+        },
+        "power.draw [W]": {
+          "min": 16.1,
+          "mean": 49.99903225806452,
+          "max": 69.06
+        },
+        "temperature.gpu": {
+          "min": 58.0,
+          "mean": 63.16129032258065,
+          "max": 69.0
+        }
+      },
+      "active_telemetry_filter": "P0 and utilization > 10%; includes loading and warmup, not aligned to blocks",
+      "artifacts": {
+        "gpu-frames.tsv": "cc44b8e42baa280292a03fe6fff3d4601bf432b851674d8c7cd5b3eee0bd1f26",
+        "cpu-frames.tsv": "f1a8db8061238bd5e5398aca5f75a25743931290dfaf0cfbc2f806eb7202885d",
+        "performance.tsv": "9a6ac0ebd2ba7b9800ee41ce22944ee63538e133f0d089609355a3b2b119572e",
+        "result.json": "394d1ec72b613b0527096c44228eb3f49cae15c5d24018eb01d1e9f2fb35b338",
+        "result.log": "f5e2c7fbd4a172105c84b2a45a3b8d6c123932a2cacaf532a5c6546edffdf177"
+      }
+    },
+    {
+      "label": "async-3",
+      "metadata": {
+        "exit_code": 0,
+        "model": "D:\\MMD-Next\\tests\\ToonGlass_Ray\\UserFile\\StageNoRay.pmm",
+        "seconds_per_block": 4.0,
+        "project_settings": true,
+        "gpu_timing": true,
+        "gpu_samples_per_block": 32,
+        "gpu_per_draw_timing": false,
+        "environment": {},
+        "native": false,
+        "accessory": null,
+        "sources_unchanged": true,
+        "executable_sha256": "1a36f3996e775013d6269c4d3c08a60ef09732e329d3cecba5588fe88591fdf8",
+        "log": "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-gpu-timing-20261015\\async-3\\result.log"
+      },
+      "environment": {
+        "ac_line": 1,
+        "battery_percent": 100,
+        "command": [
+          "C:\\Python314\\python.exe",
+          "tests/viewport_scale_performance_runner.py",
+          "--executable",
+          "build/tests/mme-display/Release/MikuMikuDance.exe",
+          "--mme",
+          "D:/MMD-Next/refs/MME",
+          "--model",
+          "D:/MMD-Next/tests/ToonGlass_Ray/UserFile/StageNoRay.pmm",
+          "--output",
+          "D:\\MMD-Next\\MMS\\.local\\artifacts\\stage-gpu-timing-20261015\\async-3",
+          "--project-settings",
+          "--gpu-timing",
+          "--gpu-samples",
+          "32",
+          "--seconds",
+          "4"
+        ],
+        "exit_code": 0
+      },
+      "summary": {
+        "100": {
+          "gpu_frames": 64,
+          "cpu_frames": 256,
+          "gpu_phase_ms": {
+            "scene": 13.401221875000001,
+            "antialias": 1.59375e-05,
+            "upscale": 0.0,
+            "hud": 0.040576718750000004
+          },
+          "gpu_render_interval_ms": 13.441814531250001,
+          "cpu_phase_ms": {
+            "scene": 6.919390234375,
+            "antialias": 0.00088945319921875,
+            "upscale": 0.00018593764296875,
+            "hud": 0.040676953125
+          },
+          "cpu_prepare_ms": 10.126982421875,
+          "cpu_model_ms": 10.105675,
+          "cpu_present_ms": 0.92651484375,
+          "drained_frames": 485,
+          "drained_ms_per_frame": 16.56812009329759,
+          "drained_block_ms_per_frame": [
+            17.00200283593407,
+            16.15688986332887
+          ],
+          "drained_block_range_percent_of_median": 5.097353402419167
+        },
+        "25": {
+          "gpu_frames": 64,
+          "cpu_frames": 256,
+          "gpu_phase_ms": {
+            "scene": 10.81984296875,
+            "antialias": 0.0,
+            "upscale": 0.027056562500000002,
+            "hud": 0.04135984375
+          },
+          "gpu_render_interval_ms": 10.888259375,
+          "cpu_phase_ms": {
+            "scene": 6.346426953125,
+            "antialias": 0.00081445312890625,
+            "upscale": 0.12922890625,
+            "hud": 0.02180078125
+          },
+          "cpu_prepare_ms": 9.257859375,
+          "cpu_model_ms": 9.22946171875,
+          "cpu_present_ms": 0.5012125,
+          "drained_frames": 497,
+          "drained_ms_per_frame": 16.15326852551521,
+          "drained_block_ms_per_frame": [
+            16.109025887204602,
+            16.19768956156094
+          ],
+          "drained_block_range_percent_of_median": 0.5488869612693751
+        },
+        "gpu_interval_reduction_percent": 18.997101546918437,
+        "drained_frame_reduction_percent": 2.503914538561347
+      },
+      "raw_performance": [
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "0",
+          "percent": "100",
+          "frames": "236",
+          "fps": "58.8166",
+          "shadow_size": "8192",
+          "filtered_size": "8192",
+          "scene_ms": "16.1888",
+          "present_ms": "0.768922"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "1",
+          "percent": "25",
+          "frames": "249",
+          "fps": "62.077",
+          "shadow_size": "2048",
+          "filtered_size": "2048",
+          "scene_ms": "15.5927",
+          "present_ms": "0.486575"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "2",
+          "percent": "25",
+          "frames": "248",
+          "fps": "61.7372",
+          "shadow_size": "2048",
+          "filtered_size": "2048",
+          "scene_ms": "15.708",
+          "present_ms": "0.460272"
+        },
+        {
+          "enhanced": "0",
+          "adaptive": "0",
+          "block": "3",
+          "percent": "100",
+          "frames": "249",
+          "fps": "61.8931",
+          "shadow_size": "8192",
+          "filtered_size": "8192",
+          "scene_ms": "15.5415",
+          "present_ms": "0.572802"
+        }
+      ],
+      "gpu_block_ms": {
+        "0": 13.3783721875,
+        "1": 10.663686875,
+        "2": 11.112831875,
+        "3": 13.505256875
+      },
+      "active_telemetry": {
+        "clocks.current.graphics [MHz]": {
+          "min": 2565.0,
+          "mean": 2565.0,
+          "max": 2565.0
+        },
+        "clocks.current.memory [MHz]": {
+          "min": 8501.0,
+          "mean": 8501.0,
+          "max": 8501.0
+        },
+        "utilization.gpu [%]": {
+          "min": 38.0,
+          "mean": 73.0,
+          "max": 93.0
+        },
+        "power.draw [W]": {
+          "min": 32.04,
+          "mean": 50.233636363636364,
+          "max": 71.85
+        },
+        "temperature.gpu": {
+          "min": 60.0,
+          "mean": 63.41818181818182,
+          "max": 70.0
+        }
+      },
+      "active_telemetry_filter": "P0 and utilization > 10%; includes loading and warmup, not aligned to blocks",
+      "artifacts": {
+        "gpu-frames.tsv": "9ee32e14a05aefe69e4aea6baf2a85b288e2c7ab42dd934740b82fab664811bd",
+        "cpu-frames.tsv": "8400a0d169f33afb17cf743394d5cbf35f73512ffdc775d5a4e7c0ca814f1731",
+        "performance.tsv": "492ef3f03de5f1a08587245ed6a8c588c21da10b0d5b0eb59cef7ab416bb49b7",
+        "result.json": "5166f5313ea284178d998716451f29ac3cf7e8cde533ae6bbf4144f1da1b27aa",
+        "result.log": "c77a6404a38ee40a5b16854eeb0e1263d279a0258300f5cc0e6e2222501e1883"
+      }
+    }
+  ],
+  "adjacent_repeat_labels": [
+    "async-2",
+    "async-3"
+  ],
+  "adjacent_repeat_summary": {
+    "100": {
+      "gpu_frames": 128,
+      "cpu_frames": 512,
+      "gpu_phase_ms": {
+        "scene": 13.2799046875,
+        "antialias": 1.59375e-05,
+        "upscale": 0.0,
+        "hud": 0.040600546875000004
+      },
+      "gpu_render_interval_ms": 13.320521171875,
+      "cpu_phase_ms": {
+        "scene": 6.717174609375,
+        "antialias": 0.000897460970703125,
+        "upscale": 0.000198437718359375,
+        "hud": 0.0403095703125
+      },
+      "cpu_prepare_ms": 9.809361328125,
+      "cpu_model_ms": 9.78808515625,
+      "cpu_present_ms": 0.788278515625,
+      "drained_frames": 989,
+      "drained_ms_per_frame": 16.254647983812657,
+      "drained_block_ms_per_frame": [
+        15.940421082163306,
+        15.96556546839776,
+        17.00200283593407,
+        16.15688986332887
+      ],
+      "drained_block_range_percent_of_median": 6.609592839699678
+    },
+    "25": {
+      "gpu_frames": 128,
+      "cpu_frames": 512,
+      "gpu_phase_ms": {
+        "scene": 10.680914765625,
+        "antialias": 0.0,
+        "upscale": 0.026672109375000003,
+        "hud": 0.042503984375
+      },
+      "gpu_render_interval_ms": 10.750090859375,
+      "cpu_phase_ms": {
+        "scene": 6.4150314453125,
+        "antialias": 0.00083085937890625,
+        "upscale": 0.135837109375,
+        "hud": 0.0218931640625
+      },
+      "cpu_prepare_ms": 9.2666787109375,
+      "cpu_model_ms": 9.2391224609375,
+      "cpu_present_ms": 0.4818833984375,
+      "drained_frames": 997,
+      "drained_ms_per_frame": 16.09522319172337,
+      "drained_block_ms_per_frame": [
+        15.901487107074253,
+        16.175759330582377,
+        16.109025887204602,
+        16.19768956156094
+      ],
+      "drained_block_range_percent_of_median": 1.8349352643269
+    },
+    "gpu_interval_reduction_percent": 19.29676984356451,
+    "drained_frame_reduction_percent": 0.980795107024468
+  },
+  "first_run_handling": "Retained separately: valid GPU queries but much slower CPU and 22.8% same-scale frame-time drift. Do not pool across this change in runtime conditions.",
+  "excluded_methods": {
+    "mme-1": "per-draw timestamps and per-frame readback perturb the pipeline",
+    "coarse-1": "coarse timestamps but per-frame readback serializes the pipeline"
+  },
+  "production_executable_sha256": "f1cc743c757e09918dd708707a473202d04c4a9cbd01aaab85fb3904cb001b5b",
+  "limitations": [
+    "No pure GPU busy-time measurement because optional pipeline timings are unsupported.",
+    "CPU and GPU samples overlap in normal execution and must not be added.",
+    "Run 3 same-scale full-resolution frame-time drift is about 5.1%; the roughly 1% pooled whole-frame difference is not a confirmed speedup.",
+    "No animation playback or AMD hardware measurement in this run."
+  ]
+}

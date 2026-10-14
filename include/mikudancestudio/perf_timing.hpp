@@ -9,7 +9,7 @@ namespace mikudancestudio::perf {
 enum Phase { Frame, Scene, VertexUpdate, Morph, Skin, Sort, Materials,
              Physics, Present, SortLock, SortCpu, Pose, PhysicsSync, PhysicsReadback, PhysicsStep, BoneMorph,
              Accessories, Edges, ShadowMap, GroundShadow, ResourceGuard,
-             Clear, Composition, Overlays, EndScene, ValidationRelease, ScreenCapture, BeginScene, EffectApi, Count };
+             Clear, Composition, Overlays, EndScene, ValidationRelease, ScreenCapture, BeginScene, EffectApi, ShadowBounds, ShadowBoundsLock, Count };
 inline double milliseconds[Count]{};
 inline unsigned calls[Count]{};
 class Scope {
@@ -30,7 +30,7 @@ inline void Report(unsigned frames) {
     const char* names[] = {"frame", "scene", "vertex_update", "morph", "skin",
                            "transparent_sort", "materials", "physics", "present", "sort_lock", "sort_cpu", "pose", "physics_sync", "physics_readback", "physics_step", "bone_morph",
                            "accessories", "edges", "shadow_map", "ground_shadow", "resource_guard",
-                           "clear", "composition", "overlays", "end_scene", "validation_release", "screen_capture", "begin_scene", "effect_api"};
+                           "clear", "composition", "overlays", "end_scene", "validation_release", "screen_capture", "begin_scene", "effect_api", "shadow_bounds", "shadow_bounds_lock"};
     for (int i=0; i<Count; ++i)
         std::printf("phase=%s inclusive_ms_per_frame=%.4f calls=%u\n",
                     names[i], milliseconds[i]/frames, calls[i]);

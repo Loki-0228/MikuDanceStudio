@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Windows.h>
+#include "mikudancestudio/viewport_panel_layout.hpp"
 
 struct IDirect3DDevice9;
 
@@ -9,6 +10,8 @@ class MMDApp;
 
 // Present the side margins too, without changing the scene's aspect ratio.
 RECT FramePresentationRect(MMDApp* app);
+ViewportPanelLayout FramePanelLayout(MMDApp* app);
+int ViewportScaleCaptionWidth(MMDApp* app);
 // Editor controls use the whole presentation area, including its black margins.
 // The original profile retains its scene-bound overlay layout.
 RECT FrameOverlayRect(MMDApp* app);

@@ -205,10 +205,12 @@ int ViewportToolAtPoint(MMDApp* app) {
 
     int operation = 0;
     const RECT frame = FrameOverlayRect(app);
-    if (y > frame.top - 25 && y < frame.top) {
-        if (x > client.right - 60 && x < client.right - 36)
+    auto panels = FramePanelLayout(app);
+    if (MMD_ORIGINAL_PROFILE) panels.overlay.right = client.right;
+    if (y > panels.TopY(-25) && y < frame.top) {
+        if (x > panels.TopX(60) && x < panels.TopX(36))
             operation = 1;
-        else if (x > client.right - 30 && x < client.right - 6)
+        else if (x > panels.TopX(30) && x < panels.TopX(6))
             operation = 2;
     }
 
@@ -420,8 +422,10 @@ void RestoreViewportToolCursor(MMDApp* app, int operation) {
         HWND window = ViewportWindow(app);
         RECT client{};
         GetClientRect(window, &client);
-        point.x = client.right - (operation == 1 ? 48 : 18);
-        point.y = FrameOverlayRect(app).top - 12;
+        auto panels = FramePanelLayout(app);
+        if (MMD_ORIGINAL_PROFILE) panels.overlay.right = client.right;
+        point.x = panels.TopX(operation == 1 ? 48 : 18);
+        point.y = panels.TopY(-12);
     } else if (operation >= 22 && operation <= 25) {
         point.x = static_cast<int>(hud.ScaleCenterX(operation - 22));
         point.y = hud.y - static_cast<int>(25.0f * scale);
@@ -805,6 +809,14 @@ bool PressViewportTool(MMDApp* app, int requiredOperation) {
 }
 
 }  // namespace
+
+int ViewportToolAtPointForTest(MMDApp* app) {
+    const auto active = app->ViewportInputActive();
+    app->ViewportInputActive() = 1;
+    const int result = ViewportToolAtPoint(app);
+    app->ViewportInputActive() = active;
+    return result;
+}
 
 bool HandleViewportToolPress(MMDApp* app) {
     return PressViewportTool(app, 0);

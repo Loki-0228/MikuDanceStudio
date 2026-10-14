@@ -2,6 +2,7 @@
 #include "mikudancestudio/save_compatibility.hpp"
 #include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/image_sequence_export.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/plugin_menu.hpp"
@@ -427,6 +428,7 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
     _write(fh, model.comment, 0x100);
 
     // ---- morph-0 pre-pass (positions overwritten, see note above) --------
+    model_vertex_cache::Invalidate(reinterpret_cast<unsigned char*>(&model));
     if (model.morphs != nullptr && model.morph0Count != 0) {
         for (std::uint32_t k = 0; k < model.morph0Count; ++k) {
             const mdl::PmdVertexMorphEntry& e = model.morph0Table[k];

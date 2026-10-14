@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <initializer_list>
+#include <map>
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
@@ -37,6 +38,7 @@
 namespace mikudancestudio {
 
 namespace {
+int scaleCaptionWidths[3]{};
 
 HFONT ScaleLabelBoldFont(MMDApp* app) {
     // Match the 14px toolbar captions drawn through DrawUiGlyph. Only the
@@ -88,6 +90,16 @@ int ScaleLabelTextWidth(HWND label, MMDApp* app) {
 
 }  // namespace
 
+int ViewportScaleCaptionWidth(MMDApp* app) {
+    const HWND window = app->FloatingWindow() ? app->FloatingWindow() : app->MainWindow();
+    const HWND label = GetDlgItem(window, 570);
+    if (!label) return 36;
+    // The label has a fixed font and only changes with the UI language.
+    const int language = std::clamp<int>(app->EnglishUI(), 0, 2);
+    if (!scaleCaptionWidths[language]) scaleCaptionWidths[language] = ScaleLabelTextWidth(label, app);
+    return scaleCaptionWidths[language];
+}
+
 void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     if (app->FullscreenMode() != 0) return;
     auto& s = *app;
@@ -107,27 +119,90 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
         inset = s.SidebarWidth() + 9;                             // 657096
     }
     const int right = rc.right;
-    const RECT viewport = FrameOverlayRect(app);
+    if (const HWND label = GetDlgItem(base, 570))
+        scaleCaptionWidths[std::clamp<int>(app->EnglishUI(), 0, 2)] = ScaleLabelTextWidth(label, app);
+    const auto panels = FramePanelLayout(app);
+    const RECT viewport = panels.overlay;
     const int stripY = viewport.bottom;                           // 658764
     const int rowY = viewport.top;                                // 658756
     const bool deferPaint = app->SidebarResizeDragging() != 0;
     auto move = [&](int id, int x, int y, int w, int h) {
         ui::MoveLayoutControl(base, id, x, y, w, h, deferPaint);
     };
+    const auto fontScale = [&](int id, float scale) {
+        if (MMD_ORIGINAL_PROFILE) return;
+        const HWND control = GetDlgItem(base, id);
+        if (!control) return;
+        ApplyUiFontToControl(app, control, id);
+        HFONT font = id == 570 ? ScaleLabelBoldFont(app) :
+            reinterpret_cast<HFONT>(SendMessageW(control, WM_GETFONT, 0, 0));
+        if (!font) return;
+        if (scale < 1.0f) {
+            LOGFONTW definition{};
+            if (GetObjectW(font, sizeof(definition), &definition)) {
+                const int height = (definition.lfHeight < 0 ? -1 : 1) *
+                    std::max(1, ViewportPanelLayout::Pixels(std::abs(definition.lfHeight) * scale));
+                static std::map<std::pair<HFONT, int>, HFONT> fonts;
+                auto& scaled = fonts[{font, height}];
+                if (!scaled) { definition.lfHeight = height; scaled = CreateFontIndirectW(&definition); }
+                if (scaled) font = scaled;
+            }
+        }
+        SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
+    };
+    const auto controlHeight = [&](int id, int requested) {
+        const HWND control = GetDlgItem(base, id);
+        if (!control) return requested;
+        const auto font = reinterpret_cast<HFONT>(SendMessageW(control, WM_GETFONT, 0, 0));
+        static std::map<HFONT, int> fontHeights;
+        auto& height = fontHeights[font];
+        if (!height) {
+            const HDC dc = GetDC(control);
+            if (!dc) return requested;
+            const auto previous = font ? SelectObject(dc, font) : nullptr;
+            TEXTMETRICW metrics{};
+            GetTextMetricsW(dc, &metrics);
+            height = metrics.tmHeight;
+            if (previous) SelectObject(dc, previous);
+            ReleaseDC(control, dc);
+        }
+        RECT edge{0, 0, 1, 1};
+        AdjustWindowRectEx(&edge, GetWindowLongW(control, GWL_STYLE), FALSE,
+            GetWindowLongW(control, GWL_EXSTYLE));
+        wchar_t className[16]{};
+        GetClassNameW(control, className, 16);
+        const bool edit = _wcsicmp(className, L"Edit") == 0;
+        const int padding = edit ? 2 : _wcsicmp(className, L"Button") == 0 ? 4 : 0;
+        return std::max(requested, height + int(edge.bottom - edge.top - 1) + padding);
+    };
 
     // Camera strip: x = inset + K, shown while inset + K <= right.
     auto moveLeft = [&](int id, int k, int dy, int w, int h) {
-        if (inset + k <= right)
-            move(id, inset + k, stripY + dy, w, h);
-        else
+        if (MMD_ORIGINAL_PROFILE) {
+            if (inset + k <= right) move(id, inset + k, stripY + dy, w, h);
+            else move(id, -9000, -9000, 1, 1);
+            return;
+        }
+        fontScale(id, panels.bottomScale);
+        if (k >= 0) {
+            const int height = controlHeight(id, ViewportPanelLayout::Pixels(h * panels.bottomScale));
+            move(id, panels.BottomX(k), panels.BottomY(k, dy + h / 2) - height / 2,
+                std::max(1, panels.BottomX(k + w) - panels.BottomX(k)),
+                height);
+        } else
             move(id, -9000, -9000, 1, 1);
     };
     // Top button row: x = right - K, shown while right - K >= inset.
     auto moveRight = [&](int id, int k, int dy, int w, int h) {
-        if (right - k >= inset)
-            move(id, right - k, rowY + dy, w, h);
-        else
-            move(id, -9000, -9000, 1, 1);
+        if (MMD_ORIGINAL_PROFILE) {
+            if (right - k >= inset) move(id, right - k, rowY + dy, w, h);
+            else move(id, -9000, -9000, 1, 1);
+            return;
+        }
+        fontScale(id, panels.topScale);
+        const int height = controlHeight(id, ViewportPanelLayout::Pixels(h * panels.topScale));
+        move(id, panels.TopX(k), panels.TopY(dy + h / 2) - height / 2,
+            std::max(1, panels.TopX(k - w) - panels.TopX(k)), height);
     };
 
     moveLeft(536,   5,  3, 55, 27);   // 0x40CB25 model-select strip label
@@ -165,8 +240,8 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
         moveLeft(550, 656, 11, 53, 14);
     }
 #if !MMD_ORIGINAL_PROFILE
-    // In model mode, position, rotation and scale values use identical 53x14
-    // edit boxes. The scale caption alone is sized from its localized text.
+    // Position, rotation and scale share the same adaptable field width.
+    // The scale caption alone is sized from its localized text.
     // Install the final font before MoveWindow repaints the caption. Drawing
     // once with the control font and again with the bold font caused ghosts.
     for (int id : {570, 571, 572, 574, 575, 576, 577}) {
@@ -178,7 +253,7 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
                              reinterpret_cast<WPARAM>(ScaleLabelBoldFont(app)), FALSE);
         }
     }
-    const int scaleTitleWidth = ScaleLabelTextWidth(GetDlgItem(base, 570), app);
+    const int scaleTitleWidth = ViewportScaleCaptionWidth(app);
     const int scaleTitleX = 640;
     const int scaleEditWidth = 53;
     const int scaleXAxis = scaleTitleX + scaleTitleWidth;
@@ -187,11 +262,10 @@ void LayoutViewportPanels(MMDApp* app) {  // was Sub40CAC0, VA 0x0040CAC0
     const int scaleYField = scaleYAxis + 17;
     const int scaleZAxis = scaleYField + scaleEditWidth + 3;
     const int scaleZField = scaleZAxis + 17;
-    const bool scaleFits = modelScaleVisible &&
-        inset + scaleZField + scaleEditWidth <= right;
+    const bool scaleFits = modelScaleVisible;
     auto moveScale = [&](int id, int x, int dy, int w, int h) {
         if (scaleFits)
-            move(id, inset + x, stripY + dy, w, h);
+            moveLeft(id, x, dy, w, h);
         else
             move(id, -9000, -9000, 1, 1);
     };

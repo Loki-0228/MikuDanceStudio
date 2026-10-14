@@ -6,9 +6,9 @@
 //   * the GPU bone packing (PrepareGpuModelInput) and its HLSL twin
 //     (src/render/d3d12_skinning.hlsl),
 //   * tests/affine_skinning_tests.cpp.
-// The header depends only on <cmath>/<cstdint>, so the same code compiles into
-// the renderer and into a standalone test binary. It never touches model
-// records, so the BoneRecord layout is unaffected.
+// The header has no DirectX dependency. The x64 BDEF1 path uses SSE; other
+// targets retain scalar mathematics. The same code compiles into the renderer
+// and a standalone test binary without changing the BoneRecord layout.
 //
 // Conventions
 // -----------
@@ -64,6 +64,10 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#if defined(_M_X64) || defined(__x86_64__)
+#include <xmmintrin.h>
+#endif
 
 namespace mikudancestudio::affine {
 
@@ -699,6 +703,34 @@ struct Skinned {
 // weightPercent weight).
 inline void SkinBdef1(const BoneRef& bone, const float position[3],
                       const float normal[3], Skinned& out) {
+#if defined(_M_X64) || defined(__x86_64__)
+    {
+        // Compute XYZ together, retaining the scalar multiply/add order.
+        // Do not fuse operations or read a fourth input coordinate.
+        const __m128 row0 = _mm_loadu_ps(bone.matrix);
+        const __m128 row1 = _mm_loadu_ps(bone.matrix + 4);
+        const __m128 row2 = _mm_loadu_ps(bone.matrix + 8);
+        const auto transform = [](const float* value, __m128 row0, __m128 row1, __m128 row2) {
+            return _mm_add_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(value[0]), row0),
+                                         _mm_mul_ps(_mm_set1_ps(value[1]), row1)),
+                              _mm_mul_ps(_mm_set1_ps(value[2]), row2));
+        };
+        float result[4];
+        _mm_storeu_ps(result, _mm_add_ps(transform(position, row0, row1, row2), _mm_loadu_ps(bone.matrix + 12)));
+        std::memcpy(out.position, result, sizeof(out.position));
+        const bool affine = (bone.aux->flags & kBoneFlagAffine) != 0;
+        if (affine) {
+            const float* m = bone.aux->normalMatrix;
+            _mm_storeu_ps(result, transform(normal, _mm_loadu_ps(m), _mm_loadu_ps(m + 3),
+                                            _mm_set_ps(0.f, m[8], m[7], m[6])));
+        } else {
+            _mm_storeu_ps(result, transform(normal, row0, row1, row2));
+        }
+        std::memcpy(out.normal, result, sizeof(out.normal));
+        if (affine) Normalize3(out.normal);
+        return;
+    }
+#endif
     TransformPosition(out.position, position, bone.matrix);
     TransformNormalBone(out.normal, normal, bone.matrix, *bone.aux);
     if (bone.aux->flags & kBoneFlagAffine)
