@@ -35,6 +35,7 @@ void CmdViewMenu(MMDApp*, HWND, std::uint16_t, std::uint16_t);
 void CmdFileMenu(MMDApp*, HWND, std::uint16_t, std::uint16_t);
 void HandleWindowPaint(MMDApp*);
 void RefreshAfterFrameApply(MMDApp*);
+bool SaveSceneCopy(MMDApp*, const wchar_t*);
 }
 using namespace mikudancestudio;
 namespace {
@@ -603,6 +604,145 @@ LRESULT CALLBACK RejectMenuProbeDialog(int code, WPARAM wp, LPARAM lp) {
         }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
+}
+LRESULT CALLBACK GuardCameraLoadProbe(int code, WPARAM wp, LPARAM lp) {
+    if (code == HCBT_CREATEWND) {
+        auto* create = reinterpret_cast<CBT_CREATEWNDW*>(lp)->lpcs;
+        if ((create->style & WS_CHILD) == 0) {
+            create->style &= ~WS_VISIBLE;
+            create->x = create->y = -32000;
+        }
+    }
+    if (code == HCBT_ACTIVATE) {
+        RejectMenuProbeDialog(code, wp, lp);
+        return 1;
+    }
+    if (code == HCBT_SETFOCUS) return 1;
+    return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+void CheckPmmCameraLoad(MMDApp* app, const wchar_t* scene, const wchar_t* output) {
+    wcscpy_s(app->EnvFileName(), 256, scene);
+    LoadSceneFile();
+    Check(app->WindowLayoutReady() != 0, "PMM load completes");
+    const auto capture = [&](const char* label) {
+        std::printf("%s frame=%d mode=%d follow=%d parent=%d/%d suppressed=%d "
+                    "position=%.9g,%.9g,%.9g eye=%.9g,%.9g,%.9g "
+                    "rotation=%.9g,%.9g,%.9g fov=%.9g\n", label,
+            app->CurrentFrame(), app->CameraMode(), app->state.followCameraEnabled,
+            app->CameraParentModel(), app->CameraParentBone(),
+            app->CameraAttachmentTransformSuppressed(),
+            app->CameraPositionX(), app->CameraPositionY(), app->CameraPositionZ(),
+            app->ViewOffsetX(), app->ViewOffsetY(), app->CameraDistance(),
+            app->CameraPitch(), app->CameraYaw(), app->CameraRoll(), app->CameraFov());
+        SetupFrameWorldTransform(app);
+        std::array<D3DMATRIX, 3> result{};
+        int index = 0;
+        for (auto kind : {D3DTS_WORLD, D3DTS_VIEW, D3DTS_PROJECTION})
+            Check(SUCCEEDED(app->Renderer()->device->GetTransform(kind, &result[index++])),
+                  "read loaded camera transforms");
+        return result;
+    };
+    const auto loaded = capture("loaded");
+    Check(app->state.followCameraEnabled != 0, "fixture enables camera tracking");
+    app->CameraAttachmentTransformSuppressed() = 0;
+    // Evaluate only the camera part of a frame refresh: a full model seek
+    // would also discard unregistered bone poses stored in the PMM.
+    ReloadModels(app);
+    const auto refreshed = capture("refreshed");
+    float difference = 0;
+    for (int matrix = 0; matrix < 3; ++matrix)
+        for (int row = 0; row < 4; ++row)
+            for (int column = 0; column < 4; ++column)
+                difference = (std::max)(difference, std::fabs(
+                    loaded[matrix].m[row][column] - refreshed[matrix].m[row][column]));
+    std::printf("camera transform max difference=%.9g\n", difference);
+    Check(difference < 1e-5f, "opening a tracked PMM matches refreshing its current frame");
+    Check(!IsWindowVisible(app->MainWindow()), "camera load regression stays hidden");
+    std::puts("PASS PMM tracked camera is correct before the first frame refresh");
+
+    if (!output || !*output) return;
+    const auto cameraState = [&]() {
+        return std::array<float, 15>{app->CameraPositionX(), app->CameraPositionY(),
+            app->CameraPositionZ(), app->ViewOffsetX(), app->ViewOffsetY(),
+            app->CameraDistance(), app->CameraPitch(), app->CameraYaw(), app->CameraRoll(),
+            app->CameraFov(), float(app->CameraPerspective()), float(app->CameraParentModel()),
+            float(app->CameraParentBone()), float(app->CameraAttachmentTransformSuppressed()),
+            float(app->CurrentFrame())};
+    };
+    const auto roundtrip = [&](int number, const std::array<float, 15>& expected) {
+        const std::wstring path = std::wstring(output) + L"/camera-" +
+                                  std::to_wstring(number) + L".pmm";
+        Check(GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES,
+              "roundtrip output path is fresh");
+        Check(SaveSceneCopy(app, path.c_str()), "save isolated camera fixture");
+        wcscpy_s(app->EnvFileName(), 256, path.c_str());
+        LoadSceneFile();
+        const auto actual = cameraState();
+        for (std::size_t i = 0; i < actual.size(); ++i) {
+            if (std::fabs(actual[i] - expected[i]) >= 1e-5f)
+                std::printf("fixture=%d component=%zu expected=%.9g actual=%.9g\n",
+                            number, i, expected[i], actual[i]);
+            Check(std::fabs(actual[i] - expected[i]) < 1e-5f,
+                  "PMM roundtrip restores the intended camera state");
+        }
+        Check(app->SceneModified() == 0, "camera restoration does not dirty the project");
+        std::printf("PASS camera fixture %d\n", number);
+    };
+    const int modelSlot = app->SelectedModelSlot();
+    Check(app->ModelSlot(modelSlot) != nullptr, "tracking fixture has a model");
+    int number = 0;
+    for (int parent : {-1, modelSlot}) {
+        app->CameraMode() = 0;
+        app->state.followCameraEnabled = 1;
+        app->CameraParentModel() = parent;
+        app->CameraParentBone() = 0;
+        for (int frame : {0, 30}) {
+            app->CameraPositionX() = 3.f + frame;
+            app->CameraPositionY() = 12.f;
+            app->CameraPositionZ() = -4.f;
+            app->CameraDistance() = -45.f - frame;
+            app->CameraPitch() = 0.2f;
+            app->CameraYaw() = 0.3f;
+            app->CameraRoll() = -0.1f;
+            app->CameraFov() = float(30 + frame);
+            RegisterCameraState(app, frame);
+        }
+        for (int frame : {0, 15}) {
+            app->CurrentFrame() = frame;
+            app->CameraAttachmentTransformSuppressed() = 0;
+            ReloadModels(app);
+            const auto expected = cameraState();
+            app->CameraDistance() = 123.f;
+            app->CameraPositionX() = 456.f;
+            app->CameraYaw() = 0.9f;
+            app->CameraFov() = 70.f;
+            app->CameraParentModel() = -1;
+            app->CameraAttachmentTransformSuppressed() = 1;
+            roundtrip(number++, expected);
+        }
+    }
+    // Saved free views and unregistered camera edits must not be replaced by
+    // the camera key just because they differ from it.
+    for (int mode : {0, 1}) {
+        for (int follow : {0, 1}) {
+            if (mode == 0 && follow == 1) continue;
+            app->CameraMode() = mode;
+            app->state.followCameraEnabled = follow;
+            app->ViewOffsetX() = 7.f;
+            app->ViewOffsetY() = 11.f;
+            app->CameraDistance() = -123.f;
+            app->CameraPositionX() = 42.f;
+            app->CameraYaw() = 0.7f;
+            app->CameraFov() = 51.f;
+            app->CameraAttachmentTransformSuppressed() = 1;
+            roundtrip(number++, cameraState());
+            Check(app->CameraMode() == mode && app->state.followCameraEnabled == follow,
+                  "PMM preserves the active camera mode and tracking option");
+        }
+    }
+    Check(!IsWindowVisible(app->MainWindow()), "camera roundtrips stay hidden");
+    std::puts("PASS tracking parents/interpolation, free view and unregistered camera edits");
 }
 LRESULT CALLBACK ConfirmTestDialog(int code, WPARAM wp, LPARAM lp) {
     if (code == HCBT_ACTIVATE) {
@@ -1323,6 +1463,10 @@ int wmain(int argc, wchar_t** argv) {
     const bool allstarMmv=argc>3&&std::wcscmp(argv[3],L"--allstar-mmv")==0;
     if(allstarMmv)SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    const bool cameraLoad = argc > 3 && std::wcscmp(argv[3], L"--pmm-camera-load") == 0;
+    HHOOK cameraLoadHook = cameraLoad ? SetWindowsHookExW(WH_CBT,
+        GuardCameraLoadProbe, nullptr, GetCurrentThreadId()) : nullptr;
+    if (cameraLoad) Check(cameraLoadHook != nullptr, "install hidden camera load guard");
     const bool menusOnly = std::wcscmp(argv[1], L"--menus-only") == 0;
     HHOOK menuHook = menusOnly ? SetWindowsHookExW(WH_CBT, RejectMenuProbeDialog,
         nullptr, GetCurrentThreadId()) : nullptr;
@@ -1331,6 +1475,11 @@ int wmain(int argc, wchar_t** argv) {
         std::puts("menu integration: initialize window and renderer");
     }
     wchar_t scenePath[256]{};
+    wchar_t cameraOutput[256]{};
+    if (cameraLoad && argc > 4) {
+        const DWORD length = GetFullPathNameW(argv[4], 256, cameraOutput, nullptr);
+        Check(length > 0 && length < 256, "resolve camera output before app initialization");
+    }
     if (!menusOnly) {
         const DWORD length = GetFullPathNameW(argv[1], 256, scenePath, nullptr);
         Check(length > 0 && length < 256, "resolve scene path before app changes current directory");
@@ -1341,6 +1490,17 @@ int wmain(int argc, wchar_t** argv) {
     app->InitDefaults();
     if (!InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE)) return 3;
     ShowWindow(app->MainWindow(), SW_HIDE);
+    if (cameraLoad) {
+#ifdef REQUIRE_MME
+        Check(GetModuleHandleW(L"MMEffect.dll") && GetModuleHandleW(L"MMHack.dll"),
+              "camera load test requires the real MME plugin");
+        std::puts("MME loaded");
+#endif
+        CheckPmmCameraLoad(app, scenePath, cameraOutput);
+        ShutdownCleanup(app); delete app; g_Block = nullptr;
+        UnhookWindowsHookEx(cameraLoadHook);
+        return 0;
+    }
     if(allstarMmv){
         Check(mmv4mms::Active(),"actual MMV4MMS plugin loaded");
         const auto started=std::chrono::steady_clock::now();

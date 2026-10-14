@@ -2174,6 +2174,12 @@ static void LoadSceneV1_SuccessTail(PmmV1LoadContext& ctx) {
     RelayoutSidebarControls(s);                                                 // 0x45E7E2
     s->PhysicsResetPending() = 1;
     s->state.windowLayoutReady = 1;
+    // Match a frame refresh for tracked model view, without replacing saved
+    // free-view state or unregistered camera-panel edits.
+    if (s->state.followCameraEnabled != 0 && s->CameraMode() == 0) {
+        s->CameraAttachmentTransformSuppressed() = 0;
+        ReloadModels(s);
+    }
     s->ApplyTimelineLightState();
     TraceSceneLightState(s, "pmm-v1-load-tail");
     PostViewRefresh(s);                                           // 0x45E7F7
