@@ -297,6 +297,8 @@ void ReloadModels(MMDApp* app) {
 static void AdvancePlaybackTracks(MMDApp* app, int advance, bool modelsEnabled) {
     auto& s = *app;
 
+    app->SyncPlaybackTimeCompatibility();
+
     // ---- 1. per-model keyframe application (0x4175A8) --------------------
     unsigned char** models = s.ModelSlots();
     for (int j = 0; modelsEnabled && j < kModelSlotCount; ++j)
@@ -312,8 +314,8 @@ static void AdvancePlaybackTracks(MMDApp* app, int advance, bool modelsEnabled) 
                                        30.0f);
     {
         const double scaled = frame * 1000.0;
-        if (scaled - static_cast<double>(static_cast<int>(scaled)) >= 0.5)
-            frame = static_cast<double>(static_cast<int>(scaled) + 1) / 1000.0;
+        if (scaled - std::floor(scaled) >= 0.5)
+            frame = (std::floor(scaled) + 1.0) / 1000.0;
     }
 
     const bool editGate = s.state.optflag[0] != 0 ||

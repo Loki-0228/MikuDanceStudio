@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 #define NOMINMAX
 #include "mikudancestudio/frame_rate_correction.hpp"
 #include "mikudancestudio/alembic_export.hpp"
@@ -36,7 +37,7 @@ std::string Utf8(const std::wstring& text) {
 }
 struct TimeState {
     int frame = 0, timeline = 0;
-    float first = 0, last = 0;
+    double first = 0, last = 0;
 };
 TimeState Capture(MMDApp& app) {
     return {app.CurrentFrame(), app.TimelineStartFrame(),
@@ -48,17 +49,17 @@ bool Same(const TimeState& a, const TimeState& b) {
 }
 bool MapTime(const TimeState& input, const Rates& rates, TimeState& output, std::string& error) {
     const animation_retime::Rates r{rates.originalFPS, rates.currentFPS};
-    constexpr int maximum = 10000000;
+    constexpr int maximum = mikudancestudio::frame_limits::maximum;
     if (!animation_retime::MapFrame(input.frame, r, maximum, output.frame, error) ||
         !animation_retime::MapFrame(input.timeline, r, maximum, output.timeline, error)) return false;
-    auto seconds = [&](float value, float& result) {
+    auto seconds = [&](double value, double& result) {
         if (!std::isfinite(value) || value < 0 || value * 30.0 > maximum + 0.5) {
             error = "Invalid playback range";
             return false;
         }
         int frame = 0;
         if (!animation_retime::MapFrame(std::llround(value * 30.0), r, maximum, frame, error)) return false;
-        result = static_cast<float>(frame / 30.0);
+        result = frame / 30.0;
         return true;
     };
     return seconds(input.first, output.first) && seconds(input.last, output.last);
@@ -136,7 +137,7 @@ bool Apply(MMDApp& app, const PlanPtr& plan, std::wstring& error) {
     app.TimelineStartFrame() = plan->after.timeline;
     app.PlaybackStartSeconds() = plan->after.first;
     app.PlaybackEndSeconds() = plan->after.last;
-    app.PlaybackCursorSeconds() = static_cast<float>(plan->after.frame / 30.0);
+    app.PlaybackCursorSeconds() = plan->after.frame / 30.0;
     app.PhysicsResetPending() = 1;
     app.SceneModified() = 1;
     app.state.messageSeen = 1;

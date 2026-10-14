@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // Gap ports: wave-context reset, physics-pose key registration and the
 // standard-skeleton base-quaternion initializer
@@ -426,7 +427,7 @@ void RegisterPhysicsPose(unsigned char* m, std::uint32_t frame) {
     const auto morphCapacity1 = mdl::MorphKeyCapacity(morphKeys);
     for (int i = 0; i < morphCapacity1; ++i) morphKeys[i].allocated = 0;
     mdl::DisplayKey* const masterKeys = mdl::DisplayKeys(m);
-    for (int i = 0; i < 1000; ++i) masterKeys[i].allocated = 0;
+    for (int i = 0, poolCapacity = static_cast<int>(mdl::KeyPoolCapacity(masterKeys)); i < poolCapacity; ++i) masterKeys[i].allocated = 0;
 
     // Defect FB-13: the pose-trace buffer and the undo ring's pose buffers are
     // allocated via the scalar ::operator new (dialog_gaps.cpp:590 at

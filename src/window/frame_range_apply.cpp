@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x0043E970 - model frame-range scale/apply
 // ===========================================================================
@@ -15,6 +17,7 @@
 #include <Windows.h>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -94,7 +97,7 @@ void ClearMorphMarks(mdl::MorphKey* keys) {
 }
 
 void ClearDisplayMarks(mdl::DisplayKey* keys) {
-    for (int i = 0; i < 1000; ++i)
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(keys); i < capacity; ++i)
         keys[i].allocated = 0;
 }
 
@@ -136,6 +139,7 @@ void ScaleBoneKeys(MMDApp* app, unsigned char* model, HWND hDlg,
     ClearMorphMarks(morphKeys);
     ClearDisplayMarks(displayKeys);
 
+    std::vector<int> owners; owners.reserve(count);
     std::vector<bone_scale::Matrix> scaleCopies;
     scaleCopies.reserve(count);
     std::vector<std::array<unsigned char, 84>> copies(
@@ -148,6 +152,7 @@ void ScaleBoneKeys(MMDApp* app, unsigned char* model, HWND hDlg,
         scaleCopies.push_back(bone_scale::Key(model, i));
         auto& out = copies[static_cast<std::size_t>(outIndex++)];
         const int owner = TrackOwner(keys, i, boneCount);
+        owners.push_back(owner);
         strcpy_s(reinterpret_cast<char*>(out.data()), 30,
                  bones[owner].name);
         At<std::uint32_t>(out.data(), 32) = ScaledRelativeFrame(
@@ -167,12 +172,14 @@ void ScaleBoneKeys(MMDApp* app, unsigned char* model, HWND hDlg,
     BeginRangeScaleBoneUndo(model, app->CurrentFrame(), count);
     TraceRange("bone.undo_open");
     ResetBoneKeyCursor(model);
+    const int selected = mdl::Mdl(model)->selectedBone;
     std::size_t scaleIndex=0;
     for (auto& copy : copies) {
+        mdl::Mdl(model)->selectedBone = owners[scaleIndex];
         bone_scale::Registration scaleRegistration(scaleCopies[scaleIndex++]);
-        if (!RegisterBoneKey(model, copy.data(), static_cast<int>(start), 0))
-            break;
+        if (!RegisterBoneKey(model, copy.data(), static_cast<int>(start), 1)) break;
     }
+    mdl::Mdl(model)->selectedBone = selected;
     TraceRange("bone.inserted");
 }
 
@@ -205,6 +212,7 @@ void ScaleMorphKeys(MMDApp* app, unsigned char* model, HWND hDlg,
     ClearBoneMarks(boneKeys, mdl::BoneKeyCapacity(*mdl::Mdl(model)));
     ClearDisplayMarks(displayKeys);
 
+    std::vector<int> owners; owners.reserve(count);
     std::vector<std::array<unsigned char, 40>> copies(
         static_cast<std::size_t>(count));
     int outIndex = 0;
@@ -215,6 +223,7 @@ void ScaleMorphKeys(MMDApp* app, unsigned char* model, HWND hDlg,
             continue;
         auto& out = copies[static_cast<std::size_t>(outIndex++)];
         const int owner = TrackOwner(keys, i, morphCount);
+        owners.push_back(owner);
         strcpy_s(reinterpret_cast<char*>(out.data()), 30,
                  morphs[owner].name);
         At<std::uint32_t>(out.data(), 32) = ScaledRelativeFrame(
@@ -225,9 +234,11 @@ void ScaleMorphKeys(MMDApp* app, unsigned char* model, HWND hDlg,
     DeleteMarkedKeyframes(app);
     TraceRange("morph.deleted");
     ResetMorphKeyCursor(model);
-    for (const auto& copy : copies) {
-        if (!RegisterMorphKeyFromRecord(model, copy.data(), static_cast<int>(start)))
-            break;
+    std::size_t copyIndex = 0;
+    for (auto& copy : copies) {
+        std::uint32_t frame = 0;
+        if (!frame_limits::Add(start, At<std::uint32_t>(copy.data(), 32), frame) ||
+            !RegisterMorphKeyAtIndex(model, owners[copyIndex++], frame, At<float>(copy.data(), 36))) break;
     }
     TraceRange("morph.inserted");
 }
@@ -248,7 +259,7 @@ void ScaleDisplayKeys(MMDApp* app, unsigned char* model, HWND hDlg,
         static_cast<int>(mdl::Mdl(model)->boneOrderCount);
 
     int count = 0;
-    for (int i = 0; i < 1000; ++i) {
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(keys); i < capacity; ++i) {
         mdl::DisplayKey& key = keys[i];
         key.allocated = 0;
         const std::uint32_t frame = key.frame;
@@ -266,7 +277,7 @@ void ScaleDisplayKeys(MMDApp* app, unsigned char* model, HWND hDlg,
 
     std::vector<DisplayCopy> copies;
     copies.reserve(static_cast<std::size_t>(count));
-    for (int keyIndex = 0; keyIndex < 1000; ++keyIndex) {
+    for (std::size_t keyIndex = 0, capacity = mdl::KeyPoolCapacity(keys); keyIndex < capacity; ++keyIndex) {
         const mdl::DisplayKey& key = keys[keyIndex];
         if (key.allocated == 0)
             continue;
@@ -326,25 +337,38 @@ void ApplyFrameRangeScale(HWND hDlg) {
         return;
 
     char text[256]{};
-    GetWindowTextA(GetDlgItem(hDlg, panel::kScaleFromEdit), text, 8);
+    GetWindowTextA(GetDlgItem(hDlg, panel::kScaleFromEdit), text, sizeof text);
     const std::int32_t startSigned = std::atol(text);
-    GetWindowTextA(GetDlgItem(hDlg, panel::kScaleToEdit), text, 8);
+    GetWindowTextA(GetDlgItem(hDlg, panel::kScaleToEdit), text, sizeof text);
     const std::int32_t endSigned = std::atol(text);
     TraceRange("start", startSigned);
     TraceRange("end", endSigned);
-    if (endSigned - startSigned <= 0)
+    if (startSigned<0||endSigned<=startSigned||endSigned>frame_limits::maximum)
         return;
 
     // (between modelOffsetZ and morphFrameShift), no state member yet.
-    app->FrameRangeStartFrame() = startSigned;
+
     GetWindowTextA(GetDlgItem(hDlg, panel::kScaleRateEdit), text, 8);
     const double scale = std::atof(text);
-    TraceRange("scale_x1000", static_cast<int>(scale * 1000.0));
-    if (scale < 0.0000099999997 || scale == 1.0)
+    TraceRange("scale");
+    if (!std::isfinite(scale)||scale < 0.0000099999997 || scale == 1.0)
         return;
 
     const std::uint32_t start = static_cast<std::uint32_t>(startSigned);
     const std::uint32_t end = static_cast<std::uint32_t>(endSigned);
+    const auto valid=[&](const auto* keys,std::size_t capacity){
+        for(std::size_t i=0;keys&&i<capacity;++i){const auto frame=keys[i].frame;if(frame<start)continue;
+            const double mapped=frame<=end?double(start)+(double(frame)-start)*scale:double(frame)+(double(end)-start)*(scale-1.0);
+            if(!std::isfinite(mapped)||mapped<0||mapped>frame_limits::maximum)return false;
+        }return true;
+    };
+    if((IsDlgButtonChecked(hDlg,panel::kScaleBoneCheckbox)==BST_CHECKED&&!valid(mdl::BoneKeys(model),mdl::BoneKeyCapacity(*mdl::Mdl(model))))||
+       (IsDlgButtonChecked(hDlg,panel::kScaleMorphCheckbox)==BST_CHECKED&&!valid(mdl::MorphKeys(model),mdl::MorphKeyCapacity(mdl::MorphKeys(model))))||
+       (IsDlgButtonChecked(hDlg,panel::kScaleDispIkCheckbox)==BST_CHECKED&&!valid(mdl::DisplayKeys(model),mdl::KeyPoolCapacity(mdl::DisplayKeys(model))))){
+        const wchar_t* messages[]={L"変換後のフレーム番号が保存可能な範囲を超えます。変更は適用していません。",L"The resulting frame number cannot be represented. No edits were applied.",L"转换后的帧号超出可表示范围，未应用修改。"};
+        MessageBoxW(hDlg,messages[app->EnglishUI()<=2?app->EnglishUI():1],L"MMS",MB_OK|MB_ICONWARNING);return;
+    }
+    app->FrameRangeStartFrame()=startSigned;
     TraceRange("begin");
     ScaleBoneKeys(app, model, hDlg, start, end, scale);
     ScaleMorphKeys(app, model, hDlg, start, end, scale);

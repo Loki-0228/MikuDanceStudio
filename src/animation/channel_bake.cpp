@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // Native channel baking.  See channel_bake.hpp for the contract.
 //
 // Two families of tracks live here:
@@ -31,7 +33,7 @@ namespace mikudancestudio::channel_bake {
 namespace {
 namespace ac = animation_curve;
 using Channel = curve_editor::Channel;
-constexpr int kMaximumFrame = 100000;
+constexpr int kMaximumFrame = frame_limits::maximum;
 
 std::wstring Text(MMDApp& app, const wchar_t* ja, const wchar_t* en, const wchar_t* zh) {
     return app.EnglishUI() == 0 ? ja : app.EnglishUI() == 1 ? en : zh;
@@ -370,7 +372,7 @@ Error ValidChannels(const std::vector<Channel>& channels, const std::vector<Fiel
             return Error::InvalidRequest;
         }
         for (const auto& key : track.keys) {
-            if (key.frame > 10000000 || !std::isfinite(key.value) || key.value < fields[c].minimum ||
+            if (key.frame > mikudancestudio::frame_limits::maximum || !std::isfinite(key.value) || key.value < fields[c].minimum ||
                 key.value > fields[c].maximum ||
                 (fields[c].discrete && std::floor(key.value) != key.value)) {
                 message = L"A baked value or frame is outside the allowed range.";
@@ -379,7 +381,7 @@ Error ValidChannels(const std::vector<Channel>& channels, const std::vector<Fiel
             frames.insert(key.frame);
         }
     }
-    if (frames.size() > mdl::kTimelineKeyCapacity) {
+    if (frames.size() > mdl::KeyPoolLimit<mdl::CameraKey>()) {
         message = L"The native key capacity would be exceeded.";
         return Error::Capacity;
     }
@@ -400,7 +402,7 @@ bool ReadMorph(unsigned char* model, int morph, ac::Track& out, std::wstring& me
     std::uint32_t previous = 0;
     const auto morphCapacity1 = mdl::MorphKeyCapacity(keys);
     for (std::size_t visited = 0; visited <= morphCapacity1; ++visited) {
-        if (index >= morphCapacity1 || keys[index].frame > 10000000 ||
+        if (index >= morphCapacity1 || keys[index].frame > mikudancestudio::frame_limits::maximum ||
             (visited && keys[index].frame <= previous)) {
             message = L"The morph track is not a valid key chain.";
             return false;
@@ -443,8 +445,8 @@ bool ReadDisplay(unsigned char* model, std::vector<DisplayRecord>& out, int& cha
     out.clear();
     unsigned index = 0;
     std::uint32_t previous = 0;
-    for (std::size_t visited = 0; visited <= mdl::kDisplayKeyCapacity; ++visited) {
-        if (index >= mdl::kDisplayKeyCapacity || keys[index].frame > 10000000 ||
+    for (std::size_t visited = 0; visited <= mdl::KeyPoolCapacity(keys); ++visited) {
+        if (index >= mdl::KeyPoolCapacity(keys) || keys[index].frame > mikudancestudio::frame_limits::maximum ||
             (visited && keys[index].frame <= previous)) {
             message = L"The display track is not a valid key chain.";
             return false;
@@ -527,13 +529,13 @@ struct SceneTarget {
     unsigned char active = 0;
 };
 
-std::size_t PoolBytes(Kind kind) {
+std::size_t PoolBytes(MMDApp& app, Kind kind, int slot) {
     switch (kind) {
-    case Kind::Camera: return sizeof(mdl::CameraKey) * mdl::kTimelineKeyCapacity;
-    case Kind::Light: return sizeof(mdl::LightKey) * mdl::kTimelineKeyCapacity;
-    case Kind::SelfShadow: return sizeof(mdl::SelfShadowKey) * mdl::kTimelineKeyCapacity;
-    case Kind::Gravity: return sizeof(mdl::GravityKey) * mdl::kTimelineKeyCapacity;
-    default: return sizeof(mdl::AccessoryKey) * mdl::kTimelineKeyCapacity;
+    case Kind::Camera: return sizeof(mdl::CameraKey) * mdl::KeyPoolCapacity(app.CameraKeys());
+    case Kind::Light: return sizeof(mdl::LightKey) * mdl::KeyPoolCapacity(app.LightKeys());
+    case Kind::SelfShadow: return sizeof(mdl::SelfShadowKey) * mdl::KeyPoolCapacity(app.ShadowKeys());
+    case Kind::Gravity: return sizeof(mdl::GravityKey) * mdl::KeyPoolCapacity(app.GravityKeys());
+    default: return sizeof(mdl::AccessoryKey) * mdl::KeyPoolCapacity(app.AccessoryKeys(slot));
     }
 }
 
@@ -547,7 +549,7 @@ bool SnapshotScene(MMDApp& app, Kind kind, int slot, SceneTarget& target) {
     default: pool = app.AccessoryKeys(slot); target.cursor = app.AccessoryTrackCursor(slot); target.active = app.AccessoryTrackActive(slot); break;
     }
     if (!pool) return false;
-    const std::size_t bytes = PoolBytes(kind);
+    const std::size_t bytes = PoolBytes(app, kind, slot);
     target.pool.assign(static_cast<const unsigned char*>(pool), static_cast<const unsigned char*>(pool) + bytes);
     return true;
 }
@@ -574,7 +576,13 @@ void RestoreSceneTarget(MMDApp& app, SceneTarget& target) noexcept {
     case Kind::Gravity: pool = app.GravityKeys(); break;
     default: pool = app.AccessoryKeys(target.slot); break;
     }
-    if (pool && !target.pool.empty()) std::memcpy(pool, target.pool.data(), target.pool.size());
+    if (pool && !target.pool.empty()) {
+        const auto bytes = PoolBytes(app, target.kind, target.slot);
+        if (bytes >= target.pool.size()) {
+            std::memset(pool, 0, bytes);
+            std::memcpy(pool, target.pool.data(), target.pool.size());
+        }
+    }
     switch (target.kind) {
     case Kind::Camera: app.CameraTrackCursor() = target.cursor; app.CameraTrackActive() = target.active; break;
     case Kind::Light: app.LightTrackCursor() = target.cursor; app.LightTrackActive() = target.active; break;
@@ -610,6 +618,7 @@ struct ModelPlan {
     std::vector<mdl::MorphKey> morphPool;  // whole-pool snapshot, restored on rollback
     std::uint64_t morphRequired = 0;
     bool display = false;
+    std::uint64_t displayRequired = 0;
     DisplayTarget displayTarget;
     std::vector<SavedSlot> displaySaved;   // only the slots the write can touch
     std::vector<int> displayCreated;
@@ -967,13 +976,13 @@ int LastFrame(MMDApp& app, Scope scope) {
         unsigned char* model = app.SelectedModel();
         return model ? static_cast<int>(mdl::Mdl(model)->maxFrame) : 0;
     }
-    int last = std::max(LastFrameOfPool(app.CameraKeys(), mdl::kTimelineKeyCapacity, 0u),
-                        LastFrameOfPool(app.LightKeys(), mdl::kTimelineKeyCapacity, 0u));
-    last = std::max(last, LastFrameOfPool(app.ShadowKeys(), mdl::kTimelineKeyCapacity, 0u));
-    last = std::max(last, LastFrameOfPool(app.GravityKeys(), mdl::kTimelineKeyCapacity, 0u));
+    int last = std::max(LastFrameOfPool(app.CameraKeys(), mdl::KeyPoolCapacity(app.CameraKeys()), 0u),
+                        LastFrameOfPool(app.LightKeys(), mdl::KeyPoolCapacity(app.LightKeys()), 0u));
+    last = std::max(last, LastFrameOfPool(app.ShadowKeys(), mdl::KeyPoolCapacity(app.ShadowKeys()), 0u));
+    last = std::max(last, LastFrameOfPool(app.GravityKeys(), mdl::KeyPoolCapacity(app.GravityKeys()), 0u));
     for (int slot = 0; slot < 255; ++slot)
         if (app.AccessorySlot(slot))
-            last = std::max(last, LastFrameOfPool(app.AccessoryKeys(slot), mdl::kTimelineKeyCapacity, 0u));
+            last = std::max(last, LastFrameOfPool(app.AccessoryKeys(slot), mdl::KeyPoolCapacity(app.AccessoryKeys(slot)), 0u));
     return last;
 }
 
@@ -1287,7 +1296,7 @@ Error CheckModelCapacity(Plan::Impl& impl, MMDApp& app, std::wstring& message) {
         std::size_t selectorSlots = 0;
         if (!ReadDisplay(model, records, chains, selectorSlots, message)) return Error::Unavailable;
         std::size_t free = 0;
-        for (std::size_t index = 1; index < mdl::kDisplayKeyCapacity; ++index)
+        for (std::size_t index = 1; index < mdl::KeyPoolCapacity(keys); ++index)
             if (keys[index].frame == 0) ++free;
         std::size_t needed = 0;
         for (const auto& out : impl.model.displayTarget.records)
@@ -1295,14 +1304,13 @@ Error CheckModelCapacity(Plan::Impl& impl, MMDApp& app, std::wstring& message) {
                              [&](const DisplayRecord& r) { return r.frame == out.frame; }))
                 ++needed;
         free += impl.model.displayTarget.drop.size();
-        if (needed > free) {
-            message = Text(app, L"表示キー容量を超えました。",
-                           L"The display key capacity would be exceeded.", L"超过显示关键帧容量。");
-            return Error::Capacity;
-        }
+        const auto capacity = mdl::KeyPoolCapacity(keys);
+        impl.model.displayRequired = std::uint64_t(capacity) + (needed > free ? needed - free : 0);
+        if (impl.model.displayRequired > mdl::KeyPoolLimit<mdl::DisplayKey>()) return Error::Capacity;
+        impl.model.displayCreated.reserve(impl.model.displayTarget.records.size());
         // Snapshot the records the write can touch, so a rollback restores the
         // pool without ever having to move a key to another slot.
-        for (std::size_t index = 0; index < mdl::kDisplayKeyCapacity; ++index) {
+        for (std::size_t index = 0; index < mdl::KeyPoolCapacity(keys); ++index) {
             if (index != 0 && keys[index].frame == 0) continue;
             SavedSlot saved;
             saved.index = static_cast<int>(index);
@@ -1461,8 +1469,8 @@ bool UnlinkDisplay(unsigned char* model, int frame) {
     auto* keys = mdl::DisplayKeys(model);
     if (frame == 0) return false;  // the head keeps frame zero
     unsigned index = 0;
-    for (std::size_t visited = 0; visited <= mdl::kDisplayKeyCapacity; ++visited) {
-        if (index >= mdl::kDisplayKeyCapacity) return false;
+    for (std::size_t visited = 0; visited <= mdl::KeyPoolCapacity(keys); ++visited) {
+        if (index >= mdl::KeyPoolCapacity(keys)) return false;
         const unsigned next = keys[index].next;
         if (static_cast<int>(keys[index].frame) == frame) {
             if (index == 0) return false;
@@ -1503,8 +1511,8 @@ bool WriteDisplay(unsigned char* model, const DisplayRecord& record, std::size_t
         return true;
     }
     if (static_cast<int>(keys[current].frame) > record.frame) return false;
-    while (cursor < mdl::kDisplayKeyCapacity && (cursor < 1 || keys[cursor].frame != 0)) ++cursor;
-    if (cursor >= mdl::kDisplayKeyCapacity) return false;
+    while (cursor < mdl::KeyPoolCapacity(keys) && (cursor < 1 || keys[cursor].frame != 0)) ++cursor;
+    if (cursor >= mdl::KeyPoolCapacity(keys)) return false;
     const unsigned fresh = static_cast<unsigned>(cursor);
     keys[fresh].frame = static_cast<std::uint32_t>(record.frame);
     keys[fresh].previous = current;
@@ -1538,7 +1546,7 @@ void RestoreModel(MMDApp& app, Plan::Impl& impl, unsigned char* model) noexcept 
     mdl::Mdl(model)->maxFrame = impl.model.maxFrame;
     mdl::Mdl(model)->searchCursor = impl.model.searchCursor;
     for (const auto& saved : impl.model.displaySaved) {
-        if (saved.index < 0 || saved.index >= static_cast<int>(mdl::kDisplayKeyCapacity)) continue;
+        if (saved.index < 0 || saved.index >= static_cast<int>(mdl::KeyPoolCapacity(mdl::DisplayKeys(model)))) continue;
         mdl::DisplayKey& record = mdl::DisplayKeys(model)[saved.index];
         record = saved.record;
         auto* ik = mdl::IkStates(record);
@@ -1548,7 +1556,7 @@ void RestoreModel(MMDApp& app, Plan::Impl& impl, unsigned char* model) noexcept 
             std::memcpy(pairs, saved.selectors.data(), saved.selectors.size());
     }
     for (const int index : impl.model.displayCreated) {
-        if (index <= 0 || index >= static_cast<int>(mdl::kDisplayKeyCapacity)) continue;
+        if (index <= 0 || index >= static_cast<int>(mdl::KeyPoolCapacity(mdl::DisplayKeys(model)))) continue;
         const bool saved = std::any_of(impl.model.displaySaved.begin(), impl.model.displaySaved.end(),
                                        [&](const SavedSlot& slot) { return slot.index == index; });
         if (!saved) ClearDisplaySlot(model, static_cast<unsigned>(index));
@@ -1614,6 +1622,15 @@ Error Commit(MMDApp& app, Plan& plan, std::wstring& message) {
             return Error::Memory;
         }
         impl.model.identity.morphKeys = model.morphKeys;
+    }
+    if (impl.model.displayRequired) {
+        auto& model = *mdl::Mdl(app.SelectedModel());
+        if (!mdl::DisplayKeyPoolEnsure(model, impl.model.displayRequired)) {
+            message = Text(app, L"表示キーのメモリを確保できません。",
+                           L"Unable to allocate display key storage.", L"无法扩展显示关键帧存储，烧录已取消。");
+            return Error::Memory;
+        }
+        impl.model.identity.displayKeys = model.displayKeys;
     }
     impl.applied = true;
     try {

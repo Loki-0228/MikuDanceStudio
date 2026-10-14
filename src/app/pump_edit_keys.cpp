@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x00471342..0x00473127 - ConsumeEditKeys  (main-pump edit-key family)
 // ===========================================================================
@@ -465,14 +466,16 @@ void PumpEnterRegisterFrame(MMDApp* app, HWND focus,
         state.optflag[0] != 0 && focusNotInPanelEdit &&
         enterPressed && !altHeld) {
         app->SceneModified() = 1;                          // 0xA0B0D
-        for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i) {
-            app->CameraKeys()[i].selected = 0;             // 0x374 table
-            app->LightKeys()[i].selected = 0;              // 0x378 table
-            app->ShadowKeys()[i].selected = 0;             // 0x37C table
-            app->GravityKeys()[i].selected = 0;            // 0x380 table
-        }
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->CameraKeys()); i < capacity; ++i)
+            app->CameraKeys()[i].selected = 0;
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->LightKeys()); i < capacity; ++i)
+            app->LightKeys()[i].selected = 0;
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->ShadowKeys()); i < capacity; ++i)
+            app->ShadowKeys()[i].selected = 0;
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->GravityKeys()); i < capacity; ++i)
+            app->GravityKeys()[i].selected = 0;
         for (int slot = 0; slot < 0xFF; ++slot)
-            for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i)
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(app->AccessoryKeys(slot))); i < poolCapacity; ++i)
                 app->AccessoryKeys(slot)[i].selected = 0;  // 0x384 table
 
         const std::int32_t frame = app->CurrentFrame();    // 0x980

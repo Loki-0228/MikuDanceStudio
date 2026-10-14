@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // MAINTENANCE: production pure-CPU frame-rate retiming for
 // animation_curve::Track.  It is header-only in spirit: the implementation in
 // src/animation/animation_retime.cpp depends on the core curve module only, so
@@ -97,7 +98,7 @@ struct Rates {
 // Limits of one run.  maximumFrame is the largest frame the caller accepts; a
 // key that would land beyond it fails the call instead of being clamped.
 struct Options {
-    std::int32_t maximumFrame = 10000000;
+    std::int32_t maximumFrame = mikudancestudio::frame_limits::maximum;
 };
 
 // One run of input keys that map to the same output frame.  first and last

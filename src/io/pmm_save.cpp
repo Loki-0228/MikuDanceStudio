@@ -1,3 +1,7 @@
+#include "mikudancestudio/pmm_key_map.hpp"
+#include "mikudancestudio/save_compatibility.hpp"
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/autosave.hpp"
 #include <atomic>
 #include <filesystem>
@@ -430,12 +434,8 @@ void WritePmmSelfShadowKey(int fd, const mdl::SelfShadowKey& key) {
 template <typename TKey>
 std::int32_t CountSparseTrackFrames(const TKey* track) {
     std::int32_t cnt = 0;
-    const TKey* rec = track + 1;
-    for (int k = 0; k < 3333; ++k, rec += 3) {
-        if (rec[0].frame != 0) ++cnt;
-        if (rec[1].frame != 0) ++cnt;
-        if (rec[2].frame != 0) ++cnt;
-    }
+    for (std::size_t i = 1, capacity = mdl::KeyPoolCapacity(track); i < capacity; ++i)
+        if (track[i].frame != 0) ++cnt;
     return cnt;
 }
 
@@ -459,9 +459,9 @@ const char kJpCannotOpenText[] =      // 0x52BD80
 
 // 1. file header and global block (0x41B1B3..0x41B355); hdr is the caller's
 // error-path sprintf buffer (stack -0x34 in the original), shared down.
-void WritePmmFileHeader(int fd, MMDApp* s, HWND main, char* hdr) {
+void WritePmmFileHeader(int fd, MMDApp* s, HWND main, char* hdr, bool extended) {
     // ---- 1. file header and global block (0x41B1B3..0x41B355) -----------
-    sprintf_s(hdr, 0x100, "Polygon Movie maker 0002");
+    sprintf_s(hdr, 0x100, extended ? "Polygon Movie maker 0003" : "Polygon Movie maker 0002");
     // Bytes 25..29 after the 24-char magic + NUL are unspecified stack
     // residue in the original (its sprintf leaves the buffer's prior bytes
     // there); observed original saves carry zeros, so pin them to zero for
@@ -516,11 +516,9 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
                               record.pmxTextBuffers[language], 255);
 #else
             const char* name = language ? mdl::Mdl(model)->nameEn : mdl::Mdl(model)->name;
-            if (mdl::Mdl(model)->pmxTextBuffers[language]) {
-                const auto wide = text_encoding::ModelName(*mdl::Mdl(model), language != 0);
-                text_encoding::EncodePath(text, 0x100, wide.c_str());
-                name = text;
-            }
+            std::string exact;
+            const auto wide = text_encoding::ModelName(*mdl::Mdl(model), language != 0);
+            if(text_encoding::EncodeExact(wide.c_str(),932,exact)&&exact.size()<=255) name=exact.c_str();
             const auto len = static_cast<unsigned char>(std::strlen(name));
             W(fd, &len, 1);
             W(fd, name, len);
@@ -552,6 +550,9 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
         mdl::BoneKey* const dispKeys = mdl::BoneKeys(model);
         mdl::MorphKey* const morphKeys = mdl::MorphKeys(model);
         mdl::DisplayKey* const physKeys = mdl::DisplayKeys(model);
+        const PmmKeyMap<mdl::BoneKey> boneMap(dispKeys, dispCount, boneKeyCapacity, mdl::kBoneKeyCapacity);
+        const PmmKeyMap<mdl::MorphKey> morphMap(morphKeys, morphCount, mdl::MorphKeyCapacity(morphKeys), mdl::kMorphKeyCapacity);
+        const PmmKeyMap<mdl::DisplayKey> displayMap(physKeys, 1, mdl::KeyPoolCapacity(physKeys), mdl::kDisplayKeyCapacity);
 
         W(fd, &record->groupCount, 1);                         // 0x41B48E
         W(fd, &record->boneCount, sizeof(record->boneCount));  // 0x41B4AC
@@ -633,7 +634,7 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
             // at most 65535.
             // Defect B3-24.
             for (std::int32_t i = 0; i < dispCount; ++i) {
-                WritePmmBoneKey(fd, dispKeys[i]);
+                WritePmmBoneKey(fd, boneMap.Remap(dispKeys[i]));
             }
         }
         // sparse half: signed scan count*0x3C <= off < 60*pool capacity
@@ -651,8 +652,8 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
                      i < boneKeyCapacity; ++i) {
                     if (dispKeys[i].frame == 0)
                         continue;
-                    W(fd, &i, 4);                              // 0x41BB92
-                    WritePmmBoneKey(fd, dispKeys[i]);
+                    const auto savedIndex = boneMap.Index(i); W(fd, &savedIndex, 4);                              // 0x41BB92
+                    WritePmmBoneKey(fd, boneMap.Remap(dispKeys[i]));
                 }
             }
         }
@@ -660,7 +661,7 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
         // morph keys: dense then sparse (0x41BEE8..0x41C13A)
         if (morphCount != 0 && morphCount > 0) {
             for (std::int32_t i = 0; i < morphCount; ++i)
-                WritePmmMorphKey(fd, morphKeys[i]);
+                WritePmmMorphKey(fd, morphMap.Remap(morphKeys[i]));
         }
         {                                                      // 0x41BFFD
             std::int32_t cnt = 0;
@@ -676,24 +677,24 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
                 for (std::int32_t i = morphCount; i < morphCapacity2; ++i) {
                     if (morphKeys[i].frame == 0)
                         continue;
-                    W(fd, &i, 4);                              // 0x41C05E
-                    WritePmmMorphKey(fd, morphKeys[i]);
+                    const auto savedIndex = morphMap.Index(i); W(fd, &savedIndex, 4);                              // 0x41C05E
+                    WritePmmMorphKey(fd, morphMap.Remap(morphKeys[i]));
                 }
             }
         }
 
         // rigid/IK base record (0x41C173..)
-        WritePmmDisplayKey(fd, physKeys[0], ikCount, rigidCount);
+        WritePmmDisplayKey(fd, displayMap.Remap(physKeys[0]), ikCount, rigidCount);
         {  // sparse rigid/IK scan, 1000 records of 0x1C (0x41C353..)
             std::int32_t cnt = 0;
-            for (std::int32_t i = 1; i < 1000; ++i)
+            for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(physKeys)); i < poolCapacity; ++i)
                 if (physKeys[i].frame != 0) ++cnt;
             W(fd, &cnt, 4);
-            for (std::int32_t i = 1; i < 1000; ++i) {          // 0x41C394
+            for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(physKeys)); i < poolCapacity; ++i) {          // 0x41C394
                 if (physKeys[i].frame == 0)
                     continue;
-                W(fd, &i, 4);
-                WritePmmDisplayKey(fd, physKeys[i], ikCount, rigidCount);
+                const auto savedIndex = displayMap.Index(i); W(fd, &savedIndex, 4);
+                WritePmmDisplayKey(fd, displayMap.Remap(physKeys[i]), ikCount, rigidCount);
             }
         }
 
@@ -762,15 +763,16 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
 void WritePmmCameraSection(int fd, MMDApp* s) {
     // ---- 3. camera track (0x41C9AE..0x41CE85) ---------------------------
     const mdl::CameraKey* const cam = s->CameraKeys();  // app+0x374
-    WritePmmCameraKey(fd, cam[0]);                              // 0x41C9AE
+    const PmmKeyMap<mdl::CameraKey> camMap(cam, 1, mdl::KeyPoolCapacity(cam), 10000);
+    WritePmmCameraKey(fd, camMap.Remap(cam[0]));                              // 0x41C9AE
     {  // sparse scan over camera keys 1..9999 (sizeof(mdl::CameraKey) stride)
         const std::int32_t cnt = CountSparseTrackFrames(cam);   // 0x41CBB8..
         W(fd, &cnt, 4);
-        for (std::int32_t i = 1; i < 10000; ++i) {             // 0x41CBE6
+        for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(cam)); i < poolCapacity; ++i) {             // 0x41CBE6
             if (cam[i].frame == 0)
                 continue;
-            W(fd, &i, 4);
-            WritePmmCameraKey(fd, cam[i]);                      // 0x41CC00..
+            const auto savedIndex = camMap.Index(i); W(fd, &savedIndex, 4);
+            WritePmmCameraKey(fd, camMap.Remap(cam[i]));                      // 0x41CC00..
         }
     }
 
@@ -796,15 +798,16 @@ void WritePmmCameraSection(int fd, MMDApp* s) {
 void WritePmmLightSection(int fd, MMDApp* s) {
     // ---- 4. light track (0x41CF51..0x41D207) ----------------------------
     const mdl::LightKey* const light = s->LightKeys();  // app+0x378
-    WritePmmLightKey(fd, light[0]);                             // 0x41CF51
+    const PmmKeyMap<mdl::LightKey> lightMap(light, 1, mdl::KeyPoolCapacity(light), 10000);
+    WritePmmLightKey(fd, lightMap.Remap(light[0]));                             // 0x41CF51
     {  // sparse scan over light keys 1..9999 (sizeof(mdl::LightKey) stride)
         const std::int32_t cnt = CountSparseTrackFrames(light); // 0x41D072..
         W(fd, &cnt, 4);
-        for (std::int32_t i = 1; i < 10000; ++i) {             // 0x41D0A3
+        for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(light)); i < poolCapacity; ++i) {             // 0x41D0A3
             if (light[i].frame == 0)
                 continue;
-            W(fd, &i, 4);
-            WritePmmLightKey(fd, light[i]);                     // 0x41D0C0..
+            const auto savedIndex = lightMap.Index(i); W(fd, &savedIndex, 4);
+            WritePmmLightKey(fd, lightMap.Remap(light[i]));                     // 0x41D0C0..
         }
     }
 
@@ -866,17 +869,18 @@ void WritePmmAccessoryBlocks(
         W(fd, text, 0x100);                                    // 0x41D3AF
         W(fd, &accessory.order, 1);                             // 0x41D3CD
 
-        WritePmmAccessoryKey(fd, track[0]);
+            const PmmKeyMap<mdl::AccessoryKey> trackMap(track, 1, mdl::KeyPoolCapacity(track), 10000);
+    WritePmmAccessoryKey(fd, trackMap.Remap(track[0]));
         {  // sparse scan over accessory keys 1..9999 (0x3C stride)
             std::int32_t cnt = 0;
-            for (std::int32_t i = 1; i < 10000; ++i)
+            for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(track)); i < poolCapacity; ++i)
                 if (track[i].frame != 0) ++cnt;
             W(fd, &cnt, 4);
-            for (std::int32_t i = 1; i < 10000; ++i) {         // 0x41D66E
+            for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(track)); i < poolCapacity; ++i) {         // 0x41D66E
                 if (track[i].frame == 0)
                     continue;
-                W(fd, &i, 4);
-                WritePmmAccessoryKey(fd, track[i]);
+                const auto savedIndex = trackMap.Index(i); W(fd, &savedIndex, 4);
+                WritePmmAccessoryKey(fd, trackMap.Remap(track[i]));
             }
         }
         {
@@ -927,10 +931,14 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
         W(fd, &b, 1);
     }
     {  // frame edit readbacks 0x199 then 0x19A (asm 0x41DBEA..0x41DC5F)
-        GetWindowTextA(GetDlgItem(main, panel::kPlayStartFrameEdit), text, 8);
-        const std::int32_t playStartFrame = atol(text);
-        GetWindowTextA(GetDlgItem(main, panel::kPlayStopFrameEdit), text, 8);
-        const std::int32_t playStopFrame = atol(text);
+        text[0] = 0;
+        GetWindowTextA(GetDlgItem(main, panel::kPlayStartFrameEdit), text, 256);
+        std::int32_t playStartFrame = 0;
+        if (*text && !frame_limits::Parse(text, playStartFrame)) throw std::runtime_error("Invalid playback start frame");
+        text[0] = 0;
+        GetWindowTextA(GetDlgItem(main, panel::kPlayStopFrameEdit), text, 256);
+        std::int32_t playStopFrame = 0;
+        if (*text && !frame_limits::Parse(text, playStopFrame)) throw std::runtime_error("Invalid playback stop frame");
         W(fd, &playStartFrame, 4);
         W(fd, &playStopFrame, 4);
     }
@@ -993,16 +1001,17 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
 void WritePmmSelectionSection(int fd, MMDApp* s) {
     // ---- 8. selection/self-shadow track (0x41DF7C..0x41E25E) ------------
     const mdl::GravityKey* const sel = s->GravityKeys();  // app+0x380
-    WritePmmGravityKey(fd, sel[0]);                             // 0x41DF7C
+    const PmmKeyMap<mdl::GravityKey> selMap(sel, 1, mdl::KeyPoolCapacity(sel), 10000);
+    WritePmmGravityKey(fd, selMap.Remap(sel[0]));                             // 0x41DF7C
     {  // sparse scan over selection keys 1..9999
        // (sizeof(mdl::GravityKey) stride)
         const std::int32_t cnt = CountSparseTrackFrames(sel);   // 0x41E0AC..
         W(fd, &cnt, 4);
-        for (std::int32_t i = 1; i < 10000; ++i) {             // 0x41E0E4
+        for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(sel)); i < poolCapacity; ++i) {             // 0x41E0E4
             if (sel[i].frame == 0)
                 continue;
-            W(fd, &i, 4);
-            WritePmmGravityKey(fd, sel[i]);                     // 0x41E101..
+            const auto savedIndex = selMap.Index(i); W(fd, &savedIndex, 4);
+            WritePmmGravityKey(fd, selMap.Remap(sel[i]));                     // 0x41E101..
         }
     }
 
@@ -1019,16 +1028,17 @@ void WritePmmSelectionSection(int fd, MMDApp* s) {
 void WritePmmShadowAndConfig2(int fd, MMDApp* s, HWND main, char* text) {
     // ---- 9. self-shadow track (0x41E284..0x41E46F) ----------------------
     const mdl::SelfShadowKey* const shadow = s->ShadowKeys();  // app+0x37C
-    WritePmmSelfShadowKey(fd, shadow[0]);                       // 0x41E284
+    const PmmKeyMap<mdl::SelfShadowKey> shadowMap(shadow, 1, mdl::KeyPoolCapacity(shadow), 10000);
+    WritePmmSelfShadowKey(fd, shadowMap.Remap(shadow[0]));                       // 0x41E284
     {  // sparse scan over self-shadow keys 1..9999
        // (sizeof(mdl::SelfShadowKey) stride)
         const std::int32_t cnt = CountSparseTrackFrames(shadow);// 0x41E34D..
         W(fd, &cnt, 4);
-        for (std::int32_t i = 1; i < 10000; ++i) {             // 0x41E384
+        for (std::int32_t i = 1, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(shadow)); i < poolCapacity; ++i) {             // 0x41E384
             if (shadow[i].frame == 0)
                 continue;
-            W(fd, &i, 4);
-            WritePmmSelfShadowKey(fd, shadow[i]);               // 0x41E3A1..
+            const auto savedIndex = shadowMap.Index(i); W(fd, &savedIndex, 4);
+            WritePmmSelfShadowKey(fd, shadowMap.Remap(shadow[i]));               // 0x41E3A1..
         }
     }
 
@@ -1059,7 +1069,8 @@ void WritePmmShadowAndConfig2(int fd, MMDApp* s, HWND main, char* text) {
     }
     {  // 0x22A edit readback on the alt dialog when present (0x41E69E)
         const HWND alt = s->state.floatingWindow;
-        GetWindowTextA(GetDlgItem(alt != nullptr ? alt : main, panel::kGotoFrameEdit), text, 10);
+        text[0] = 0;
+        GetWindowTextA(GetDlgItem(alt != nullptr ? alt : main, panel::kGotoFrameEdit), text, 256);
         std::int32_t v = atol(text);
         if (v < 0) v = 0;
         W(fd, &v, 4);                                          // 0x41E6D1
@@ -1130,10 +1141,7 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
         if (slots[i]) {
             auto& model = *mdl::Mdl(slots[i]);
             checkPath(model.path);
-            for (int language = 0; language < 2; ++language)
-                if (model.pmxTextBuffers[language] && !EncodePmmPath(
-                        text, sizeof text, model.pmxTextBuffers[language]))
-                    invalidPath = model.path;
+
         }
     for (int i = 0; i < 255; ++i)
         if (accessories[i]) checkPath(accessories[i]->sourcePath);
@@ -1177,6 +1185,13 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
     }
 #endif
 
+    const auto compatibility = save_compatibility::InspectPmm(*s);
+#if MMD_ORIGINAL_PROFILE
+    if (compatibility.needsNewPmm) {
+        if (!backup) original_file_encoding::Refuse(main, s->EnglishUI(), L"PMM");
+        return false;
+    }
+#endif
     pmm_extension::Document extensions;
 #if !MMD_ORIGINAL_PROFILE
     try { extensions = pmm_settings::Capture(*s); }
@@ -1206,9 +1221,9 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
         if (backup) return false;
         s->SceneModified() = 1;
         const wchar_t* messages[] = {
-            L"PMM 拡張データが保存上限（16 MiB）を超えたか、形式が無効です。既存ファイルは変更していません。ボーンスケールのキーを減らすか、VMD と付随ファイルに分けて保存してください。",
-            L"PMM extension data exceeds the 16 MiB limit or has an invalid format. The existing file was not changed. Reduce scale keys or save motions as VMD with companion files.",
-            L"PMM 扩展数据超过 16 MiB 上限或格式无效，现有文件未改动。请减少缩放关键帧，或将动作分别保存为 VMD 及其伴随文件。"};
+            L"PMM 拡張データが形式で表現できるサイズを超えたか、形式が無効です。既存ファイルは変更していません。",
+            L"PMM extension data exceeds the representable size or has an invalid format. The existing file was not changed.",
+            L"PMM 扩展数据超出文件可表示范围或格式无效，现有文件未改动。"};
         MessageBoxW(main, messages[s->EnglishUI() <= 2 ? s->EnglishUI() : 1],
                     L"PMM", MB_OK | MB_ICONERROR);
         return false;
@@ -1251,7 +1266,7 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
         ~TemporaryFile() { if (fd >= 0) _close(fd); DeleteFileW(path); }
     } cleanup{fd, temporary};
     if (!backup) s->state.windowLayoutReady = 0;
-    WritePmmFileHeader(fd, s, main, hdr);                   // 1. 0x41B1B3..0x41B355
+    WritePmmFileHeader(fd, s, main, hdr, compatibility.needsNewPmm);                   // 1. 0x41B1B3..0x41B355
     WritePmmModelBlocks(fd, slots, text);                   // 2. 0x41B355..0x41C981
     WritePmmCameraSection(fd, s);                           // 3. 0x41C9AE..0x41CF3E
     WritePmmLightSection(fd, s);                            // 4. 0x41CF51..0x41D28F
@@ -1263,6 +1278,7 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
     WritePmmModelTail(fd, slots);                           // 11. 0x41E70D
 
 
+    const auto standardBytes = _telli64(fd);
     // ---- 12. success tail (0x41E747) --------------------------------------
     const bool written = !pmmWriteFailed &&
 #if !MMD_ORIGINAL_PROFILE
@@ -1288,6 +1304,12 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
         return false;
     }
     if (backup) return true;
+#if !MMD_ORIGINAL_PROFILE
+    std::wstring compatibleCopy;
+    const bool attemptCopy=compatibility.namesNeedExtension&&compatibility.canCopyLegacy;
+    if(attemptCopy&&standardBytes>=0)save_compatibility::CopyPrefix(target,static_cast<std::uint64_t>(standardBytes),compatibleCopy);
+    save_compatibility::Notify(*s,compatibility,compatibleCopy,attemptCopy);
+#endif
 #if MMD_ORIGINAL_PROFILE
     s->PmmProjectSettings().document = {};
 #else
@@ -1305,7 +1327,14 @@ static bool SaveSceneFileImpl(MMDApp* app, const wchar_t* target, bool backup) {
     return true;
 }
 
-void SaveSceneFile(MMDApp* app) { SaveSceneFileImpl(app, app->EnvFileName(), false); }
+void SaveSceneFile(MMDApp* app) {
+    try { SaveSceneFileImpl(app, app->EnvFileName(), false); }
+    catch (const std::exception&) {
+        app->SceneModified() = 1;
+        const wchar_t* messages[] = {L"プロジェクトを完全に保存できませんでした。メモリとキーフレームの参照を確認してください。", L"The project could not be saved completely. Check available memory and keyframe references.", L"无法完整保存工程，请检查可用内存和关键帧引用。"};
+        if (app->MainWindow()) MessageBoxW(app->MainWindow(), messages[app->EnglishUI() <= 2 ? app->EnglishUI() : 1], L"PMM", MB_OK | MB_ICONERROR);
+    }
+}
 bool SaveSceneCopy(MMDApp* app, const wchar_t* target) {
     try { return SaveSceneFileImpl(app, target, true); }
     catch (...) { return false; }

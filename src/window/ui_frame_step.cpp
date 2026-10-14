@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // ===========================================================================
 // Left frame-editor refresh and single-frame stepping helpers.
 //   0x00430F20 / 0x004312E0  StepFrame(app, true/false) - one frame forward /
@@ -187,6 +188,7 @@ void RefreshTimeline(MMDApp* app, bool forward) {
 // forwarding wrappers this used to be reached through were removed; callers
 // pass the direction flag directly.
 void StepFrame(MMDApp* app, bool forward) {
+    if(!app || (forward && app->CurrentFrame()>=frame_limits::maximum) || (!forward && app->CurrentFrame()<=0))return;
     app->CameraAttachmentTransformSuppressed() = 0;
     SnapshotAndClearBoneEdits(app);
     std::int32_t& frame = app->state.currentFrame;

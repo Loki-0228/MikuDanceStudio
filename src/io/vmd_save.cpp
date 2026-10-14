@@ -1,3 +1,7 @@
+#include <exception>
+#include "mikudancestudio/save_compatibility.hpp"
+#include "mikudancestudio/extended_names.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/build_profile.hpp"
@@ -114,7 +118,7 @@ bool PrepareOriginalNames(unsigned char* raw, OriginalNames& names) {
         if (!model.morphCount || !prepare(names.morphs[index], model.morphs[index], 15)) return false;
     }
     bool display = false;
-    for (unsigned i = 0; i < 1000; ++i) display |= model.displayKeys[i].allocated != 0;
+    for (unsigned i = 0, poolCapacity = static_cast<unsigned>(mdl::KeyPoolCapacity(model.displayKeys)); i < poolCapacity; ++i) display |= model.displayKeys[i].allocated != 0;
     if (display) for (unsigned i = 0; i < model.ikChainCount; ++i) {
         const auto index = model.ikChains[i].boneIndex;
         if (index >= 0 && static_cast<unsigned>(index) < model.boneCount &&
@@ -127,7 +131,7 @@ bool PrepareOriginalNames(unsigned char* raw, OriginalNames& names) {
 }  // namespace
 
 // ---- VA 0x00419370 --------------------------------------------------------
-void SaveVmdFile(const wchar_t* path) {
+static void SaveVmdFileImpl(const wchar_t* path) {
     MMDApp* app = g_Block;
     if (app == nullptr) return;
     auto& s = *app;
@@ -142,7 +146,17 @@ void SaveVmdFile(const wchar_t* path) {
     }
 #else
     bone_scale_io::PrefixFingerprint prefix;
+    extended_names::MotionNames fullNames;
+    bool extendedNames = !cameraMode && model && !extended_names::LegacyNamesFit(*mdl::Mdl(model), true);
+    extended_names::MotionScope unicodeScope(extendedNames);
+    if (extendedNames) {
+        const auto& m = *mdl::Mdl(model);
+        fullNames.model = text_encoding::ModelName(m, false);
+        for (unsigned i=0;i<m.boneCount;++i) fullNames.bones.push_back(text_encoding::BoneName(m.boneTable[i],false));
+        for (unsigned i=0;i<m.morphCount;++i) fullNames.morphs.push_back(text_encoding::MorphName(m.morphs[i],false));
+    }
 #endif
+    std::uint64_t standardBytes=0;
     bool writeFailed = false;
     const auto Wr = [&](int descriptor, const void* bytes, unsigned int count) {
         if (_write(descriptor, bytes, count) != static_cast<int>(count)) writeFailed = true;
@@ -179,7 +193,7 @@ void SaveVmdFile(const wchar_t* path) {
             }
         }
         const mdl::DisplayKey* ikeys = mdl::DisplayKeys(model);
-        for (unsigned int i = 0; i < 1000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(ikeys)); i < poolCapacity; ++i) {
             if (ikeys[i].allocated != 0) {
                 ++ikCnt;
                 const std::uint32_t f = ikeys[i].frame;
@@ -188,7 +202,7 @@ void SaveVmdFile(const wchar_t* path) {
         }
     } else {
         const mdl::CameraKey* cam = app->CameraKeys();
-        for (unsigned int i = 0; i < 10000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(cam)); i < poolCapacity; ++i) {
             if (cam[i].selected != 0) {
                 ++camCnt;
                 const std::uint32_t f = cam[i].frame;
@@ -196,7 +210,7 @@ void SaveVmdFile(const wchar_t* path) {
             }
         }
         const mdl::LightKey* light = app->LightKeys();
-        for (unsigned int i = 0; i < 10000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(light)); i < poolCapacity; ++i) {
             if (light[i].selected != 0) {
                 ++lightCnt;
                 const std::uint32_t f = light[i].frame;
@@ -204,7 +218,7 @@ void SaveVmdFile(const wchar_t* path) {
             }
         }
         const mdl::SelfShadowKey* shadow = app->ShadowKeys();
-        for (unsigned int i = 0; i < 10000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(shadow)); i < poolCapacity; ++i) {
             if (shadow[i].selected != 0) {
                 ++shadowCnt;
                 const std::uint32_t f = shadow[i].frame;
@@ -241,6 +255,11 @@ void SaveVmdFile(const wchar_t* path) {
         LegacyUiMessageBoxA(static_cast<HWND>(s.Hwnd()), text, "", 0);
         return;
     }
+
+    struct TemporaryFile {
+        int& fd; const std::wstring& path;
+        ~TemporaryFile() { if (fd >= 0) _close(fd); DeleteFileW(path.c_str()); }
+    } cleanup{fd, temporary};
 
     // The 25-byte header text and the 12-byte camera name are both shorter than
     // the fixed 30- and 20-byte writes that follow; the original reads
@@ -316,6 +335,7 @@ void SaveVmdFile(const wchar_t* path) {
 #if MMD_ORIGINAL_PROFILE
             Wr(fd, names.bones[boneIdx].data(), 15);
 #else
+            if (extendedNames) fullNames.boneOwners.push_back(boneIdx);
             Wr(fd, bones[boneIdx].name, 15);                    // 0x419904
 #endif
             outDword = rec.frame - minFrame;
@@ -371,6 +391,7 @@ void SaveVmdFile(const wchar_t* path) {
 #if MMD_ORIGINAL_PROFILE
             Wr(fd, names.morphs[morphIdx].data(), 15);
 #else
+            if (extendedNames) fullNames.morphOwners.push_back(morphIdx);
             Wr(fd, morphs[morphIdx].name, 15);                  // 0x419C18
 #endif
             outDword = rec.frame - minFrame;
@@ -384,7 +405,7 @@ void SaveVmdFile(const wchar_t* path) {
     Wr(fd, &outDword, 4);                                             // 0x419E60
     if (camCnt != 0) {
         const mdl::CameraKey* cam = app->CameraKeys();
-        for (unsigned int i = 0; i < 10000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(cam)); i < poolCapacity; ++i) {
             const mdl::CameraKey& rec = cam[i];
             if (rec.selected == 0) continue;
             outDword = rec.frame - minFrame;
@@ -410,7 +431,7 @@ void SaveVmdFile(const wchar_t* path) {
     Wr(fd, &outDword, 4);                                             // 0x419F4D
     if (lightCnt != 0) {
         const mdl::LightKey* light = app->LightKeys();
-        for (unsigned int i = 0; i < 10000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(light)); i < poolCapacity; ++i) {
             const mdl::LightKey& rec = light[i];
             if (rec.selected == 0) continue;
             outDword = rec.frame - minFrame;
@@ -425,7 +446,7 @@ void SaveVmdFile(const wchar_t* path) {
     Wr(fd, &outDword, 4);                                             // 0x419FD6
     if (shadowCnt != 0) {
         const mdl::SelfShadowKey* shadow = app->ShadowKeys();
-        for (unsigned int i = 0; i < 10000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(shadow)); i < poolCapacity; ++i) {
             const mdl::SelfShadowKey& rec = shadow[i];
             if (rec.selected == 0) continue;
             outDword = rec.frame - minFrame;
@@ -440,7 +461,7 @@ void SaveVmdFile(const wchar_t* path) {
     Wr(fd, &outDword, 4);                                             // 0x41A17B..
     if (!cameraMode && outDword != 0) {
         const mdl::DisplayKey* ikeys = mdl::DisplayKeys(model);
-        for (unsigned int i = 0; i < 1000; ++i) {
+        for (unsigned int i = 0, poolCapacity = static_cast<unsigned int>(mdl::KeyPoolCapacity(ikeys)); i < poolCapacity; ++i) {
             const mdl::DisplayKey& rec = ikeys[i];
             if (rec.allocated == 0) continue;
             outDword = rec.frame - minFrame;
@@ -452,6 +473,9 @@ void SaveVmdFile(const wchar_t* path) {
             for (int j = 0; j < ikChainCount; ++j) {             // 0x41A0F0..
                 // was: inner `i`, shadowing the outer record-index i
                 const int boneIdx = ikChains[j].boneIndex;
+#if !MMD_ORIGINAL_PROFILE
+                if(extendedNames) fullNames.ikOwners.push_back(boneIdx>=0&&boneIdx<boneCount?std::uint32_t(boneIdx):UINT32_MAX);
+#endif
                 // Deliberate hardening: the original code writes the chain's bone
                 // name directly from bones[boneIdx] without a range check (the
                 // IK chain walk at 0x41A0F0), so a model whose chain contains
@@ -484,9 +508,14 @@ void SaveVmdFile(const wchar_t* path) {
         }
     }
 
+    standardBytes=static_cast<std::uint64_t>(_telli64(fd));
 #if !MMD_ORIGINAL_PROFILE
     // MMS: camera mode appends the selected `.x` keyframes after the standard
     // end, where readers of the standard sections stop.
+    if (!writeFailed && extendedNames) {
+        const auto block = extended_names::EncodeMotion(fullNames, prefix.bytes(), prefix.crc32());
+        Wr(fd, block.data(), static_cast<unsigned int>(block.size()));
+    }
     if (!writeFailed && cameraMode && !accessoryTracks.empty()) {
         for (auto& track : accessoryTracks)
             for (auto& key : track.keys) key.frame -= minFrame;
@@ -528,9 +557,17 @@ void SaveVmdFile(const wchar_t* path) {
 #endif
     if (_commit(fd) != 0) writeFailed = true;
     if (_close(fd) != 0) writeFailed = true;
+    fd = -1;
     if (!writeFailed && !MoveFileExW(temporary.c_str(), path,
                                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
         writeFailed = true;
+#if !MMD_ORIGINAL_PROFILE
+    if(!writeFailed&&extendedNames){
+        const auto compatibility=save_compatibility::InspectMotion(*mdl::Mdl(model));std::wstring copy;
+        if(compatibility.canCopyLegacy)save_compatibility::CopyPrefix(path,standardBytes,copy);
+        save_compatibility::Notify(*app,compatibility,copy,compatibility.canCopyLegacy);
+    }
+#endif
     if (writeFailed) {
         DeleteFileW(temporary.c_str()); // only the file created exclusively above
         const wchar_t* messages[] = {
@@ -540,6 +577,15 @@ void SaveVmdFile(const wchar_t* path) {
         MessageBoxW(static_cast<HWND>(s.Hwnd()),
                     messages[s.state.englishUI <= 2 ? s.state.englishUI : 1],
                     L"VMD", MB_OK | MB_ICONERROR);
+    }
+}
+
+void SaveVmdFile(const wchar_t* path) {
+    try { SaveVmdFileImpl(path); }
+    catch (const std::exception&) {
+        if (!g_Block) return;
+        const wchar_t* messages[] = {L"VMD の保存に必要なメモリを確保できないか、データが無効です。", L"VMD saving failed: insufficient memory or invalid data.", L"VMD 保存失败：内存不足或数据无效。"};
+        if (g_Block->MainWindow()) MessageBoxW(g_Block->MainWindow(), messages[g_Block->EnglishUI() <= 2 ? g_Block->EnglishUI() : 1], L"VMD", MB_OK | MB_ICONERROR);
     }
 }
 

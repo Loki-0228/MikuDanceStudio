@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // VA 0x00430510 with helpers 0x00415E90 / 0x00416090
@@ -23,7 +24,7 @@ void ClearGlobalFrameSelection(MMDApp* app) {
     if (!app) return;
     const auto clear = [](auto* keys) {
         if (!keys) return;
-        for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i)
+        for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i)
             keys[i].selected = 0;
     };
     clear(app->CameraKeys());
@@ -188,7 +189,7 @@ void DragInterpolationControlPoint(MMDApp* app) {  // was Sub416280, VA 0x004162
     if (app->state.optflag[0] != 0) {   // 0x416337
         auto* records = app->CameraKeys();
         if (records != nullptr && selected >= 0) {
-            for (std::size_t index = 0; index < mdl::kTimelineKeyCapacity; ++index) {
+            for (std::size_t index = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(records)); index < poolCapacity; ++index) {
                 auto& record = records[index];
                 if (record.selected == 0)
                     continue;
@@ -201,7 +202,7 @@ void DragInterpolationControlPoint(MMDApp* app) {  // was Sub416280, VA 0x004162
                 for (int c = channel; c < endChannel; ++c) {
                     record.interpolation[group][c] = static_cast<std::uint8_t>(x);
                     record.interpolation[group + 1][c] = static_cast<std::uint8_t>(y);
-                    const int adjacent=link?adjacentIndex(records,mdl::kTimelineKeyCapacity,index,mode):-1;
+                    const int adjacent=link?adjacentIndex(records,mdl::KeyPoolCapacity(records),index,mode):-1;
                     if(adjacent>=0){
                         auto& neighbor=records[adjacent];std::array<std::uint8_t,4> curve{},edited{};
                         for(int k=0;k<4;++k){curve[k]=neighbor.interpolation[k][c];edited[k]=record.interpolation[k][c];}

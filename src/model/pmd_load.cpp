@@ -1,3 +1,5 @@
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x004BF3E0 - ModelLoadPMD  (original: sub_4BF3E0, 0x2C95 bytes)
 // ===========================================================================
@@ -558,7 +560,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
             operator new(sizeof(*model.displayFrames) * model.facialFrameCount));
         std::memset(model.displayFrames, 0,
                     sizeof(*model.displayFrames) * model.facialFrameCount);
-        for (std::uint8_t i = 0; i < model.facialFrameCount; ++i) {
+        for (std::uint32_t i = 0; i < model.facialFrameCount; ++i) {
             mdl::FrameGroup& frame = model.displayFrames[i];
             _read(fh, &frame.targetIndex, sizeof(frame.targetIndex));
             frame.groupIndex = 1;
@@ -574,26 +576,14 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
         }
     }
     _read(fh, &model.groupCount, sizeof(model.groupCount));
-    model.groupCount += 2;
-    if (model.facialFrameCount != 0)
-        ++model.groupCount;
-    const std::uint8_t grpCount = model.groupCount;
-    // Deliberate hardening: the original adds 2 to the file's group byte in
-    // place (add byte ptr [rsi],2 at 0x1400B3C32, inc at 0x1400B3C3F and
-    // 0x1400B3C41) and allocates 101 * count from the wrapped byte at
-    // 0x1400B3C4B, yet still writes groups[0]/[1]/[2] at 0x1400B3C86 and
-    // 0x1400B3CCA; a file count of 254 or 255 therefore allocates one or two rows
-    // and overruns them.  The port keeps the wrapped count for the name reads and
-    // allocates room for the fixed rows it always writes.
-    // Defect MB-16.
-    const std::uint8_t fixedRows =
-        static_cast<std::uint8_t>(model.facialFrameCount != 0 ? 3 : 2);
-    const std::uint8_t groupSlots = static_cast<std::uint8_t>(
-        grpCount > fixedRows ? grpCount : fixedRows);
+    const std::uint32_t fixedRows = model.facialFrameCount != 0 ? 3 : 2;
+    const std::uint32_t grpCount = std::uint32_t(model.groupCount) + fixedRows;
+    const std::uint32_t groupSlots = grpCount;
     mdl::DisplayGroup*& groups = mdl::DisplayGroups(m);
     groups = static_cast<mdl::DisplayGroup*>(
         operator new(sizeof(*groups) * groupSlots));
     std::memset(groups, 0, sizeof(*groups) * groupSlots);
+    mdl::SetDisplayCapacity(model, grpCount, model.facialFrameCount);
     strcpy_s(groups[0].name, sizeof(groups[0].name), bones[0].name);
     strcpy_s(groups[1].name, sizeof(groups[1].name), kLblDispIkOpJp);
     strcpy_s(groups[0].nameEn, sizeof(groups[0].nameEn), bones[0].nameEn);
@@ -601,10 +591,10 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
     if (model.facialFrameCount != 0) {
         strcpy_s(groups[2].name, sizeof(groups[2].name), kLblFacialJp);
         strcpy_s(groups[2].nameEn, sizeof(groups[2].nameEn), "Facial");
-        for (std::uint8_t i = 3; i < grpCount; ++i)
+        for (std::uint32_t i = 3; i < grpCount; ++i)
             _read(fh, groups[i].name, sizeof(groups[i].name));
     } else {
-        for (std::uint8_t i = 2; i < grpCount; ++i)
+        for (std::uint32_t i = 2; i < grpCount; ++i)
             _read(fh, groups[i].name, sizeof(groups[i].name));
     }
 
@@ -648,11 +638,11 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
             strcpy_s(morphs[i].nameEn, sizeof(morphs[i].nameEn),
                      morphs[i].name);
         if (model.facialFrameCount != 0)
-            for (std::uint8_t i = 3; i < grpCount; ++i)
+            for (std::uint32_t i = 3; i < grpCount; ++i)
                 strcpy_s(groups[i].nameEn, sizeof(groups[i].nameEn),
                          groups[i].name);
         else
-            for (std::uint8_t i = 2; i < grpCount; ++i)
+            for (std::uint32_t i = 2; i < grpCount; ++i)
                 strcpy_s(groups[i].nameEn, sizeof(groups[i].nameEn),
                          groups[i].name);
     } else {
@@ -678,17 +668,17 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
             morphs[i].nameEn[sizeof(morphs[i].nameEn) - 1] = 0;
         }
         if (model.facialFrameCount != 0)
-            for (std::uint8_t i = 3; i < grpCount; ++i) {
+            for (std::uint32_t i = 3; i < grpCount; ++i) {
                 _read(fh, groups[i].nameEn, sizeof(groups[i].nameEn));
                 groups[i].nameEn[sizeof(groups[i].nameEn) - 1] = 0;
             }
         else
-            for (std::uint8_t i = 2; i < grpCount; ++i) {
+            for (std::uint32_t i = 2; i < grpCount; ++i) {
                 _read(fh, groups[i].nameEn, sizeof(groups[i].nameEn));
                 groups[i].nameEn[sizeof(groups[i].nameEn) - 1] = 0;
             }
     }
-    for (std::uint8_t i = 0; i < model.facialFrameCount; ++i) {
+    for (std::uint32_t i = 0; i < model.facialFrameCount; ++i) {
         mdl::FrameGroup& frame = model.displayFrames[i];
         // Deliberate hardening: this morph index is unbounded, as in the first
         // facial loop above (original 0x1400B3BF6/0x1400B3BFA/0x1400B3BFE); the
@@ -948,8 +938,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
         mdl::BoneKeys(m) = mdl::BoneKeyPoolCreate(mdl::kBoneKeyCapacity);
         mdl::MorphKeys(m) = mdl::MorphKeyPoolCreate(
             (std::max)(mdl::kMorphKeyCapacity, std::size_t(mdl::Mdl(m)->morphCount)));
-        mdl::DisplayKeys(m) = static_cast<mdl::DisplayKey*>(
-            operator new(sizeof(mdl::DisplayKey) * mdl::kDisplayKeyCapacity));
+        mdl::DisplayKeys(m) = mdl::KeyPoolCreate<mdl::DisplayKey>();
         std::memset(mdl::DisplayKeys(m), 0,
                     sizeof(mdl::DisplayKey) * mdl::kDisplayKeyCapacity);
         const std::uint32_t ikn = model.ikChainCount;

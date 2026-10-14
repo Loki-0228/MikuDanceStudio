@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // MAINTENANCE: the native half of the frame-rate conversion.  The contract and
 // the vocabulary are in include/mikudancestudio/native_frame_retime.hpp; this
 // file is the implementation and repeats only what the code cannot say.
@@ -91,7 +93,7 @@ using Bytes = std::vector<std::uint8_t>;
 
 // Frame domain of every native key table, and the frame bound one conversion
 // accepts.  Both come from the port's own layouts.
-constexpr std::int32_t kMaximumFrame = 10000000;
+constexpr std::int32_t kMaximumFrame = mikudancestudio::frame_limits::maximum;
 constexpr std::size_t kAccessorySlots = 255;
 
 // ---------------------------------------------------------------------------
@@ -1655,7 +1657,7 @@ bool PlanModel(MMDApp& app, const art::Rates& rates, const art::Options& options
     mp.morph.capacity = mdl::MorphKeyCapacity(record);
     mp.morph.stride = sizeof(mdl::MorphKey);
     mp.display.pool = reinterpret_cast<std::uint8_t*>(mdl::DisplayKeys(model));
-    mp.display.capacity = mdl::kDisplayKeyCapacity;
+    mp.display.capacity = mdl::KeyPoolCapacity(mdl::DisplayKeys(model));
     mp.display.stride = sizeof(mdl::DisplayKey);
 
     // The scale side table is exchanged as a whole, so the original has to be
@@ -1797,16 +1799,16 @@ bool PrepareImpl(MMDApp& app, const fc::Rates& rates, PlanPtr& plan, fc::Report&
     ap.sceneModified = app.SceneModified();
 
     ap.camera.pool = reinterpret_cast<std::uint8_t*>(app.CameraKeys());
-    ap.camera.capacity = mdl::kTimelineKeyCapacity;
+    ap.camera.capacity = mdl::KeyPoolCapacity(app.CameraKeys());
     ap.camera.stride = sizeof(mdl::CameraKey);
     ap.light.pool = reinterpret_cast<std::uint8_t*>(app.LightKeys());
-    ap.light.capacity = mdl::kTimelineKeyCapacity;
+    ap.light.capacity = mdl::KeyPoolCapacity(app.LightKeys());
     ap.light.stride = sizeof(mdl::LightKey);
     ap.shadow.pool = reinterpret_cast<std::uint8_t*>(app.ShadowKeys());
-    ap.shadow.capacity = mdl::kTimelineKeyCapacity;
+    ap.shadow.capacity = mdl::KeyPoolCapacity(app.ShadowKeys());
     ap.shadow.stride = sizeof(mdl::SelfShadowKey);
     ap.gravity.pool = reinterpret_cast<std::uint8_t*>(app.GravityKeys());
-    ap.gravity.capacity = mdl::kTimelineKeyCapacity;
+    ap.gravity.capacity = mdl::KeyPoolCapacity(app.GravityKeys());
     ap.gravity.stride = sizeof(mdl::GravityKey);
 
     if (!PlanCamera(applyRates, options, ap, changes, out, watch, detail)) {
@@ -1908,7 +1910,7 @@ bool PrepareImpl(MMDApp& app, const fc::Rates& rates, PlanPtr& plan, fc::Report&
         if (object == nullptr) continue;
         PoolPatch pool;
         pool.pool = reinterpret_cast<std::uint8_t*>(app.AccessoryKeys(slot));
-        pool.capacity = mdl::kTimelineKeyCapacity;
+        pool.capacity = mdl::KeyPoolCapacity(app.AccessoryKeys(slot));
         pool.stride = sizeof(mdl::AccessoryKey);
         if (pool.pool == nullptr) continue;
         std::vector<ScalarChannel> components;

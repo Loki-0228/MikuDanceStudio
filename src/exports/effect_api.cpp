@@ -1083,7 +1083,7 @@ __declspec(dllexport) float ExpGetFrameTime() {
     MMD_PERF_SCOPE(EffectApi);
     MMDApp* app = mikudancestudio::g_Block;
     if (app->state.playbackActive != 0)
-        return app->state.playbackCursorSeconds;
+        return app->PlaybackCursorSeconds();
     const std::int32_t frame = app->state.currentFrame;
     // fild / fadds flt_52B9F0 (2^32) when negative / fdivl dbl_52BA68 (30.0)
     return static_cast<float>(static_cast<double>(

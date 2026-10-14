@@ -1,3 +1,5 @@
+#include "mikudancestudio/extended_names.hpp"
+#include "mikudancestudio/frame_limits.hpp"
 // Exercise the real LoadVmdMotion entry, key registrars, and extension loaders.
 // No windows or D3D device are created. Each case can also run in isolation:
 // vmd_load_safety_tests.exe --case overflow|short|counts|valid|tails|camera|ik|twist|force-morph
@@ -559,6 +561,41 @@ void Benchmark(unsigned warmup, unsigned iterations) {
 }
 } // namespace
 
+void UnicodeIdentity() {
+    using namespace mikudancestudio;
+    Fixture fixture;fixture.EnableIk();
+    const std::wstring first=L"相同的长名称前缀_左侧_\U0001f31f",second=L"相同的长名称前缀_右侧_\U0001f31f";
+    Check(extended_names::Assign(fixture.bones[0].jpText,first)&&extended_names::Assign(fixture.bones[1].jpText,second),"allocate complete names");
+    std::strcpy(fixture.bones[0].name,"same-prefix");std::strcpy(fixture.bones[1].name,"same-prefix");
+    Motion motion;
+    extended_names::MotionNames names;names.model=L"sample";names.bones={first,second};names.morphs={L"face"};names.boneOwners={1};names.morphOwners={0};names.ikOwners={1};
+    bone_scale_io::PrefixFingerprint fingerprint;fingerprint.Append(motion.bytes.data(),motion.bytes.size());
+    auto block=extended_names::EncodeMotion(names,fingerprint.bytes(),fingerprint.crc32());
+    motion.bytes.insert(motion.bytes.end(),block.begin(),block.end());
+    const auto nameBlockEnd=motion.bytes.size();
+    bone_scale_io::PrefixFingerprint scaleFingerprint;scaleFingerprint.Append(motion.bytes.data(),motion.bytes.size());
+    bone_scale_io::VmdExtension scales;scales.prefixBytes=scaleFingerprint.bytes();scales.prefixCrc32=scaleFingerprint.crc32();
+    bone_scale_io::VmdExtension::Entry scale;scale.name=extended_names::MotionIndexName(1);scale.frame=0;scale.scale.v[0]=2.f;scales.entries.push_back(scale);
+    const auto scaleBytes=bone_scale_io::EncodeExtension(scales);
+    motion.bytes.insert(motion.bytes.end(),scaleBytes.begin(),scaleBytes.end());Put(motion.bytes,std::uint64_t(scaleBytes.size()));Text(motion.bytes,"MDSXVMDX",8);
+    Check(fixture.Load(motion.bytes)==int(fixture.model->boneCount),"load Unicode motion names");
+    Check(fixture.boneKeys[1].position[0]==7.f&&fixture.boneKeys[0].position[0]==-3.f,"long names with the same legacy prefix address distinct bones");
+    Check(fixture.displayKeys[0].ikStates[1]==1&&fixture.displayKeys[0].ikStates[2]==0,"Unicode IK names address the correct chain");
+    Check(bone_scale::Key(fixture.Raw(),1).v[0]==2.f&&bone_scale::Key(fixture.Raw(),0).v[0]==1.f,"Unicode scale extension targets the same complete bone name");
+    wchar_t savedPath[MAX_PATH]{};MultiByteToWideChar(CP_ACP,0,fixture.file.path,-1,savedPath,MAX_PATH);
+    SaveVmdFile(savedPath);
+    fixture.boneKeys[1].position[0]=-9.f;
+    bone_scale::SetKey(fixture.Raw(),1,bone_scale::Matrix{});
+    Check(LoadVmdMotion(fixture.app.get(),fixture.file.path)==int(fixture.model->boneCount),"real Unicode VMD writer roundtrip");
+    Check(fixture.boneKeys[1].position[0]==7.f && fixture.boneKeys[0].position[0]==-3.f,
+          "saved Unicode VMD retains distinct long-name owners");
+    Check(bone_scale::Key(fixture.Raw(),1).v[0]==2.f,"real Unicode VMD writer preserves scale identity");
+    const auto before=fixture.State();motion.bytes[nameBlockEnd-1]^=1;
+    Check(fixture.Load(motion.bytes)==0&&fixture.State()==before,"damaged Unicode metadata refuses import before editing keys");
+    std::free(fixture.bones[0].jpText);fixture.bones[0].jpText=nullptr;
+    std::free(fixture.bones[1].jpText);fixture.bones[1].jpText=nullptr;
+}
+
 int main(int argc, char** argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     if (argc >= 2 && std::strcmp(argv[1], "--benchmark") == 0) {
@@ -571,7 +608,7 @@ int main(int argc, char** argv) {
         Benchmark(warmup, iterations); return 0;
     }
     struct Case { const char* name; void (*run)(); };
-    const Case cases[]{{"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}, {"twist", FixedAxisRotations}, {"force-morph", ForceMorphPaste}};
+    const Case cases[]{{"unicode", UnicodeIdentity}, {"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}, {"twist", FixedAxisRotations}, {"force-morph", ForceMorphPaste}};
     if (argc == 3 && std::strcmp(argv[1], "--case") == 0) {
         for (const auto& test : cases) if (std::strcmp(argv[2], test.name) == 0) { test.run(); std::printf("VMD %s: passed\n", test.name); return 0; }
         return 2;

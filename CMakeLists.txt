@@ -360,6 +360,8 @@ add_library(mikudancestudio_core STATIC
     src/io/pmm_extension.cpp
     src/io/bone_scale_io.cpp
     src/io/pmm_project_settings.cpp
+    src/io/extended_names.cpp
+    src/io/save_compatibility.cpp
     src/io/io_gaps.cpp
     src/io/vpd_file.cpp
     src/io/vpd_scale_io.cpp

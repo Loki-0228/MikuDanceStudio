@@ -512,18 +512,10 @@ void FrameDriver(MMDApp* app) {
         // decimal slips; 0x9ED90 = 650640)
 
         const std::int32_t fa = s.state.aviRecordStartFrame;
-        s.state.playbackStartSeconds =
-            static_cast<float>((fa < 0
-                                    ? static_cast<double>(fa) + g_Wrap32
-                                    : static_cast<double>(fa)) /
-                               g_FrameScale);
+        s.PlaybackStartSeconds() = static_cast<double>(fa) / g_FrameScale;
 
         const std::int32_t fb = s.state.aviRecordEndFrame;
-        s.state.playbackEndSeconds =
-            static_cast<float>((fb < 0
-                                    ? static_cast<double>(fb) + g_Wrap32
-                                    : static_cast<double>(fb)) /
-                               g_FrameScale);
+        s.PlaybackEndSeconds() = static_cast<double>(fb) / g_FrameScale;
 
         s.state.aviBackgroundSample = s.state.aviRecordStartFrame;
         s.PlaybackCursorSeconds() = s.PlaybackStartSeconds();

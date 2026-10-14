@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/native_media.hpp"
 #include "mikudancestudio/native_mesh.hpp"
@@ -91,6 +92,8 @@ static void ReplaceEditText(HWND parent, int id, const char* text) {
 }
 
 void ResetAppState(MMDApp* app) {
+    app->PlaybackStartSeconds() = app->PlaybackCursorSeconds() = app->PlaybackEndSeconds() = 0;
+    app->SyncPlaybackTimeCompatibility();
     ClearWaveAudio(app);
     media::ReleaseVideo(app);
     mmv4mms::ClearScene();
@@ -354,29 +357,24 @@ void ResetAppState(MMDApp* app) {
     CheckMenuItem(GetMenu(hwnd), 0xDD, 8u);
 
     // ---- rebuild the global track arrays ----------------------------------
-    auto* camArr = static_cast<mdl::CameraKey*>(
-        operator new(sizeof(mdl::CameraKey) * mdl::kTimelineKeyCapacity));
+    auto* camArr = mdl::KeyPoolCreate<mdl::CameraKey>();
     app->CameraKeys() = camArr;
     std::memset(camArr, 0,
                 sizeof(mdl::CameraKey) * mdl::kTimelineKeyCapacity);
-    auto* lightArr = static_cast<mdl::LightKey*>(
-        operator new(sizeof(mdl::LightKey) * mdl::kTimelineKeyCapacity));
+    auto* lightArr = mdl::KeyPoolCreate<mdl::LightKey>();
     app->LightKeys() = lightArr;
     std::memset(lightArr, 0,
                 sizeof(mdl::LightKey) * mdl::kTimelineKeyCapacity);
-    auto* shadowArr = static_cast<mdl::SelfShadowKey*>(
-        operator new(sizeof(mdl::SelfShadowKey) * mdl::kTimelineKeyCapacity));
+    auto* shadowArr = mdl::KeyPoolCreate<mdl::SelfShadowKey>();
     app->ShadowKeys() = shadowArr;
     std::memset(shadowArr, 0,
                 sizeof(mdl::SelfShadowKey) * mdl::kTimelineKeyCapacity);
-    auto* physArr = static_cast<mdl::GravityKey*>(
-        operator new(sizeof(mdl::GravityKey) * mdl::kTimelineKeyCapacity));
+    auto* physArr = mdl::KeyPoolCreate<mdl::GravityKey>();
     app->GravityKeys() = physArr;
     std::memset(physArr, 0,
                 sizeof(mdl::GravityKey) * mdl::kTimelineKeyCapacity);
     for (int i = 0; i < 255; ++i) {                               // 0x44F627
-        auto* track = static_cast<mdl::AccessoryKey*>(
-            operator new(sizeof(mdl::AccessoryKey) * mdl::kTimelineKeyCapacity));
+        auto* track = mdl::KeyPoolCreate<mdl::AccessoryKey>();
         app->AccessoryKeys(i) = track;
         std::memset(track, 0,
                     sizeof(mdl::AccessoryKey) * mdl::kTimelineKeyCapacity);

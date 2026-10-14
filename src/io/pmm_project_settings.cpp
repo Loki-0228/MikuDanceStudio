@@ -1,3 +1,4 @@
+#include "mikudancestudio/extended_names.hpp"
 #include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/build_profile.hpp"
@@ -158,6 +159,7 @@ void Load(MMDApp& app, int fd) {
     // Bone scaling rides the same document
     // ("org.mikudancestudio.model.<slot>.boneScale.v1"); it is applied after
     // the document itself, on the models already loaded.
+    extended_names::LoadPmm(app, loaded);
     bone_scale_io::LoadPmm(app, loaded);
     curve_host::Load(app, loaded);
     // Model morph curves ride the same document
@@ -213,6 +215,7 @@ pmm_extension::Document Capture(const MMDApp& app) {
     // next to the retired toggle record, until the user picks a tier.
     // Per-model bone scaling is appended last so the slot walk below sees the
     // final state of every model slot.
+    extended_names::CapturePmm(app, document);
     bone_scale_io::CapturePmm(app, document);
     morph_curve::CapturePmm(app, document);
     bone_curve::CapturePmm(app, document);

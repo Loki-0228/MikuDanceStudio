@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // MAINTENANCE: VMD transport for the animation curve editor.
 //
 // File layout this module writes
@@ -54,6 +55,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstddef>
+#include <limits>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -66,9 +69,9 @@ namespace {
 namespace ac = animation_curve;
 
 constexpr double kPi = 3.14159265358979323846;
-constexpr std::size_t kMaximumBytes = 128u * 1024u * 1024u;
-constexpr std::size_t kMaximumRecords = 1000000;
-constexpr std::uint32_t kMaximumFrame = 10000000u;
+constexpr std::size_t kMaximumBytes = std::size_t((std::numeric_limits<std::ptrdiff_t>::max)());
+constexpr std::size_t kMaximumRecords = (std::numeric_limits<std::uint32_t>::max)();
+constexpr std::uint32_t kMaximumFrame = std::uint32_t(mikudancestudio::frame_limits::maximum);
 constexpr std::size_t kFooterBytes = 40;
 constexpr std::size_t kSignatureBytes = 30;
 constexpr std::size_t kModelNameBytes = 20;

@@ -47,6 +47,10 @@ std::uint64_t MorphKeyPoolIdentity(const MorphKey* pool);
 // Failure preserves the pool and its contents. Growth keeps existing slot indices.
 bool MorphKeyPoolEnsure(ModelRecord& model, std::uint64_t slotsNeeded);
 constexpr std::size_t kDisplayKeyCapacity = 1000;
+// Grows the display pool and prepares every new slot's owned IK/parent arrays
+// before publishing the allocation. Failure leaves the model unchanged.
+bool DisplayKeyPoolEnsure(ModelRecord& model, std::uint64_t slotsNeeded) noexcept;
+bool DisplayKeyFreeSlot(ModelRecord& model, std::uint32_t& slot) noexcept;
 
 // A pair of ints used by the selector and IK record tables; it holds no
 // pointers, so its 8-byte size is the same on x86 and x64.

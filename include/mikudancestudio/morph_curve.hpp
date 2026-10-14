@@ -1,3 +1,5 @@
+#include <algorithm>
+#include "mikudancestudio/frame_limits.hpp"
 // Native morph (expression) curves for one model's own motion tracks.
 //
 // A model's morph animation lives in the original 20-byte linked MorphKey
@@ -90,11 +92,11 @@ namespace morph_curve {
 // The native morph key pool grows on demand.
 // Legacy initial-size constant; never use as a runtime pool bound.
 inline constexpr std::size_t kMaximumMorphKeys = 20000;
-inline constexpr std::int32_t kMaximumFrame = 10000000;
+inline constexpr std::int32_t kMaximumFrame = mikudancestudio::frame_limits::maximum;
 // Upper bound of one payload, and therefore of one PMM record value and of one
 // VMD block body.  A payload above the limit fails the save visibly instead of
 // being truncated.
-inline constexpr std::size_t kMaximumPayloadBytes = 16u * 1024u * 1024u;
+inline constexpr std::size_t kMaximumPayloadBytes = (std::min)(std::size_t(UINT32_MAX - 64), std::size_t(PTRDIFF_MAX - 64));
 
 // One morph of a model, as offered to a curve editor.
 //

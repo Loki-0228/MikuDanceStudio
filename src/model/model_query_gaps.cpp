@@ -1,3 +1,4 @@
+#include "mikudancestudio/display_capacity.hpp"
 // ===========================================================================
 // model_query_gaps.cpp - model queries / facial-panel / edit-target glue
 // ===========================================================================
@@ -220,7 +221,7 @@ void ScrollDisplayBoneIntoView(MMDApp* app, int boneIdx) {  // was Sub41A280
 
     int rows = -1;                                              // v5
     const unsigned tblCnt =
-        static_cast<unsigned char>(mikudancestudio::mdl::Mdl(m)->groupCount);                    // 0x41A2D4
+        static_cast<std::uint32_t>(mikudancestudio::mdl::DisplayGroupCount(*mikudancestudio::mdl::Mdl(m)));                    // 0x41A2D4
     if (tblCnt <= 1u)
         return;
     const mdl::DisplayGroup* const tbl = mdl::DisplayGroups(m);
@@ -229,7 +230,7 @@ void ScrollDisplayBoneIntoView(MMDApp* app, int boneIdx) {  // was Sub41A280
         ++rows;                                                 // 0x41A2FC
         if (tbl[k].flags == 0)                                  // 0x41A2FF
             continue;
-        const unsigned char sep = mikudancestudio::mdl::Mdl(m)->facialFrameCount;                 // v7
+        const std::uint32_t sep = mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(m));                 // v7
         if (sep != 0 && k == 2) {                               // 0x41A31A
             rows += sep;                                        // 0x41A32D
             continue;
@@ -239,11 +240,11 @@ void ScrollDisplayBoneIntoView(MMDApp* app, int boneIdx) {  // was Sub41A280
             continue;
         const mdl::FrameGroup* const grps = mdl::RigidGroups(m);
         for (int j = 0; j < n; ++j) {                           // 0x41A34C
-            if (grps[j].groupIndex != k)
+            if (mikudancestudio::mdl::FrameGroupIndex(grps[j]) != k)
                 continue;
             ++rows;                                             // 0x41A351
-            if (grps[j].targetIndex !=
-                static_cast<std::uint16_t>(boneIdx))            // 0x41A358
+            if (mikudancestudio::mdl::FrameTargetIndex(grps[j]) !=
+                static_cast<std::uint32_t>(boneIdx))            // 0x41A358
                 continue;
             // hit: scroll the facial list so `rows` is in view
             const int delta = rows - record->boneListPos;       // 0x41A390
@@ -334,15 +335,15 @@ void SelectPreviousDisplayBone(MMDApp* app) {  // was Sub438D60
     const mdl::DisplayGroup* const tbl = mdl::DisplayGroups(m);
 
     for (int i = 0; i < n; ++i) {                               // 0x438DEB
-        if (grps[i].targetIndex != static_cast<std::uint16_t>(cur))
+        if (mikudancestudio::mdl::FrameTargetIndex(grps[i]) != static_cast<std::uint32_t>(cur))
             continue;                                           // 0x438DF0
-        int g = grps[i].groupIndex;                             // 0x438E12
+        int g = mikudancestudio::mdl::FrameGroupIndex(grps[i]);                             // 0x438E12
 
         if (tbl[g].flags != 0 && i >= 1) {                      // 0x438E1C
             // previous record of the same visible group (scan downwards)
             for (int j = i - 1; j >= 0; --j) {                  // 0x438E84
-                if (grps[j].groupIndex == g) {
-                    SelectDisplayBone(app, grps[j].targetIndex);        // 0x438F36
+                if (mikudancestudio::mdl::FrameGroupIndex(grps[j]) == g) {
+                    SelectDisplayBone(app, mikudancestudio::mdl::FrameTargetIndex(grps[j]));        // 0x438F36
                     return;
                 }
             }
@@ -359,8 +360,8 @@ void SelectPreviousDisplayBone(MMDApp* app) {  // was Sub438D60
         }
         // LAST record of that group (scan downwards from n-1)
         for (int j = n - 1; j >= 0; --j) {                      // 0x438EE4
-            if (grps[j].groupIndex == g) {
-                SelectDisplayBone(app, grps[j].targetIndex);            // 0x438EED
+            if (mikudancestudio::mdl::FrameGroupIndex(grps[j]) == g) {
+                SelectDisplayBone(app, mikudancestudio::mdl::FrameTargetIndex(grps[j]));            // 0x438EED
                 return;
             }
         }
@@ -392,15 +393,15 @@ void SelectNextDisplayBone(MMDApp* app) {  // was Sub438F50
     const mdl::FrameGroup* const grps = mdl::RigidGroups(m);
     const mdl::DisplayGroup* const tbl = mdl::DisplayGroups(m);
     const int n = static_cast<int>(mdl::Mdl(m)->rigidBodyCount);
-    const int tblLast = static_cast<unsigned char>(mikudancestudio::mdl::Mdl(m)->groupCount) - 1;  // v17
+    const int tblLast = static_cast<std::uint32_t>(mikudancestudio::mdl::DisplayGroupCount(*mikudancestudio::mdl::Mdl(m))) - 1;  // v17
 
     if (cur == record->displayRootBone) {                        // 0x438F96
         for (int g = 1; g <= tblLast; ++g) {                    // 0x438FE8
             if (tbl[g].flags == 0)
                 continue;
             for (int j = 0; j < n; ++j) {
-                if (grps[j].groupIndex == g) {
-                    SelectDisplayBone(app, grps[j].targetIndex);        // 0x43904E
+                if (mikudancestudio::mdl::FrameGroupIndex(grps[j]) == g) {
+                    SelectDisplayBone(app, mikudancestudio::mdl::FrameTargetIndex(grps[j]));        // 0x43904E
                     return;
                 }
             }
@@ -410,15 +411,15 @@ void SelectNextDisplayBone(MMDApp* app) {  // was Sub438F50
         return;
 
     for (int i = 0; i < n; ++i) {                               // 0x439058
-        if (grps[i].targetIndex != static_cast<std::uint16_t>(cur))
+        if (mikudancestudio::mdl::FrameTargetIndex(grps[i]) != static_cast<std::uint32_t>(cur))
             continue;                                           // 0x43905F
-        const int g = grps[i].groupIndex;                       // 0x439081
+        const int g = mikudancestudio::mdl::FrameGroupIndex(grps[i]);                       // 0x439081
 
         if (tbl[g].flags != 0 && i + 1 < n) {
             // next record of the same visible group (scan upwards)
             for (int j = i + 1; j < n; ++j) {                   // 0x439105
-                if (grps[j].groupIndex == g) {
-                    SelectDisplayBone(app, grps[j].targetIndex);
+                if (mikudancestudio::mdl::FrameGroupIndex(grps[j]) == g) {
+                    SelectDisplayBone(app, mikudancestudio::mdl::FrameTargetIndex(grps[j]));
                     return;
                 }
             }
@@ -432,8 +433,8 @@ void SelectNextDisplayBone(MMDApp* app) {  // was Sub438F50
                 ++g2;
                 if (tbl[g2].flags != 0) {
                     for (int j = 0; j < n; ++j) {
-                        if (grps[j].groupIndex == g2) {
-                            SelectDisplayBone(app, grps[j].targetIndex);
+                        if (mikudancestudio::mdl::FrameGroupIndex(grps[j]) == g2) {
+                            SelectDisplayBone(app, mikudancestudio::mdl::FrameTargetIndex(grps[j]));
                             return;
                         }
                     }

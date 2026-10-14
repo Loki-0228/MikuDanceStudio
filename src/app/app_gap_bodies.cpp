@@ -1,3 +1,4 @@
+#include "mikudancestudio/display_capacity.hpp"
 // ===========================================================================
 // MikuDanceStudio - app/render gap-fill bodies (11 original functions, one file)
 // ===========================================================================
@@ -515,14 +516,14 @@ void JumpNextKeyframe(MMDApp* app) {  // 0x441070
             best = f;
     }
     // Selected facial display rows map to their morph-key track heads.
-    if (mikudancestudio::mdl::Mdl(model)->facialFrameCount != 0) {                                    // 0x441300
-        int count = mikudancestudio::mdl::Mdl(model)->facialFrameCount;
+    if (mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(model)) != 0) {                                    // 0x441300
+        int count = mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(model));
         mdl::MorphKey* base = mdl::MorphKeys(model);
         const auto* rec = mdl::DisplayFrames(model);
         do {                                                        // 0x441396
             if (rec->selected != 0) {                                      // 0x441333
                 std::uint32_t node =
-                    rec->targetIndex;
+                    mikudancestudio::mdl::FrameTargetIndex(*rec);
                 if (base[node].frame <= cur) {
                     for (;;) {                                      // 0x441374
                         const std::uint32_t next = base[node].next;
@@ -772,14 +773,14 @@ void JumpPrevKeyframe(MMDApp* app) {  // 0x4414C0
         }
     }
     // morph tracks @model+9956 (gate count byte @model+11692)
-    if (mikudancestudio::mdl::Mdl(model)->facialFrameCount != 0) {                                    // 0x441858
-        int count = mikudancestudio::mdl::Mdl(model)->facialFrameCount;
+    if (mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(model)) != 0) {                                    // 0x441858
+        int count = mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(model));
         mdl::MorphKey* base = mdl::MorphKeys(model);
         const auto* rec = mdl::DisplayFrames(model);
         do {                                                        // 0x441946
             if (rec->selected != 0) {                                      // 0x441890
                 std::uint32_t node =
-                    rec->targetIndex;
+                    mikudancestudio::mdl::FrameTargetIndex(*rec);
                 if (base[node].frame < cur) {
                     for (;;) {                                      // 0x4418d5
                         const std::uint32_t next = base[node].next;

@@ -1,3 +1,6 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/extended_names.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // VA 0x00434B60 - VMD motion file loader  (0x147F bytes)
@@ -209,6 +212,11 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
         return 0;
     }
 
+    std::uint32_t lastImportedFrame=0;
+    if(!frame_limits::Add(s.state.currentFrame,input.maximumFrame,lastImportedFrame)){
+        if(hwnd)MotionMessageBox(hwnd,language,L"フレーム番号が保存可能な範囲を超えます。",L"The motion exceeds the representable frame range.",L"动作超出可表示的帧号范围，未导入。",MB_OK|MB_ICONWARNING);
+        _close(fileHandle);return 0;
+    }
     // header + model name (the name read overwrites the header buffer)
     input.Read(text, 30);
     text[30] = 0;
@@ -238,6 +246,10 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
     std::vector<std::uint8_t> morphBlock,boneCurveBlock;
     bone_scale_io::VmdExtension scaleExtension;
     bool hasScaleExtension = false;
+    extended_names::MotionNames fullNames;
+    bool hasFullNames=false;
+    std::vector<int> boneTargets,morphTargets,ikTargets;
+    std::size_t ikIdentityCursor=0;
     try {
         const auto remaining = input.Size() - input.standardEnd;
         const auto* tail = input.Data(input.standardEnd);
@@ -246,11 +258,24 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
                 accessory_motion_io::Decode(tail, remaining, accessoryTracks);
         } else {
             std::size_t tailStart = input.standardEnd;
-            const auto total = morph_curve::VmdBlockSize(tail, remaining);
+            const auto nameBytes=extended_names::DecodeMotion(input.Data(0),input.Size(),tailStart,fullNames);
+            hasFullNames=nameBytes!=0;tailStart+=nameBytes;
+            if(hasFullNames){
+                if(fullNames.boneOwners.size()!=input.boneCount||fullNames.morphOwners.size()!=input.morphCount||fullNames.ikOwners.size()!=input.totalIkEntries)
+                    throw std::runtime_error("Unicode motion key count mismatch");
+                const auto& m=*mdl::Mdl(model);std::vector<std::wstring> names;
+                for(unsigned i=0;i<m.boneCount;++i)names.push_back(text_encoding::BoneName(m.boneTable[i],false));
+                boneTargets=extended_names::MatchNames(fullNames.bones,names);names.clear();
+                for(unsigned i=0;i<m.morphCount;++i)names.push_back(text_encoding::MorphName(m.morphs[i],false));
+                morphTargets=extended_names::MatchNames(fullNames.morphs,names);
+                ikTargets.reserve(input.maximumIkEntries);
+            }
+            const auto* nameTail=input.Data(tailStart);
+            const auto total = morph_curve::VmdBlockSize(nameTail, input.Size()-tailStart);
             if (total && total <= remaining) {
                 std::vector<std::uint8_t> payload;
-                if (morph_curve::DecodeVmdBlock(tail, total, payload) == total) {
-                    morphBlock.assign(tail, tail + total);
+                if (morph_curve::DecodeVmdBlock(nameTail, total, payload) == total) {
+                    morphBlock.assign(nameTail, nameTail + total);
                     tailStart += total;
                 }
             }
@@ -272,6 +297,15 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
 #endif
 
     if (s.state.optflag[0] != 0) {
+        auto reserve=[](auto*& keys,std::uint64_t count){
+            const auto capacity=mdl::KeyPoolCapacity(keys);std::uint64_t free=0;
+            for(std::size_t i=1;i<capacity;++i)if(!keys[i].frame)++free;
+            return count<=free||mdl::KeyPoolEnsure(keys,std::uint64_t(capacity)+count-free);
+        };
+        if(!reserve(app->CameraKeys(),input.cameraCount)||!reserve(app->LightKeys(),input.lightCount)||!reserve(app->ShadowKeys(),input.shadowCount)){
+            if(hwnd)MotionMessageBox(hwnd,language,L"メモリ不足です。",L"Not enough memory to import this motion.",L"内存不足，未导入此动作。",MB_OK|MB_ICONWARNING);
+            _close(fileHandle);return 0;
+        }
         // ==== camera / light / self-shadow motion =========================
         if (ver == 2 && std::memcmp(text, kCameraLightName, 13) != 0) {
             MotionMessageBox(hwnd, language,
@@ -418,7 +452,7 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
          modelName == text);
     if (!sameModelName) {
 #else
-    if (std::strcmp(text, mdl::Mdl(model)->name) != 0) {
+    if (hasFullNames ? fullNames.model != text_encoding::ModelName(*mdl::Mdl(model),false) : std::strcmp(text, mdl::Mdl(model)->name) != 0) {
 #endif
         if (std::memcmp(text, kCameraLightName, 13) == 0) {
             MotionMessageBox(hwnd, language,
@@ -487,6 +521,15 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
         }
         catch (const std::exception&) { allocationsReady = false; }
     }
+    if(allocationsReady){
+        auto needed=[](const auto* keys,std::size_t capacity,std::size_t heads,std::uint64_t incoming){
+            std::uint64_t free=0;for(std::size_t i=heads;i<capacity;++i)if(!keys[i].frame)++free;
+            return std::uint64_t(capacity)+(incoming>free?incoming-free:0);
+        };
+        allocationsReady=mdl::BoneKeyPoolEnsure(record,needed(record.boneKeys,mdl::BoneKeyCapacity(record),record.boneCount,input.boneCount))&&
+            mdl::MorphKeyPoolEnsure(record,needed(record.morphKeys,mdl::MorphKeyCapacity(record),record.morphCount,input.morphCount))&&
+            mdl::DisplayKeyPoolEnsure(record,needed(record.displayKeys,mdl::KeyPoolCapacity(record.displayKeys),1,input.displayCount));
+    }
     if (!allocationsReady) {
         MotionMessageBox(hwnd, language,
             L"モーションを読み込むためのメモリが不足しています。",
@@ -508,7 +551,7 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
     for (int i = 0; i < boneKeyCapacity; ++i) bkeys[i].allocated = 0;
     const auto morphCapacity1 = mdl::MorphKeyCapacity(mkeys);
     for (int i = 0; i < morphCapacity1; ++i) mkeys[i].allocated = 0;
-    for (int i = 0; i < 1000; ++i) ikeys[i].allocated = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(ikeys); i < capacity; ++i) ikeys[i].allocated = 0;
 
     EnableWindow(GetDlgItem(hwnd, panel::kUndoButton), TRUE);
     EnableWindow(GetDlgItem(hwnd, panel::kRedoButton), FALSE);
@@ -598,6 +641,18 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
             rec[ch + 77] = static_cast<unsigned char>(scratch);
         }
         if (boneOk) {
+#if !MMD_ORIGINAL_PROFILE
+            if(hasFullNames){
+                const int destination=boneTargets[fullNames.boneOwners[k]];
+                if(destination<0)continue;
+                const int previousSelection=record.selectedBone;
+                record.selectedBone=destination;
+                const bool registered=RegisterBoneKey(model,rec,s.state.currentFrame,1);
+                record.selectedBone=previousSelection;
+                if(!registered)boneOk=0;
+                continue;
+            }
+#endif
             if (!RegisterBoneKey(model, rec,
                            s.state.currentFrame, 0))
                 boneOk = 0;
@@ -618,6 +673,16 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
         if (!_finite(*reinterpret_cast<float*>(rec + 36)))
             *reinterpret_cast<float*>(rec + 36) = 0.0f;
         if (morphOk) {
+#if !MMD_ORIGINAL_PROFILE
+            if(hasFullNames){
+                const int destination=morphTargets[fullNames.morphOwners[k]];
+                if(destination<0)continue;
+                std::uint32_t relative;float value;
+                std::memcpy(&relative,rec+32,4);std::memcpy(&value,rec+36,4);
+                if(!RegisterMorphKeyAtIndex(model,destination,relative+std::uint32_t(s.state.currentFrame),value))morphOk=0;
+                continue;
+            }
+#endif
             if (!RegisterMorphKeyFromRecord(model, rec,
                            s.state.currentFrame))
                 morphOk = 0;
@@ -656,6 +721,15 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
             }
             if (entries) entries[21 * n] = 0;
             *reinterpret_cast<int*>(rec + 16) = 0;
+#if !MMD_ORIGINAL_PROFILE
+            struct RestoreIkTargets { const std::vector<int>* previous=extended_names::importedIkTargets;
+                ~RestoreIkTargets(){extended_names::importedIkTargets=previous;} } restoreIkTargets;
+            if(hasFullNames){
+                ikTargets.clear();
+                for(unsigned e=0;e<static_cast<unsigned>(n);++e){const auto owner=fullNames.ikOwners[ikIdentityCursor++];ikTargets.push_back(owner==UINT32_MAX?-1:boneTargets[owner]);}
+                extended_names::importedIkTargets=&ikTargets;
+            }
+#endif
             if (ikOk) {
                 if (!RegisterDisplayKeyFromRecord(model, *reinterpret_cast<int*>(rec), rec[4],
                                n, entries, 0, nullptr,
@@ -671,6 +745,7 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
     // The prepared extensions apply only after the standard keys they refer
     // to exist. These model-facing APIs retain their own allocation policy.
 #if !MMD_ORIGINAL_PROFILE
+    extended_names::MotionScope unicodeScope(false, hasFullNames ? &boneTargets : nullptr, hasFullNames ? &morphTargets : nullptr);
     if (!morphBlock.empty())
         morph_curve::ApplyVmd(model, morphBlock.data(), morphBlock.size(),
                               static_cast<int>(s.state.currentFrame));

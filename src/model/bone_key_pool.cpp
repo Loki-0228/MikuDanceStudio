@@ -1,4 +1,5 @@
 #include "mikudancestudio/bone_key_pool.hpp"
+#include "mikudancestudio/key_pool.hpp"
 
 #include <cassert>
 #include <algorithm>
@@ -300,6 +301,66 @@ bool MorphKeyPoolEnsure(ModelRecord& model, std::uint64_t slotsNeeded) {
     }
     MorphKeyPoolDestroy(model.morphKeys);
     model.morphKeys = grown;
+    return true;
+}
+
+bool DisplayKeyPoolEnsure(ModelRecord& model, std::uint64_t required) noexcept {
+    auto*& pool = model.displayKeys;
+    const auto capacity = KeyPoolCapacity(pool);
+    if (required <= capacity) return true;
+    if (required > KeyPoolLimit<DisplayKey>()) return false;
+    const auto target = static_cast<std::size_t>((std::min)(
+        std::uint64_t(KeyPoolLimit<DisplayKey>()),
+        (std::max)(required, std::uint64_t(capacity) + capacity / 2 + 256)));
+    DisplayKey* grown = nullptr;
+    try {
+        grown = KeyPoolCreate<DisplayKey>(target);
+        for (std::size_t i = capacity; i < target; ++i) {
+            auto& key = grown[i];
+            key.visible = 1;
+            if (model.ikChainCount) {
+                key.ikStates = static_cast<std::uint8_t*>(std::malloc(model.ikChainCount));
+                if (!key.ikStates) throw std::bad_alloc();
+                std::memset(key.ikStates, 1, model.ikChainCount);
+            }
+            if (model.boneOrderCount) {
+                const auto count = std::size_t(model.boneOrderCount);
+                if (count > (std::numeric_limits<std::size_t>::max)() / sizeof(BoneReference))
+                    throw std::bad_alloc();
+                key.selectorStates = static_cast<BoneReference*>(std::calloc(count, sizeof(BoneReference)));
+                if (!key.selectorStates) throw std::bad_alloc();
+                auto* parents = static_cast<BoneReference*>(key.selectorStates);
+                for (std::size_t p = 0; p < count; ++p) parents[p].modelIndex = -1;
+            }
+        }
+    } catch (...) {
+        if (grown) {
+            for (std::size_t i = capacity; i < target; ++i) {
+                std::free(grown[i].ikStates);
+                std::free(grown[i].selectorStates);
+            }
+            KeyPoolDestroy(grown);
+        }
+        return false;
+    }
+    if (capacity) std::memcpy(grown, pool, capacity * sizeof(DisplayKey));
+    bool owned = false;
+    {
+        std::lock_guard<std::mutex> lock(KeyPoolStorage<DisplayKey>::mutex);
+        owned = KeyPoolStorage<DisplayKey>::capacities.erase(pool) != 0;
+    }
+    auto* previous = pool;
+    pool = grown;
+    if (owned) ::operator delete(previous);
+    return true;
+}
+
+bool DisplayKeyFreeSlot(ModelRecord& model, std::uint32_t& slot) noexcept {
+    const auto capacity = KeyPoolCapacity(model.displayKeys);
+    std::size_t index = 1;
+    while (index < capacity && model.displayKeys[index].frame) ++index;
+    if (index >= capacity && !DisplayKeyPoolEnsure(model, std::uint64_t(index) + 1)) return false;
+    slot = static_cast<std::uint32_t>(index);
     return true;
 }
 

@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/bone_curve.hpp"
 // ===========================================================================
 // Misc dialog bodies: frame-control apply, reorder fill, accessory-edit init, physics ON/OFF apply
@@ -315,7 +316,7 @@ void CurvePanelRepaint(MMDApp* app) {  // x64 0x7FF7CB482BB0
     if (app->state.optflag[0] != 0) {
         if (channel < 0 || channel > bone_scale::kInterpCameraAll)
             channel = 3;
-        ScanCurveTrack(app, app->CameraKeys(), mdl::kTimelineKeyCapacity,
+        ScanCurveTrack(app, app->CameraKeys(), mdl::KeyPoolCapacity(app->CameraKeys()),
                        6, channel, baseline, firstChannels, found,
                        perChannelUniform,
                        [](const mdl::CameraKey& key, int c, std::size_t) {
@@ -515,7 +516,7 @@ void ApplyCameraFrameScaleAdd(MMDApp* app, HWND hDlg) {  // was Sub43E000, VA 0x
     add[5] = static_cast<float>(add[5] * 3.141592) / 180.0f;
 
     mdl::CameraKey* keys = app->CameraKeys();
-    for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i) {
+    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
         mdl::CameraKey& key = keys[i];
         if (key.selected == 0)
             continue;

@@ -1,3 +1,4 @@
+#include "mikudancestudio/display_capacity.hpp"
 // ===========================================================================
 // VA 0x0042F1E0 - PostLanguageSweep  (original: sub_42F1E0, ~0x1320 bytes)
 // ===========================================================================
@@ -150,8 +151,8 @@ void DrawRecordName(MMDApp* app, const mdl::ModelRecord& model,
     // FrameGroup holds only a truncated SJIS mirror; PMX keeps the original
     // Unicode on the bone/morph itself. Match the names used by the combos.
     const auto name = morph
-        ? text_encoding::MorphLabel(model.morphs[record.targetIndex], english)
-        : text_encoding::BoneLabel(model.boneTable[record.targetIndex], english);
+        ? text_encoding::MorphLabel(model.morphs[mikudancestudio::mdl::FrameTargetIndex(record)], english)
+        : text_encoding::BoneLabel(model.boneTable[mikudancestudio::mdl::FrameTargetIndex(record)], english);
     DrawTimelineLabel(app, hdc, name.c_str(), 15, y, color);
 }
 
@@ -232,7 +233,7 @@ void PostLanguageSweep(MMDApp* app) {
                     sizeof(std::uint32_t) * record->morphCount);
         record->boneListSelLine = 0;
         for (int line0 = 0; line0 < 200; ++line0) {
-            record->boneListRowType[line0] = 0;
+            mdl::SetDisplayRowType(*record, line0, 0);
             record->boneListRowRecord[line0] = -999;
         }
         record->boneListRowRecord[0] = rootIdx;
@@ -251,11 +252,11 @@ void PostLanguageSweep(MMDApp* app) {
         const mdl::FrameGroup* const groups = mdl::RigidGroups(model);
         const std::int32_t groupCnt =
             static_cast<std::int32_t>(record->rigidBodyCount);
-        std::uint8_t frameIdx = 1;   // display-frame index
-        std::uint8_t frameType = 1;  // frame type carried onto the next line
+        std::uint32_t frameIdx = 1;   // display-frame index
+        std::uint32_t frameType = 1;  // frame type carried onto the next line
         int line = 1;                // tree line counter
-        std::uint8_t faceIdx = 0;    // face index (0x430138)
-        if (mdl::Mdl(model)->groupCount <= 1) {
+        std::uint32_t faceIdx = 0;    // face index (0x430138)
+        if (mikudancestudio::mdl::DisplayGroupCount(*mikudancestudio::mdl::Mdl(model)) <= 1) {
             PanelPaint(app);
             return;
         }
@@ -284,13 +285,13 @@ void PostLanguageSweep(MMDApp* app) {
                                       s.state.themeColors[34]);
                         s.PanelRowFlags()[line] = 1;
                     }
-                    if (record->facialFrameCount != 0 && frameType == 2) {
+                    if (mikudancestudio::mdl::FacialFrameCount(*record) != 0 && frameType == 2) {
                         // frame 2: highlight when any face flag (+44) is
                         // set - first face with a live flag (0x42FC57,
                         // LABEL_76 skipped when none is live).
                         bool anyFaceSelected = false;
                         for (unsigned int f = 0;
-                             f < mdl::Mdl(model)->facialFrameCount; ++f) {
+                             f < mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(model)); ++f) {
                             if (faces[f].selected != 0) {
                                 anyFaceSelected = true;
                                 break;
@@ -308,8 +309,8 @@ void PostLanguageSweep(MMDApp* app) {
                     if (groupCnt) {
                         bool anyRigidVisible = false;
                         for (int g = 0; g < groupCnt; ++g) {
-                            if (groups[g].groupIndex == frameNo &&
-                                flagTab[groups[g].targetIndex] != 0) {
+                            if (mikudancestudio::mdl::FrameGroupIndex(groups[g]) == frameNo &&
+                                flagTab[mikudancestudio::mdl::FrameTargetIndex(groups[g])] != 0) {
                                 anyRigidVisible = true;
                                 break;
                             }
@@ -322,21 +323,21 @@ void PostLanguageSweep(MMDApp* app) {
                         }
                     }
                     // line type byte + morph/rigid back-links (0x42FE37)
-                    record->boneListRowType[line] = frameType;
+                    mdl::SetDisplayRowType(*record, line, frameType);
                     if (frameType == 1)
                         record->boneListSelLine = line;
-                    for (std::uint8_t j = 0;
-                         j < mdl::Mdl(model)->facialFrameCount; ++j) {
+                    for (std::uint32_t j = 0;
+                         j < mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(model)); ++j) {
                         const mdl::FrameGroup& face = faces[j];
-                        if (face.groupIndex + 1 == frameNo)
-                            morphLineByIndex[face.targetIndex] = -line;
+                        if (mikudancestudio::mdl::FrameGroupIndex(face) + 1 == frameNo)
+                            morphLineByIndex[mikudancestudio::mdl::FrameTargetIndex(face)] = -line;
                     }
                     if (groupCnt) {
                         for (unsigned int g = 0;
                              g < static_cast<unsigned int>(groupCnt); ++g) {
                             const mdl::FrameGroup& rigid = groups[g];
-                            if (rigid.groupIndex == frameNo)
-                                boneLineByIndex[rigid.targetIndex] = -line;
+                            if (mikudancestudio::mdl::FrameGroupIndex(rigid) == frameNo)
+                                boneLineByIndex[mikudancestudio::mdl::FrameTargetIndex(rigid)] = -line;
                         }
                     }
                     frameIdx = frameType;
@@ -357,13 +358,13 @@ void PostLanguageSweep(MMDApp* app) {
                         DrawFrameName(app, frames[frameIdx], panel, 14 * line + 17,
                                       s.state.themeColors[33]);
                     }
-                    record->boneListRowType[line++] = frameType;
+                    mdl::SetDisplayRowType(*record, line++, frameType);
                     frameIdx = frameType;
                 }
                 ++record->boneListRows;
                 if (frameIdx == 1) {
                     record->boneListSelLine = line - 1;
-                } else if (record->facialFrameCount != 0 && frameIdx == 2) {
+                } else if (mikudancestudio::mdl::FacialFrameCount(*record) != 0 && frameIdx == 2) {
                     // face section (frame 2) - list the frame's face records
                     // (0x430153..0x43030B; LABEL_122/123/139 were the skip /
                     // advance / exhausted edges of this loop).
@@ -379,13 +380,13 @@ void PostLanguageSweep(MMDApp* app) {
                             if (face.selected != 0)  // LABEL_122 skip
                                 s.PanelRowFlags()[line] = 1;
                             record->boneListRowRecord[recOff] =
-                                -1 - face.targetIndex;
-                            morphLineByIndex[face.targetIndex] = line++;
+                                -1 - mikudancestudio::mdl::FrameTargetIndex(face);
+                            morphLineByIndex[mikudancestudio::mdl::FrameTargetIndex(face)] = line++;
                             ++recOff;
                             rowY += 14;
                         }
                         ++record->boneListRows;  // LABEL_123
-                        if (++faceIdx >= record->facialFrameCount)
+                        if (++faceIdx >= mikudancestudio::mdl::FacialFrameCount(*record))
                             break;               // LABEL_139
                     }
                 } else if (groupCnt) {
@@ -395,10 +396,10 @@ void PostLanguageSweep(MMDApp* app) {
                     for (unsigned int g = 0;
                          g < static_cast<unsigned int>(groupCnt); ++g) {
                         const mdl::FrameGroup& rigid = groups[g];
-                        if (rigid.groupIndex == frameNo) {
+                        if (mikudancestudio::mdl::FrameGroupIndex(rigid) == frameNo) {
                             if (record->boneListRows > record->boneListPos &&
                                 line < 200) {
-                                if (flagTab[rigid.targetIndex] != 0) {
+                                if (flagTab[mikudancestudio::mdl::FrameTargetIndex(rigid)] != 0) {
                                     DrawRecordName(app, *record, rigid, false, panel, rowY,
                                                    s.state.themeColors[34]);
                                     s.PanelRowFlags()[line] = 1;
@@ -407,8 +408,8 @@ void PostLanguageSweep(MMDApp* app) {
                                                    s.state.themeColors[33]);
                                 }
                                 record->boneListRowRecord[recOff] =
-                                    rigid.targetIndex;
-                                boneLineByIndex[rigid.targetIndex] = line++;
+                                    mikudancestudio::mdl::FrameTargetIndex(rigid);
+                                boneLineByIndex[mikudancestudio::mdl::FrameTargetIndex(rigid)] = line++;
                                 ++recOff;
                                 rowY += 14;
                             }
@@ -420,7 +421,7 @@ void PostLanguageSweep(MMDApp* app) {
 
             // LABEL_140 advance: next display frame
             frameType = ++frameIdx;
-            if (frameIdx >= mdl::Mdl(model)->groupCount) {
+            if (frameIdx >= mikudancestudio::mdl::DisplayGroupCount(*mikudancestudio::mdl::Mdl(model))) {
                 PanelPaint(app);
                 return;
             }

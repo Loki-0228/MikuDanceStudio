@@ -862,21 +862,21 @@ void TestCapacityLimits() {
     first.block = BoneBlock(lanes);
     BoneInput second;
     second.name = "Accessory";
-    second.frame = 1000001;
+    second.frame = 2147483647;
     second.block = BoneBlock(lanes);
     file.bones = {first, second};
     const std::vector<std::uint8_t> bytes = Build(file);
     cm::Motion decoded;
     std::string error;
     const bool ok = cm::Decode(bytes.data(), bytes.size(), cm::Kind::Accessory, decoded, error);
-    Check(!ok, "sampling more than a million frames is refused");
+    Check(!ok, "sampling beyond the supported signed frame range is refused");
     Check(decoded.tracks.empty(), "the refused sampling leaves the result untouched");
 
     cm::Motion wide;
     wide.kind = cm::Kind::Accessory;
-    wide.tracks.push_back({"x", MakeTrack({{0, 0.0}, {1000001, 1.0}})});
+    wide.tracks.push_back({"x", MakeTrack({{0, 0.0}, {2147483647, 1.0}})});
     std::vector<std::uint8_t> out;
-    Check(!cm::Encode(wide, out, error), "a proxy wider than the record limit is refused");
+    Check(!cm::Encode(wide, out, error), "a proxy beyond the supported frame range is refused");
     Check(out.empty(), "the refused encode leaves the buffer untouched");
 }
 

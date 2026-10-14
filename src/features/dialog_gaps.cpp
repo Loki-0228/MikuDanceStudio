@@ -1,3 +1,4 @@
+#include "mikudancestudio/save_compatibility.hpp"
 // ===========================================================================
 // dialog_gaps.cpp - remaining dialog/feature gap functions (round N)
 // ===========================================================================
@@ -227,6 +228,11 @@ void ModelVertexHistoryPush(unsigned char* model, int samples) {
 // ---------------------------------------------------------------------------
 int SavePmdFile(unsigned char* model, char* path, void* /*localeTable*/) {
     mdl::ModelRecord& state = *mdl::Mdl(model);
+    if (!save_compatibility::CanSavePmd(state)) {
+        const wchar_t* message = L"PMD 无法无损保存这些名称或显示项，操作已取消。请保留原模型并保存 PMM 工程。\nPMD cannot preserve these names or display entries. Keep the source model and save a PMM project.";
+        MessageBoxW(static_cast<HWND>(state.hwnd), message, L"PMD", MB_OK | MB_ICONWARNING);
+        return 0;
+    }
     int fh = -1;
     const errno_t openErr = _sopen_s(&fh, path, 33537 /*_O_BINARY|_O_WRONLY|
                                    _O_CREAT|_O_TRUNC*/, 64 /*_SH_DENYNO*/,

@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // Model keyframe edit helpers used by the left frame editor.
 //   0x0049D410  append one touched bone-key record to the undo slot
@@ -428,7 +429,7 @@ void RegisterSelectedBoneKeys(unsigned char* model, int frame, int mode) {  // w
     for (std::size_t i = 0; i < morphCapacity1; ++i)
         morphKeys[i].allocated = 0;
     mdl::DisplayKey* const displayKeys = mdl::DisplayKeys(model);
-    for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(mdl::DisplayKeys(model))); i < poolCapacity; ++i)
         displayKeys[i].allocated = 0;
 
     // The cursor is shared with morph/display registration and is zero on a
@@ -639,7 +640,7 @@ void DeleteMarkedModelKeys(unsigned char* model, int frame) {  // was Sub4A09E0,
     }
 
     // Reset every display/IK key record.
-    for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i) {
+    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(mdl::DisplayKeys(model))); i < poolCapacity; ++i) {
         mdl::DisplayKey& rec = displayKeys[i];
         if (rec.allocated == 0) continue;
         const int prev = static_cast<int>(rec.previous);
@@ -955,7 +956,7 @@ void ResetDisplayKeyCursor(unsigned char* model) {  // VA 0x004A4A00, was Sub4A4
     freeIndex = 1;
     if (displayKeys == nullptr)
         return;
-    while (freeIndex < 1000 && displayKeys[freeIndex].frame != 0) {
+    while (freeIndex < mdl::KeyPoolCapacity(displayKeys) && displayKeys[freeIndex].frame != 0) {
         ++freeIndex;
     }
 }

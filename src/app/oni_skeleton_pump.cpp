@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // x64 0x7FF7CB44C12E..0x7FF7CB44C656 - Kinect 骨架驱动泵块（行为级移植）
 // ===========================================================================
@@ -380,7 +381,7 @@ bool RegisterKinectPoseCapture(unsigned char* model, unsigned frame) {
     const auto morphCapacity1 = mdl::MorphKeyCapacity(mdl::MorphKeys(model));
     for (std::size_t i = 0; i < morphCapacity1; ++i)
         mdl::MorphKeys(model)[i].allocated = 0;
-    for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+    for (std::size_t i = 0; i < mdl::KeyPoolCapacity(mdl::DisplayKeys(model)); ++i)
         mdl::DisplayKeys(model)[i].allocated = 0;
 
     const std::int32_t samples = mdl::Mdl(model)->matMisc;

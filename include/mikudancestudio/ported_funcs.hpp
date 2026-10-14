@@ -121,9 +121,9 @@ void PhysicsFrame(MMDApp* app, unsigned char selActive);  // FrameDriver physics
 void PlaybackCatchup(MMDApp* app, unsigned char selActive);
                                 // FrameDriver playback section 0x46EEE0..
 void PlaybackPoseAdvance(MMDApp* app, int advance);  // VA 0x004175A0
-void InitModelTrackCursors(unsigned char* model, float cursor,
+void InitModelTrackCursors(unsigned char* model, double cursor,
                            int physicsMode);  // was Sub4A2CD0, VA 0x004A2CD0
-void AdvanceModelKeyframes(unsigned char* model, float cursor,
+void AdvanceModelKeyframes(unsigned char* model, double cursor,
                            int physicsMode);  // was Sub4A31D0, VA 0x004A31D0
 float BoneEase(unsigned char* model, int channel, int keyIdx,
                float t);  // was Sub4A05A0, VA 0x004A05A0 (VMD easing)

@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // Select-dialog family (original sub_47A3F0 SelectNavDlgProc helpers)
 // ===========================================================================
@@ -409,7 +410,7 @@ void ResetModelSelection(MMDApp* app) {  // was Sub4256C0, VA 0x004256C0
     for (std::size_t j = 0; j < morphCapacity1; ++j)         // 0x42577C
         morphKeys[j].allocated = 0;
     mdl::DisplayKey* const displayKeys = mdl::DisplayKeys(model);
-    for (std::size_t k = 0; k < mdl::kDisplayKeyCapacity; ++k)       // 0x425806
+    for (std::size_t k = 0; k < mdl::KeyPoolCapacity(mdl::DisplayKeys(model)); ++k)       // 0x425806
         displayKeys[k].allocated = 0;
 
     // restore the saved 20-byte select records into the model

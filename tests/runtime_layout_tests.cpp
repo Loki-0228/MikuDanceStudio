@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // MAINTENANCE: regression-keep; purpose and cleanup conditions in tests/README.md.
 #include <array>
 #include <algorithm>
@@ -31,6 +32,7 @@ void RefreshLightPanel(MMDApp*);
 void RefreshSelfShadowPanel(MMDApp*);
 void RegisterSelfShadowState(MMDApp*, int);
 void RegisterCameraState(MMDApp*, int);
+void StepFrame(MMDApp*, bool);
 }
 
 namespace {
@@ -292,7 +294,34 @@ void GlobalKeyTracks() {
 }
 }
 
+void LargeFramePlayback() {
+    auto app=std::make_unique<MMDApp>();
+    app->CurrentFrame()=frame_limits::maximum;
+    StepFrame(app.get(),true);
+    Check(app->CurrentFrame()==frame_limits::maximum,"next frame refuses structural overflow without wrapping");
+    const int first=frame_limits::maximum-10;
+    app->PlaybackCursorSeconds()=first/30.0;
+    const double before=app->PlaybackCursorSeconds();
+    app->PlaybackCursorSeconds()+=1.0/60.0;
+    Check(app->PlaybackCursorSeconds()>before && std::abs(app->PlaybackCursorSeconds()*30.0-first-.5)<.00001,
+          "large-frame playback advances by a half frame without float rounding");
+    auto model=std::make_unique<mdl::ModelRecord>();mdl::BoneRecord bone{};
+    std::vector<mdl::BoneKey> keys(mdl::kBoneKeyCapacity);mdl::DisplayKey display{};
+    std::uint8_t active=0;std::uint32_t cursor=0;
+    model->boneCount=1;model->boneTable=&bone;model->boneKeys=keys.data();model->displayKeys=&display;
+    model->boneTrackActive=&active;model->boneKeyCursors=&cursor;
+    bone.type=mdl::BoneType::RotateMove;bone.rotQuat[3]=1;bone.slotIndex=-1;bone.parent=-1;
+    keys[0].next=1;keys[1].frame=first;keys[1].next=2;keys[2].previous=1;keys[2].frame=first+1;
+    for(auto& k:keys){k.rotation[3]=1;for(int c=0;c<4;++c){k.interpolation[c]=k.interpolation[c+4]=20;k.interpolation[c+8]=k.interpolation[c+12]=107;}}
+    keys[1].position[0]=2;keys[2].position[0]=8;
+    auto* raw=reinterpret_cast<unsigned char*>(model.get());
+    InitModelTrackCursors(raw,first/30.0,0);
+    AdvanceModelKeyframes(raw,app->PlaybackCursorSeconds(),0);
+    Check(std::abs(bone.trans[0]-5.f)<.001f,"adjacent keys near the structural frame limit interpolate correctly");
+}
+
 int main(int argc,char** argv) {
+    LargeFramePlayback();
     if(argc>1&&std::string(argv[1])=="--timeline-readouts")return TimelineParameterReadouts();
     Check(TimelineParameterReadouts()==0,"timeline parameter readouts");
     std::setvbuf(stdout, nullptr, _IONBF, 0);

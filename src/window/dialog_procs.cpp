@@ -73,11 +73,11 @@ INT_PTR CALLBACK FrameRangeDlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lP
 
         const HWND main = reinterpret_cast<HWND>(
             app->state.hwnd);
-        GetWindowTextA(GetDlgItem(main, panel::kRangeStartEdit), text, 8);           // 0x44C68E
+        GetWindowTextA(GetDlgItem(main, panel::kRangeStartEdit), text, sizeof text);           // 0x44C68E
         sprintf_s(text, 0x100, "%d", atol(text));
         SendMessageA(GetDlgItem(hDlg, panel::kScaleFromEdit), EM_REPLACESEL, 0,
                      reinterpret_cast<LPARAM>(text));
-        GetWindowTextA(GetDlgItem(main, panel::kRangeStopEdit), text, 8);           // 0x44C6EB
+        GetWindowTextA(GetDlgItem(main, panel::kRangeStopEdit), text, sizeof text);           // 0x44C6EB
         sprintf_s(text, 0x100, "%d", atol(text));
         SendMessageA(GetDlgItem(hDlg, panel::kScaleToEdit), EM_REPLACESEL, 0,
                      reinterpret_cast<LPARAM>(text));

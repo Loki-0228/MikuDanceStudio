@@ -395,7 +395,7 @@ void Redo(unsigned char* model,int ring) {
         s.current=s.redo[ring];
     }
 }
-static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::BoneKey* keys,unsigned bone,float frame,std::size_t capacity) {
+static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::BoneKey* keys,unsigned bone,double frame,std::size_t capacity) {
     unsigned previous=bone,next=keys[bone].next;
     unsigned guard=0;
     while (next && next<capacity && keys[next].frame<=frame && ++guard<capacity) {
@@ -404,7 +404,7 @@ static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::Bo
     if (next>=capacity||guard>=capacity) return {};
     Matrix value=Lookup(values,previous);
     if (next && keys[next].frame>keys[previous].frame) {
-        const float raw=std::clamp((frame-keys[previous].frame)/float(keys[next].frame-keys[previous].frame),0.f,1.f);
+        const float raw=float(std::clamp((frame-keys[previous].frame)/double(keys[next].frame-keys[previous].frame),0.0,1.0));
         // The interval belongs to its destination key, exactly like the four
         // bone channels (BoneEase is called with the key being applied): the
         // scale curve of `next` maps the whole 3x3 matrix through one 0..127
@@ -414,7 +414,7 @@ static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::Bo
     }
     return value;
 }
-Matrix Sample(const unsigned char* model,int bone,float frame) {
+Matrix Sample(const unsigned char* model,int bone,double frame) {
     const auto it=states.find(model);
     if (!model||it==states.end()||!std::isfinite(frame)||bone<0||bone>=int(mdl::Mdl(model)->boneCount)) return {};
     const auto* keys=mdl::Mdl(model)->boneKeys;
@@ -422,7 +422,7 @@ Matrix Sample(const unsigned char* model,int bone,float frame) {
     return SampleKeys(it->second.current.keys,it->second.current.curves,keys,unsigned(bone),frame,
                       mdl::BoneKeyCapacity(*mdl::Mdl(model)));
 }
-void Evaluate(unsigned char* model,float frame) {
+void Evaluate(unsigned char* model,double frame) {
     const auto it=states.find(model); if (it==states.end()||!std::isfinite(frame)) return;
     auto& s=it->second;
     RestoreTransforms(model); s.current.pose.clear();

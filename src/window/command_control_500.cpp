@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // CommandDispatch family: control notifications 500..567 (0x47E8A0)
 // ===========================================================================
@@ -544,7 +546,7 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
         {
             unsigned char* m = ActiveModel(app);
             mdl::DisplayKey* displayKeys = mdl::DisplayKeys(m);
-            for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(displayKeys)); i < poolCapacity; ++i)
                 displayKeys[i].allocated = 0;
         }
         unsigned char* m = ActiveModel(app);
@@ -733,11 +735,9 @@ void CmdControl500(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notif
         // atol of the 0x22A text (max 10 chars), clamped to >= 0, applied
         // as the frame 0x980; frame-apply chain + echo back into 0x1A1.
         char buf[0x100];
-        GetWindowTextA(GetDlgItem(hwnd, panel::kGotoFrameEdit), buf, 0xA);
-        long v = atol(buf);
-        if (v < 0)
-            v = 0;
-        app->state.currentFrame = static_cast<std::int32_t>(v);
+        GetWindowTextA(GetDlgItem(hwnd,panel::kGotoFrameEdit),buf,sizeof buf);
+        std::int32_t frame=0;if(!frame_limits::Parse(buf,frame))return;
+        app->state.currentFrame=frame;
         RefreshAfterFrameApply(app);   // 0x432FA0 frame-apply chain
         PostViewRefresh(app);
         sprintf_s(buf, 0x100u, "%d", app->state.currentFrame);

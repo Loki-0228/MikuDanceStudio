@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // MMS addition: `.x` accessory motion inside a camera / light VMD.  The block
 // format and the matching rule are documented in accessory_motion_io.hpp.
 #include "mikudancestudio/accessory_motion_io.hpp"
@@ -22,7 +23,7 @@ namespace {
 
 constexpr std::size_t kHeaderBytes = 8 + 4 + 4;
 constexpr std::size_t kMaxNameBytes = 99;
-constexpr std::uint32_t kKeyCapacity = 10000;
+constexpr std::uint32_t kKeyCapacity = static_cast<std::uint32_t>(mdl::KeyPoolLimit<mdl::AccessoryKey>());
 
 std::uint32_t Crc32(const std::uint8_t* data, std::size_t size) {
     std::uint32_t crc = 0xFFFFFFFFu;
@@ -175,11 +176,12 @@ std::vector<Track> CaptureSelected(MMDApp* app, std::uint32_t& minFrame) {
     if (app == nullptr) return tracks;
     for (int slot : SceneSlots(app)) {
         const mdl::AccessoryKey* keys = app->AccessoryKeys(slot);
+        const auto capacity = mdl::KeyPoolCapacity(keys);
         if (keys == nullptr) continue;
         Track track;
         track.name = AccessoryName(*app->AccessorySlot(slot));
         std::uint32_t index = 0;
-        for (std::uint32_t hops = 0; hops < kKeyCapacity; ++hops) {
+        for (std::uint32_t hops = 0; hops < capacity; ++hops) {
             const mdl::AccessoryKey& source = keys[index];
             if (source.selected != 0) {
                 Key key;
@@ -196,7 +198,7 @@ std::vector<Track> CaptureSelected(MMDApp* app, std::uint32_t& minFrame) {
                 minFrame = std::min(minFrame, source.frame);
             }
             index = source.next;
-            if (index == 0 || index >= kKeyCapacity) break;
+            if (index == 0 || index >= capacity) break;
         }
         if (!track.keys.empty()) tracks.push_back(std::move(track));
     }

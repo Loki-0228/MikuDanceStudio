@@ -14,8 +14,8 @@
 //   uint32 keySize; uint32 valueSize; key[keySize]; value[valueSize];
 // key is UTF-8, value is opaque.  A key is 1..255 bytes, contains no NUL byte
 // and is case-sensitive; keys are unique within one document and duplicate
-// keys are rejected.  The whole record stream is at most 16 MiB and holds at
-// most 16384 records.
+// keys are rejected.  The record stream grows to the representable address/file range; each
+// individual value uses a 32-bit length.
 //
 // Trailer (32 bytes):
 //   char     magic[8]       = "MDSXPMM2"
@@ -35,6 +35,8 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -59,8 +61,8 @@ enum class ReadResult {
 
 inline constexpr std::uint32_t kTrailerSize = 32;
 inline constexpr std::uint32_t kMaxKeyBytes = 255;
-inline constexpr std::uint32_t kMaxRecordCount = 16384;
-inline constexpr std::uint64_t kMaxExtensionBytes = 16ull * 1024ull * 1024ull;
+inline constexpr std::size_t kMaxRecordCount = (std::numeric_limits<std::size_t>::max)() / sizeof(Record);
+inline constexpr std::uint64_t kMaxExtensionBytes = static_cast<std::uint64_t>((std::numeric_limits<std::ptrdiff_t>::max)());
 inline constexpr std::uint64_t kMinStandardSize = 30;
 
 // Reads the extension trailer from the end of the file behind `fd`, which must

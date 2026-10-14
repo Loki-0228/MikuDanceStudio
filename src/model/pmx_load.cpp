@@ -1,3 +1,6 @@
+#include <memory>
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x004B77E0 - LoadPMX  (original: sub_4B77E0, 32KB)
 // ===========================================================================
@@ -1480,29 +1483,22 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
     // ---- display frames --------------------------------------------------------
     std::uint32_t frameCount = 0;
     reader.Read(&frameCount, 4);
+    if (frameCount > INT32_MAX - 3) return AbortPmxLoad(reader, m);
     struct FrameTmp {
         std::uint8_t special;
         std::int32_t count;
         mdl::PmxDisplayFrameEntry* entries;
         wchar_t* name;
         wchar_t* nameEn;
+        ~FrameTmp() { operator delete(name); operator delete(nameEn); operator delete(entries); }
     };
-    FrameTmp* frames = static_cast<FrameTmp*>(
-        frameCount ? operator new(sizeof(FrameTmp) * frameCount) : nullptr);
-    std::memset(frames, 0, sizeof(FrameTmp) * frameCount);
+    auto frames = std::make_unique<FrameTmp[]>(frameCount);
     std::int32_t boneEntryTotal = 0, morphEntryTotal = 0;
     for (std::uint32_t f = 0; f < frameCount; ++f) {
         frames[f].name = ReadTextBuf(reader, nullIdx, textCtx);
         frames[f].nameEn = ReadTextBuf(reader, nullIdx, textCtx,
                                        frames[f].name);
         if (textCtx.failed) {
-            for (std::uint32_t k = 0; k <= f; ++k) {
-                operator delete(frames[k].name);
-                operator delete(frames[k].nameEn);
-                if (frames[k].entries)
-                    operator delete(frames[k].entries);
-            }
-            operator delete(frames);
             return AbortPmxLoad(reader, m);
         }
         reader.Read(&frames[f].special, 1);
@@ -1522,9 +1518,9 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
             }
             for (int e = 0; e < frames[f].count; ++e)
                 if (frames[f].entries[e].type)
-                    ++morphEntryTotal;
+                    { if (morphEntryTotal == INT32_MAX) return AbortPmxLoad(reader, m); ++morphEntryTotal; }
                 else
-                    ++boneEntryTotal;
+                    { if (boneEntryTotal == INT32_MAX) return AbortPmxLoad(reader, m); ++boneEntryTotal; }
         }
     }
 
@@ -1535,7 +1531,7 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
     // 0x1400B0034 and never used again. The port now matches the original.
     // Defect MB-12.
     const int morphGroupCount = morphEntryTotal;
-    model.facialFrameCount = static_cast<std::uint8_t>(morphGroupCount);
+    std::uint32_t facialCount = 0;
     if (morphGroupCount != 0) {
         model.displayFrames = static_cast<mdl::FrameGroup*>(
             operator new(sizeof(mdl::FrameGroup) * morphGroupCount));
@@ -1561,15 +1557,14 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
                 if (entry.index < 0 || entry.index >= morphCount)
                     continue;
                 mdl::FrameGroup& rec = model.displayFrames[w];
-                rec.groupIndex = 1;                         // facial group
-                rec.targetIndex = static_cast<std::uint16_t>(entry.index);
+                mdl::SetFrameIndices(rec, 1, entry.index);
                 const mdl::MorphRecord& morph = mdl::Morphs(m)[entry.index];
                 strcpy_s(rec.name, 0x14, morph.name);
                 strcpy_s(rec.nameEn, 0x14, morph.nameEn);
                 ++w;
             }
         }
-        model.facialFrameCount = static_cast<std::uint8_t>(w);
+        facialCount = static_cast<std::uint32_t>(w);
     }
     // Root bone from the first PMX display frame's first entry: the original
     // only tests that the entry exists and is a *bone* entry (x64
@@ -1583,24 +1578,21 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
         model.displayRootBone = frames[0].entries[0].index;
     }
     // group name table (m+9936)
-    model.groupCount = static_cast<std::uint8_t>(frameCount);
-    if (model.facialFrameCount)
-        model.groupCount =
-            static_cast<std::uint8_t>(frameCount + 1);
     {
-        const int groups = model.groupCount;
+        const int groups = static_cast<int>(frameCount + (facialCount ? 1 : 0));
         // Deliberate hardening: the original allocates 101 bytes for the file group
         // count at 0x1400B03E5, then writes groups[0], groups[1] and, with a
         // facial frame, groups[2] unconditionally; a wrapped or short count thus
         // writes past the allocation. This port sizes the table for the three
         // rows it writes as well as for the file count.
         // Defect MB-04.
-        const int groupSlots = model.facialFrameCount ? 3 : 2;
+        const int groupSlots = facialCount ? 3 : 2;
         const int groupCapacity = groups > groupSlots ? groups : groupSlots;
         mdl::DisplayGroup*& displayGroups = mdl::DisplayGroups(m);
         displayGroups = static_cast<mdl::DisplayGroup*>(
             operator new(sizeof(*displayGroups) * groupCapacity));
         std::memset(displayGroups, 0, sizeof(*displayGroups) * groupCapacity);
+        mdl::SetDisplayCapacity(model, groupCapacity, facialCount);
         const mdl::BoneRecord& rootBone =
             mdl::Bones(m)[model.displayRootBone];
         strcpy_s(displayGroups[0].name, sizeof(displayGroups[0].name),
@@ -1619,7 +1611,7 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
         strcpy_s(displayGroups[1].nameEn, sizeof(displayGroups[1].nameEn),
                  "Disp/IK/OP");
         int start = 2;
-        if (model.facialFrameCount) {
+        if (facialCount) {
             strcpy_s(displayGroups[2].name, sizeof(displayGroups[2].name),
                      kLblFacialJp);
             strcpy_s(displayGroups[2].nameEn,
@@ -1627,7 +1619,7 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
             start = 3;
         }
         for (int g = start; g < groups; ++g) {
-            const int frameIndex = model.facialFrameCount ? g - 1 : g;
+            const int frameIndex = facialCount ? g - 1 : g;
             WideToSjis(displayGroups[g].name, frames[frameIndex].name,
                        sizeof(displayGroups[g].name));
             WideToSjis(displayGroups[g].nameEn, frames[frameIndex].nameEn,
@@ -1657,13 +1649,11 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
                 // count, so a truncated or out-of-range index reads past the
                 // bone table. This port discards such entries.
                 // Defect MB-13.
-                if (static_cast<std::uint16_t>(entry.index) >= boneCount)
+                if (entry.index < 0 || static_cast<std::uint32_t>(entry.index) >= boneCount)
                     continue;
                 mdl::FrameGroup& rec = boneFrames[w];
-                rec.groupIndex = static_cast<std::uint16_t>(
-                    model.facialFrameCount ? groupIdx + 1 : groupIdx);
-                rec.targetIndex = static_cast<std::uint16_t>(entry.index);
-                const mdl::BoneRecord& bone = mdl::Bones(m)[rec.targetIndex];
+                mdl::SetFrameIndices(rec, facialCount ? groupIdx + 1 : groupIdx, entry.index);
+                const mdl::BoneRecord& bone = mdl::Bones(m)[entry.index];
                 strcpy_s(rec.name, 0x14, bone.name);
                 strcpy_s(rec.nameEn, 0x14, bone.nameEn);
                 ++w;
@@ -1674,16 +1664,7 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
         // only initialized rows belong in the timeline and registration list.
         model.rigidBodyCount = static_cast<std::uint32_t>(w);
     }
-    for (std::uint32_t f = 0; f < frameCount; ++f) {
-        if (frames[f].name)
-            operator delete(frames[f].name);
-        if (frames[f].nameEn)
-            operator delete(frames[f].nameEn);
-        if (frames[f].entries)
-            operator delete(frames[f].entries);
-    }
-    if (frames)
-        operator delete(frames);
+    frames.reset();
 
     // ---- rigid bodies -----------------------------------------------------------
     reader.Read(&model.rigidCount, sizeof(model.rigidCount));
@@ -1927,11 +1908,10 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
     // sweep and release goes through the runtime capacity; see
     // mikudancestudio/bone_key_pool.hpp.  It is zero filled like before, and it
     // throws std::bad_alloc exactly where the operator new did.
-    model.boneKeys = mdl::BoneKeyPoolCreate(mdl::kBoneKeyCapacity);
+    model.boneKeys = mdl::BoneKeyPoolCreate((std::max)(mdl::kBoneKeyCapacity, std::size_t(model.boneCount)));
     model.morphKeys = mdl::MorphKeyPoolCreate(
         (std::max)(mdl::kMorphKeyCapacity, std::size_t(model.morphCount)));
-    model.displayKeys = static_cast<mdl::DisplayKey*>(
-        operator new(sizeof(mdl::DisplayKey) * 1000));
+    model.displayKeys = mdl::KeyPoolCreate<mdl::DisplayKey>();
     std::memset(model.displayKeys, 0, sizeof(mdl::DisplayKey) * 1000);
     for (int frame = 0; frame < 1000; ++frame) {
         mdl::DisplayKey& fr = model.displayKeys[frame];

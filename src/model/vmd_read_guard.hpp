@@ -18,7 +18,9 @@ public:
     int version = 0;
     std::size_t cameraOffset = absent, lightOffset = absent;
     std::size_t shadowOffset = absent, displayOffset = absent, standardEnd = 0;
-    std::uint32_t boneCount = 0, maximumIkEntries = 0;
+    std::uint32_t boneCount = 0, morphCount = 0, displayCount = 0, maximumIkEntries = 0;
+    std::uint64_t totalIkEntries = 0;
+    std::uint32_t maximumFrame=0, cameraCount=0, lightCount=0, shadowCount=0;
 
     bool Load(int fd) {
         const auto length = _filelengthi64(fd);
@@ -63,9 +65,11 @@ private:
         position_ += static_cast<std::size_t>(count) * stride;
         return true;
     }
-    bool Section(std::size_t stride, std::uint32_t* result = nullptr) {
+    bool Section(std::size_t stride, std::uint32_t* result = nullptr, std::size_t frameOffset = 0) {
         std::uint32_t count = 0;
-        if (Read(&count, sizeof(count)) != sizeof(count) || !SkipRecords(count, stride)) return false;
+        if (Read(&count, sizeof(count)) != sizeof(count) || count>Remaining()/stride) return false;
+        for(std::uint32_t i=0;i<count;++i){std::uint32_t frame;std::memcpy(&frame,bytes_.data()+position_+std::size_t(i)*stride+frameOffset,4);maximumFrame=(std::max)(maximumFrame,frame);}
+        if(!SkipRecords(count,stride))return false;
         if (result) *result = count;
         return true;
     }
@@ -77,7 +81,7 @@ private:
         else if (std::strcmp(header, "Vocaloid Motion Data 0002") == 0) version = 2;
         else return false;
         if (!SkipRecords(1, version == 1 ? 10 : 20) ||
-            !Section(111, &boneCount) || !Section(23)) return false;
+            !Section(111, &boneCount,15) || !Section(23, &morphCount,15)) return false;
         std::size_t undoBytes = 0;
         // Each imported key can append up to three snapshots; undo.dirty is
         // signed 32-bit even on the 64-bit host.
@@ -88,23 +92,27 @@ private:
         // three bytes of a count, or a partial record, is never an empty section.
         if (!Remaining()) return Finish();
         cameraOffset = position_;
-        if (!Section(version == 1 ? 36 : 61)) return false;
+        if (!Section(version == 1 ? 36 : 61,&cameraCount)) return false;
         if (!Remaining()) return Finish();
         lightOffset = position_;
-        if (!Section(28)) return false;
+        if (!Section(28,&lightCount)) return false;
         if (!Remaining()) return Finish();
         if (version == 2) {
             shadowOffset = position_;
-            if (!Section(9)) return false;
+            if (!Section(9,&shadowCount)) return false;
             if (!Remaining()) return Finish();
         }
         displayOffset = position_;
         std::uint32_t count = 0;
         if (Read(&count, sizeof(count)) != sizeof(count) || count > Remaining() / 9) return false;
+        displayCount=count;
         for (std::uint32_t i = 0; i < count; ++i) {
             std::uint32_t entries = 0;
-            if (!SkipRecords(1, 5) || Read(&entries, sizeof(entries)) != sizeof(entries) ||
-                entries > 10000 || !SkipRecords(entries, 21)) return false;
+            std::uint32_t frame=0;if(Read(&frame,4)!=4)return false;
+            maximumFrame=(std::max)(maximumFrame,frame);
+            if (!SkipRecords(1, 1) || Read(&entries, sizeof(entries)) != sizeof(entries) ||
+                !SkipRecords(entries, 21)) return false;
+            totalIkEntries += entries;
             maximumIkEntries = (std::max)(maximumIkEntries, entries);
         }
         // Extension codecs own the remainder. Their existing policy is to

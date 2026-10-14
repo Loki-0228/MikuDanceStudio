@@ -671,8 +671,8 @@ void TestRecordCountLimit() {
 
         pmmx::Document out;
         std::uint64_t standardSize = 0;
-        Check(pmmx::Read(file.fd(), out, standardSize) == pmmx::ReadResult::Invalid,
-              "16385 records are Invalid");
+        Check(pmmx::Read(file.fd(), out, standardSize) == pmmx::ReadResult::Loaded && out.records.size()==16385,
+              "16385 records expand automatically");
     }
 }
 
@@ -823,13 +823,19 @@ void TestAppendRejects() {
     for (std::uint32_t i = 0; i < 16385; ++i) {
         many.records.push_back(MakeRecord("k" + std::to_string(i), {1}));
     }
-    Check(!pmmx::Append(file.fd(), many), "Append rejects more than 16384 records");
+    TempFile manyFile("expanded_count"); manyFile.WriteWhole(StandardBytes(64));
+    Check(pmmx::Append(manyFile.fd(), many), "Append expands beyond 16384 records");
+    pmmx::Document manyRead; std::uint64_t manyBoundary=0;
+    Check(pmmx::Read(manyFile.fd(),manyRead,manyBoundary)==pmmx::ReadResult::Loaded && manyRead.records.size()==many.records.size(), "expanded record count roundtrip");
 
     pmmx::Document huge;
     huge.records.push_back(
         MakeRecord("k", std::vector<std::uint8_t>(16u * 1024u * 1024u + 1u, 0x00)));
-    Check(!pmmx::Append(file.fd(), huge), "Append rejects an extension over 16 MiB");
-    Check(!pmmx::Representable(huge), "save preflight rejects excess data before opening destination");
+    TempFile hugeFile("expanded_size"); hugeFile.WriteWhole(StandardBytes(64));
+    Check(pmmx::Append(hugeFile.fd(), huge), "Append expands beyond 16 MiB");
+    Check(pmmx::Representable(huge), "save preflight accepts representable expanded data");
+    pmmx::Document hugeRead; std::uint64_t hugeBoundary=0;
+    Check(pmmx::Read(hugeFile.fd(),hugeRead,hugeBoundary)==pmmx::ReadResult::Loaded && hugeRead.records.size()==1 && hugeRead.records[0].value==huge.records[0].value, "expanded payload roundtrip");
 
     Check(file.Length() == before, "every rejected Append writes nothing");
 

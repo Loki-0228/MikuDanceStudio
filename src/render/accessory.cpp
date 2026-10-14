@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/deformed_mesh_capture.hpp"
 // ===========================================================================
@@ -982,19 +983,16 @@ void RegisterAccessoryKey(MMDApp* app, int frameArg, int slot) {  // 0x413CB0
         return;
     }
 
-    int freeIndex = 1;
-    while (freeIndex < 10000 && keys[freeIndex].frame != 0)
-        ++freeIndex;
-    if (freeIndex >= 10000) {
-        char text[256];
-        sprintf_s(text, 0x100,
-                  "You cannot regist over %dpoint.\n"
-                  "Please execute 'delete unused frame'", 10000);
-        LegacyUiMessageBoxA(static_cast<HWND>(app->Hwnd()), text,
-                    "register frame", 0);
+    std::uint32_t freeIndex = 0;
+    if (!mdl::KeyPoolFreeSlot(app->AccessoryKeys(slot), freeIndex)) {
+        MessageBoxW(static_cast<HWND>(app->Hwnd()),
+            app->EnglishUI() == 2 ? L"无法扩展关键帧存储，本次注册已取消。" :
+            app->EnglishUI() == 0 ? L"メモリを確保できないため、登録を中止しました。" :
+            L"Unable to allocate keyframe storage. Registration was cancelled.",
+            L"MikuDanceStudio", MB_OK | MB_ICONERROR);
         return;
     }
-
+    keys = app->AccessoryKeys(slot);
     if (keys[current].frame < frame) {
         keys[current].next = static_cast<std::uint32_t>(freeIndex);
         keys[freeIndex].previous = static_cast<std::uint32_t>(current);

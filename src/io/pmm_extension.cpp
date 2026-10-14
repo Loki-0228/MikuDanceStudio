@@ -262,7 +262,7 @@ bool Representable(const Document& document) {
         if (!seen.insert(record.key).second) {
             return false;
         }
-        if (static_cast<std::uint64_t>(record.value.size()) > kMaxExtensionBytes) {
+        if (record.value.size() > UINT32_MAX || static_cast<std::uint64_t>(record.value.size()) > kMaxExtensionBytes) {
             return false;
         }
         const std::uint64_t add = 8ull + static_cast<std::uint64_t>(record.key.size()) +
@@ -278,16 +278,6 @@ bool Representable(const Document& document) {
 
 bool Append(int fd, const Document& document) {
     if (!Representable(document)) return false;
-    std::vector<std::uint8_t> stream;
-    for (const Record& record : document.records) {
-        std::uint8_t header[8];
-        PutU32(header, static_cast<std::uint32_t>(record.key.size()));
-        PutU32(header + 4, static_cast<std::uint32_t>(record.value.size()));
-        stream.insert(stream.end(), header, header + 8);
-        stream.insert(stream.end(), record.key.begin(), record.key.end());
-        stream.insert(stream.end(), record.value.begin(), record.value.end());
-    }
-
     const __int64 position = _telli64(fd);
     const __int64 length = _filelengthi64(fd);
     if (position < 0 || length < 0) {
@@ -300,16 +290,25 @@ bool Append(int fd, const Document& document) {
         return false;
     }
 
+    // Stream records without allocating a second copy of the entire document.
+    static const Crc32Table table;
+    std::uint32_t crc=0xffffffffu;std::uint64_t total=0;
+    auto write=[&](const void* bytes,std::size_t count){
+        const auto* p=static_cast<const std::uint8_t*>(bytes);
+        for(std::size_t i=0;i<count;++i)crc=(crc>>8)^table.entry[(crc^p[i])&255];
+        total+=count;return WriteAll(fd,bytes,count);
+    };
+    for(const auto& record:document.records){
+        std::uint8_t header[8];PutU32(header,static_cast<std::uint32_t>(record.key.size()));PutU32(header+4,static_cast<std::uint32_t>(record.value.size()));
+        if(!write(header,8)||!write(record.key.data(),record.key.size())||!write(record.value.data(),record.value.size()))return false;
+    }
     std::uint8_t trailer[kTrailerSize];
     std::memcpy(trailer, kMagic, sizeof(kMagic));
     PutU64(trailer + 8, static_cast<std::uint64_t>(position));
-    PutU64(trailer + 16, static_cast<std::uint64_t>(stream.size()));
-    PutU32(trailer + 24, Crc32(stream.data(), stream.size()));
+    PutU64(trailer + 16, total);
+    PutU32(trailer + 24, crc^0xffffffffu);
     PutU32(trailer + 28, 0);
 
-    if (!WriteAll(fd, stream.data(), stream.size())) {
-        return false;
-    }
     return WriteAll(fd, trailer, kTrailerSize);
 }
 

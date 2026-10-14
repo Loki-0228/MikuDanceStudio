@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 // ===========================================================================
 // CommandDispatch family: control notifications 450..499 (0x47E8A0)
@@ -486,13 +487,12 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
         app->AccessorySlot(found) = nullptr;
         // dispose the previous frame blob of this slot
         if (app->AccessoryKeys(found) != nullptr) {
-            free(app->AccessoryKeys(found));
+            mdl::KeyPoolDestroy(app->AccessoryKeys(found));
             app->AccessoryKeys(found) = nullptr;
         }
         // fresh 0x927C0 frame blob with an identity frame seeded
         app->SceneModified() = 1;
-        auto* keys = static_cast<mdl::AccessoryKey*>(::operator new(
-            sizeof(mdl::AccessoryKey) * mdl::kTimelineKeyCapacity));
+        auto* keys = mdl::KeyPoolCreate<mdl::AccessoryKey>();
         app->AccessoryKeys(found) = keys;
         std::memset(keys, 0, sizeof(mdl::AccessoryKey) * mdl::kTimelineKeyCapacity);
         keys[0].visible = 1;

@@ -13,7 +13,7 @@ struct ControlSpec { int id;
 inline constexpr ControlSpec kControls[] = {
   {400, L"BUTTON", nullptr, L"\x5143\x306b\x623b\x3059" /*0x52D588*/, nullptr, 0x58000000, 0x0, {2, -75}, {0, 24}, 60, 18, true},  // line 1799
   {401, L"BUTTON", nullptr, L"\x3084\x308a\x76f4\x3057" /*0x52D57C*/, nullptr, 0x58000000, 0x0, {2, 5}, {0, 24}, 60, 18, true},  // line 1824
-  {417, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000001, 0x20000, {2, -25}, {0, 66}, 50, 20, false},  // line 1850
+  {417, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000081, 0x20000, {2, -25}, {0, 66}, 50, 20, false},  // line 1850
   {418, L"BUTTON", nullptr, L"\xff1c" /*0x52D578*/, nullptr, 0x50000000, 0x0, {2, -47}, {0, 66}, 20, 20, true},  // line 1880
   {419, L"BUTTON", nullptr, L"\xff1e" /*0x52D574*/, nullptr, 0x50000000, 0x0, {2, 27}, {0, 66}, 20, 20, true},  // line 1897
   {533, nullptr, "BUTTON", nullptr, ".<" /*0x52E844*/, 0x50000000, 0x0, {2, -107}, {0, 68}, 20, 22, false},  // line 1914
@@ -28,8 +28,8 @@ inline constexpr ControlSpec kControls[] = {
   {420, L"BUTTON", nullptr, L"\x30b3\x30d4\x30fc" /*0x52D550*/, nullptr, 0x50000000, 0x0, {0, 6}, {0, 170}, 40, 18, true},  // line 2084
   {421, L"BUTTON", nullptr, L"\xff8d\xff9f\xff70\xff7d\xff84" /*0x52D544*/, nullptr, 0x58000000, 0x0, {0, 49}, {0, 170}, 40, 18, true},  // line 2108
   {422, L"BUTTON", nullptr, L"\x53cd\x8ee2\x0050" /*0x52D53C*/, nullptr, 0x58000000, 0x0, {0, 92}, {0, 170}, 40, 18, true},  // line 2132
-  {425, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000001, 0x20000, {0, 10}, {0, 196}, 50, 14, false},  // line 2156
-  {426, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000001, 0x20000, {0, 82}, {0, 196}, 50, 14, false},  // line 2180
+  {425, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000081, 0x20000, {0, 10}, {0, 196}, 50, 14, false},  // line 2156
+  {426, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000081, 0x20000, {0, 82}, {0, 196}, 50, 14, false},  // line 2180
   {415, L"BUTTON", nullptr, L"\x7bc4\x56f2\x9078\x629e" /*0x52D530*/, nullptr, 0x50000000, 0x0, {0, 140}, {0, 195}, 50, 18, true},  // line 2204
   {424, L"BUTTON", nullptr, L"\x62e1\x5927\x7e2e\x5c0f" /*0x52D524*/, nullptr, 0x58000000, 0x0, {0, 195}, {0, 195}, 50, 18, true},  // line 2228
   {434, nullptr, "COMBOBOX", nullptr, "" /*0x529679*/, 0x50200003, 0x0, {0, 195}, {0, 195}, 50, 18, false},  // line 2252
@@ -103,8 +103,8 @@ inline constexpr ControlSpec kControls[] = {
   {407, L"BUTTON", nullptr, L"\x4e0b\x9762" /*0x52B7AC*/, nullptr, 0x50000000, 0x0, {0, 490}, {0, 137}, 39, 18, true},  // line 4366
   {408, L"BUTTON", nullptr, L"\x518d\x3000\x751f" /*0x52D488*/, nullptr, 0x50001003, 0x0, {0, 415}, {0, 32}, 50, 28, true},  // line 4390
   {535, L"BUTTON", nullptr, L"\x8ffd\x5f93" /*0x52D480*/, nullptr, 0x50001003, 0x0, {1, 12}, {0, 24}, 60, 18, true},  // line 4415
-  {409, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000001, 0x20000, {0, 412}, {0, 75}, 50, 14, false},  // line 4439
-  {410, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000001, 0x20000, {0, 482}, {0, 75}, 50, 14, false},  // line 4463
+  {409, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000081, 0x20000, {0, 412}, {0, 75}, 50, 14, false},  // line 4439
+  {410, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000081, 0x20000, {0, 482}, {0, 75}, 50, 14, false},  // line 4463
   {411, nullptr, "BUTTON", nullptr, "" /*0x529679*/, 0x50000003, 0x0, {0, 477}, {0, 27}, 60, 14, false},  // line 4487
   {412, nullptr, "BUTTON", nullptr, "model" /*MMS: captioned checkbox, was 0x529679 ""*/, 0x50000003, 0x0, {0, 477}, {0, 50}, 60, 14, false},  // line 4511
   {531, nullptr, "BUTTON", nullptr, "bone" /*MMS: captioned checkbox, was 0x529679 ""*/, 0x50000003, 0x0, {0, 500}, {0, 50}, 60, 14, false},  // line 4535
@@ -176,7 +176,7 @@ inline constexpr ControlSpec kControls[] = {
   {552, L"BUTTON", nullptr, L"\x7701\x30a8\x30cd" /*0x52D3F4*/, nullptr, 0x50001003, 0x0, {1, 12}, {0, 24}, 60, 18, true},  // line 6293
   {557, L"BUTTON", nullptr, L"\x5ea7\x6a19\x8ef8" /*0x52D3EC*/, nullptr, 0x50001003, 0x0, {1, 12}, {0, 24}, 60, 18, true},  // line 6318
   {555, L"BUTTON", nullptr, L"\xff7e\xff6f\xff84" /*0x52D3E4*/, nullptr, 0x50000000, 0x0, {1, 12}, {0, 24}, 60, 18, true},  // line 6343
-  {554, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000001, 0x20000, {0, 10}, {0, 196}, 50, 14, false},  // line 6367
+  {554, nullptr, "EDIT", nullptr, "" /*0x529679*/, 0x50000081, 0x20000, {0, 10}, {0, 196}, 50, 14, false},  // line 6367
   {553, nullptr, "BUTTON", nullptr, "Go" /*0x52E7EC*/, 0x50000000, 0x0, {1, 12}, {0, 24}, 60, 18, false},  // line 6404
   {556, L"BUTTON", nullptr, L"\x7f8e\x3000\x5f71" /*0x52D3DC*/, nullptr, 0x50001003, 0x0, {1, 12}, {0, 24}, 60, 18, true},  // line 6429
   {570, L"STATIC", nullptr, L"Scale", nullptr, 0x50000000, 0x0, {0, 230}, {0, 20}, 42, 18, true},

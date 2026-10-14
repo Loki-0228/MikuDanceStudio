@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
@@ -535,13 +536,13 @@ void ShutdownCleanup(MMDApp* app) {
     // scene-teardown twin in scene_ownership.cpp cannot release the same block
     // twice.
     // Defect AB-06.
-    ::operator delete(s.CameraKeys());                          // 0x462F2D
+    mdl::KeyPoolDestroy(s.CameraKeys());                          // 0x462F2D
     s.CameraKeys() = nullptr;
-    ::operator delete(s.LightKeys());                           // 0x462F46
+    mdl::KeyPoolDestroy(s.LightKeys());                           // 0x462F46
     s.LightKeys() = nullptr;
-    ::operator delete(s.ShadowKeys());                          // 0x462F5F
+    mdl::KeyPoolDestroy(s.ShadowKeys());                          // 0x462F5F
     s.ShadowKeys() = nullptr;
-    ::operator delete(s.GravityKeys());                         // 0x462F78
+    mdl::KeyPoolDestroy(s.GravityKeys());                         // 0x462F78
     s.GravityKeys() = nullptr;
 
     // ---- 10: 255 accessory slots + twin track array ------------------------
@@ -569,7 +570,7 @@ void ShutdownCleanup(MMDApp* app) {
         // Defect AB-06.
         mdl::AccessoryKey*& track = s.AccessoryKeys(i);
         if (track != nullptr) {
-            ::operator delete(track);                           // 0x462FB7
+            mdl::KeyPoolDestroy(track);                           // 0x462FB7
             track = nullptr;
         }
     }

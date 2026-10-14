@@ -1,3 +1,5 @@
+#include <algorithm>
+#include "mikudancestudio/extended_names.hpp"
 // Persistence for native bone scaling: the PMM v2
 // "org.mikudancestudio.model.<slot>.boneScale.v1" (or ".v2") tail record and
 // the VMD tail extension ("MDSXVMDX" footer after the standard prefix).  Wire
@@ -212,7 +214,7 @@ bool VmdNameEquals(const std::array<char, 15>& name, const char* boneName,
 constexpr std::uint32_t kMaxPmmPose = 1u << 20;
 constexpr std::uint32_t kMaxPmmKeys = 1u << 20;
 constexpr std::uint32_t kMaxExtensionEntries = 1u << 20;
-constexpr std::uint64_t kMaxExtensionBytes = 8ull * 1024ull * 1024ull;
+constexpr std::uint64_t kMaxExtensionBytes = PTRDIFF_MAX - 64;
 constexpr std::size_t kPmmPoseBytes = 60;
 constexpr std::size_t kPmmKeyBytes = 64;
 constexpr std::size_t kPmmCurveBytes = 4;      // v2: appended per key record
@@ -1207,7 +1209,8 @@ void CaptureExtension(const unsigned char* model, std::uint32_t minFrame,
         const int bone = owners.Get(index);
         if (bone < 0) continue;
         VmdExtension::Entry entry;
-        std::memcpy(entry.name.data(), bones[bone].name, entry.name.size());
+        if (extended_names::exportingUnicodeMotion) entry.name = extended_names::MotionIndexName(static_cast<std::uint32_t>(bone));
+        else std::memcpy(entry.name.data(), bones[bone].name, entry.name.size());
         entry.frame = keys[index].frame - minFrame;
         entry.scale = scale;
         // The key's curve goes with its matrix, so a version 1 payload stays
@@ -1228,9 +1231,18 @@ int ApplyImportedExtension(unsigned char* model, const VmdExtension& extension,
     if (boneCount <= 0 || bones == nullptr || keys == nullptr) return 0;
     std::vector<std::array<char, 20>> boneNames(
         static_cast<std::size_t>(boneCount));
+    if (const auto* targets = extended_names::importedBoneTargets) {
+        for (std::size_t source=0; source<targets->size(); ++source) {
+            const int target=(*targets)[source];
+            if (target<0 || target>=boneCount) continue;
+            const auto name=extended_names::MotionIndexName(static_cast<std::uint32_t>(source));
+            std::memcpy(boneNames[target].data(),name.data(),name.size());
+        }
+    } else {
     for (int i = 0; i < boneCount; ++i)
         std::memcpy(boneNames[static_cast<std::size_t>(i)].data(), bones[i].name,
                     boneNames[static_cast<std::size_t>(i)].size());
+    }
     std::vector<ImportedKey> imported;
     const std::size_t boneKeyCapacity = mdl::BoneKeyCapacity(record);
     KeyOwners owners(keys, boneCount, boneKeyCapacity);

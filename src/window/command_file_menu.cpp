@@ -1,3 +1,5 @@
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // CommandDispatch family: File/Play/Edit/View menu cases (0x47E8A0)
 // ===========================================================================
@@ -1115,7 +1117,7 @@ void ApplyCameraFrameMultiplyDialog(MMDApp* app, HWND hDlg) {  // was Sub43DAD0,
     // frame-count int at +0x44 (scale in double, offset added in double).
     const double kPi = 3.141592025756836;  // .rdata double 0x52BA60
     auto* keys = app->CameraKeys();
-    for (std::size_t index = 0; index < mdl::kTimelineKeyCapacity; ++index) {
+    for (std::size_t index = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); index < poolCapacity; ++index) {
         auto& rec = keys[index];
         if (rec.selected == 0)
             continue;                                          // 0x43B558
@@ -1262,12 +1264,12 @@ int ForcePasteMorphTarget(const MMDApp* app) {
     const auto* model = mdl::Mdl(raw);
     if (!model->displayFrames || !model->morphs) return -1;
     int target = -1;
-    for (unsigned i = 0; i < model->facialFrameCount; ++i) {
+    for (unsigned i = 0; i < mikudancestudio::mdl::FacialFrameCount(*model); ++i) {
         const auto& row = model->displayFrames[i];
-        if (!row.selected || row.targetIndex >= model->morphCount ||
-            model->morphs[row.targetIndex].panel == mdl::MorphPanel::system) continue;
-        if (target >= 0 && target != row.targetIndex) return -2;
-        target = row.targetIndex;
+        if (!row.selected || mikudancestudio::mdl::FrameTargetIndex(row) >= model->morphCount ||
+            model->morphs[mikudancestudio::mdl::FrameTargetIndex(row)].panel == mdl::MorphPanel::system) continue;
+        if (target >= 0 && target != mikudancestudio::mdl::FrameTargetIndex(row)) return -2;
+        target = mikudancestudio::mdl::FrameTargetIndex(row);
     }
     return target;
 }
@@ -1452,7 +1454,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         {
             unsigned char* m = ActiveModel(app);
             mdl::DisplayKey* f = mdl::DisplayKeys(m);
-            for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(f)); i < poolCapacity; ++i)
                 f[i].allocated = 0;
         }
 
@@ -2087,7 +2089,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
             {
                 model = ActiveModel(app);
                 mdl::DisplayKey* f = mdl::DisplayKeys(model);
-                for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+                for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(f)); i < poolCapacity; ++i)
                     f[i].allocated = 0;
             }
             EnableWindow(GetDlgItem(MainHwnd(app), panel::kUndoButton), TRUE);
@@ -2252,7 +2254,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         {
             unsigned char* m = ActiveModel(app);
             mdl::DisplayKey* f = mdl::DisplayKeys(m);
-            for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(f)); i < poolCapacity; ++i)
                 f[i].allocated = 0;
         }
         unsigned char* model = ActiveModel(app);
@@ -2564,7 +2566,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         app->state.dialogFlags[2] = 1;
         std::int32_t esi = 0;
         auto* frames = app->CameraKeys();
-        for (std::size_t key = 0; key < 10000; ++key) {
+        for (std::size_t key = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(frames)); key < poolCapacity; ++key) {
             frames[key].selected = 0;
             const bool used = frames[key].frame != 0;
             if (used || esi == 0) {
@@ -2581,7 +2583,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         app->state.dialogFlags[17] = 1;
         std::int32_t esi = 0;
         auto* frames = app->LightKeys();
-        for (std::size_t key = 0; key < 10000; ++key) {
+        for (std::size_t key = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(frames)); key < poolCapacity; ++key) {
             frames[key].selected = 0;
             const bool used = frames[key].frame != 0;
             if (used || esi == 0) {
@@ -2597,7 +2599,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         app->state.dialogFlags[8] = 1;
         std::int32_t esi = 0;
         auto* frames = app->ShadowKeys();
-        for (std::size_t key = 0; key < 10000; ++key) {
+        for (std::size_t key = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(frames)); key < poolCapacity; ++key) {
             frames[key].selected = 0;
             const bool used = frames[key].frame != 0;
             if (used || esi == 0) {
@@ -2613,7 +2615,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
         app->state.dialogFlags[3] = 1;
         std::int32_t esi = 0;
         auto* frames = app->GravityKeys();
-        for (std::size_t key = 0; key < 10000; ++key) {
+        for (std::size_t key = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(frames)); key < poolCapacity; ++key) {
             frames[key].selected = 0;
             const bool used = frames[key].frame != 0;
             if (used || esi == 0) {
@@ -2631,7 +2633,7 @@ void CmdFileMenu(MMDApp* app, HWND hwnd, std::uint16_t id, std::uint16_t notify)
             auto* keys = app->AccessoryKeys(tbl);
             if (keys == nullptr)
                 continue;
-            for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i)
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i)
                 keys[i].selected = (i == 0 || keys[i].frame != 0) ? 1 : 0;
         }
         PanelPaint(app);

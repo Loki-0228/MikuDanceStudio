@@ -1,3 +1,6 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x00446A70 - HandleLButtonDown  (original: sub_446A70)
 // ===========================================================================
@@ -187,12 +190,14 @@ static bool MatchText(const char* a, const char* b) {
 // (sub_446A70 @ 0x447460 / 0x447580 / 0x4476A0 / 0x4477C0 / 0x447900 /
 //  0x4479E0 / 0x447A30)
 static void ClearSelectionBitmaps(MMDApp* app) {
-    for (int i = 0; i < 0x2710; ++i) {
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->CameraKeys()); i < capacity; ++i)
         app->CameraKeys()[i].selected = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->LightKeys()); i < capacity; ++i)
         app->LightKeys()[i].selected = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->ShadowKeys()); i < capacity; ++i)
         app->ShadowKeys()[i].selected = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(app->GravityKeys()); i < capacity; ++i)
         app->GravityKeys()[i].selected = 0;
-    }
     for (int s = 0; s < 0xFF; ++s) {
         auto* rec = reinterpret_cast<unsigned char*>(app->AccessoryKeys(s));
         if (rec == nullptr)
@@ -202,7 +207,7 @@ static void ClearSelectionBitmaps(MMDApp* app) {
         // exactly 0x2710 records.  The old 0x3D80 loop wrote 344,640 bytes
         // beyond every 600,000-byte accessory table and made a timeline
         // key click corrupt the neighbouring heap allocations.
-        for (int i = 0; i < 0x2710; ++i)
+        for (int i = 0, poolCapacity = static_cast<int>(mdl::KeyPoolCapacity(app->AccessoryKeys(s))); i < poolCapacity; ++i)
             rec[i * 0x3C + 0x18] = 0;
     }
 }
@@ -228,7 +233,7 @@ static void ClearActiveModelFlags(MMDApp* app) {
     for (std::size_t i = 0; i < morphCapacity1; ++i)
         morphKeys[i].allocated = 0;
     mikudancestudio::mdl::DisplayKey* displayKeys = mikudancestudio::mdl::DisplayKeys(model);
-    for (std::size_t i = 0; i < mikudancestudio::mdl::kDisplayKeyCapacity; ++i)
+    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(displayKeys)); i < poolCapacity; ++i)
         displayKeys[i].allocated = 0;
 }
 
@@ -250,14 +255,14 @@ static void FillSelectionRecords(MMDApp* app, const Key* keys,
     auto& count = app->TimelineSelectionCount(band);
     count = 0;
     if (keys == nullptr) return;
-    for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i)
+    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i)
         if (keys[i].selected) ++count;
     if (count == 0) return;
     auto* records = static_cast<TimelineSelectionRecord*>(
         ::operator new(sizeof(TimelineSelectionRecord) * count));
     app->TimelineSelectionRecords(band) = records;
     int out = 0;
-    for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i) {
+    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
         if (keys[i].selected)
             records[out++] = {{static_cast<std::int32_t>(i), 0, 0,
                               static_cast<std::int32_t>(keys[i].frame)}};
@@ -284,7 +289,7 @@ static void SelectionStats(MMDApp* app, int x, int y, HWND hwnd) {
             for (int slot = 0; slot < 255; ++slot) {
                 const auto* keys = app->AccessoryKeys(slot);
                 if (!keys) continue;
-                for (std::size_t i = 0; i < mdl::kTimelineKeyCapacity; ++i)
+                for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i)
                     if (keys[i].selected)
                         ++app->TimelineSelectionCount(TimelineSelectionBand::Accessory);
             }
@@ -294,11 +299,13 @@ static void SelectionStats(MMDApp* app, int x, int y, HWND hwnd) {
                         TimelineSelectionBand::Accessory)) * 0x10));
                 app->TimelineSelectionRecords(TimelineSelectionBand::Accessory) =
                     reinterpret_cast<TimelineSelectionRecord*>(out);
-                for (int off = 0; off < 0x2710; ++off) {
+                std::size_t maximumCapacity = 0;
+                for (int i = 0; i < 255; ++i) maximumCapacity = (std::max)(maximumCapacity, mdl::KeyPoolCapacity(app->AccessoryKeys(i)));
+                for (std::size_t off = 0; off < maximumCapacity; ++off) {
                     for (int g = 0; g < 0x33; ++g) {
                         for (int j = 0; j < 5; ++j) {
                             auto* slot = app->AccessoryKeys(g * 5 + j);
-                            if (slot && slot[off].selected != 0) {
+                            if (slot && off < mdl::KeyPoolCapacity(slot) && slot[off].selected != 0) {
                                 out[1] = off;
                                 out[2] = g * 5 + j;
                                 out[3] = static_cast<std::int32_t>(slot[off].frame);
@@ -449,7 +456,7 @@ static void SelectionStats(MMDApp* app, int x, int y, HWND hwnd) {
                 {
                     unsigned char* mm = ActiveModel(app);
                     mikudancestudio::mdl::DisplayKey* displayKeys = mikudancestudio::mdl::DisplayKeys(mm);
-                    for (std::size_t i = 0; i < mikudancestudio::mdl::kDisplayKeyCapacity; ++i)
+                    for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(displayKeys)); i < poolCapacity; ++i)
                         if (displayKeys[i].allocated != 0) ++ikCnt;
                     if (ikCnt > 0) {
                         std::int32_t* iout = static_cast<std::int32_t*>(
@@ -592,8 +599,7 @@ static void HandleLButtonDown_MarginColumnToggle(MMDApp* app,
         if (model == nullptr)
             return;
         const std::int32_t type =
-            static_cast<std::int8_t>(
-                mdl::Mdl(model)->boneListRowType[Div14(y - 0xA0)]);
+            mdl::DisplayRowType(*mdl::Mdl(model), Div14(y - 0xA0));
         if (type > 0) {
             mdl::DisplayGroup& frame = mdl::DisplayGroups(model)[type];
             frame.flags = (frame.flags == 0) ? 1 : 0;   // cmp/setz toggle
@@ -688,7 +694,7 @@ static void HandleLButtonDown_NameColumnHit(MMDApp* app, HWND hwnd,
             mikudancestudio::mdl::Mdl(mm)->boneSelection[i] = 0;
         }
         for (int i = 0;
-             i < static_cast<int>(mdl::Mdl(m0)->facialFrameCount); ++i) {
+             i < static_cast<int>(mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(m0))); ++i) {
             unsigned char* mm = ActiveModel(app);
             mdl::DisplayFrames(mm)[i].selected = 0;
         }
@@ -733,10 +739,10 @@ static void HandleLButtonDown_NameColumnHit(MMDApp* app, HWND hwnd,
             // `test edx,edx / js` + `cmp edx,0xFFFFFC19 / je` pair.
             const std::int32_t want = BoneListRowMorphIndex(record, row);
             const std::int32_t morphCount =
-                static_cast<std::int32_t>(mdl::Mdl(m)->facialFrameCount);
+                static_cast<std::int32_t>(mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(m)));
             int i = 0;
             for (; i < morphCount; ++i) {
-                if (mdl::DisplayFrames(m)[i].targetIndex == want)
+                if (mdl::FrameTargetIndex(mdl::DisplayFrames(m)[i]) == want)
                     break;
             }
             if (i < morphCount) {
@@ -747,7 +753,7 @@ static void HandleLButtonDown_NameColumnHit(MMDApp* app, HWND hwnd,
                     faceRec.selected = 0;
                 } else {
                     faceRec.selected = 1;
-                    const std::int32_t morphIndex = faceRec.targetIndex;
+                    const std::int32_t morphIndex = mikudancestudio::mdl::FrameTargetIndex(faceRec);
                     auto& morph = mikudancestudio::mdl::Morphs(m)[morphIndex];
                     const auto panel = morph.panel;
                     HWND hCombo = nullptr, hSpin = nullptr, hText = nullptr;
@@ -812,8 +818,7 @@ static void HandleLButtonDown_NameColumnHit(MMDApp* app, HWND hwnd,
     {
         unsigned char* m = ActiveModel(app);
         const std::int32_t type =
-            static_cast<std::int8_t>(
-                mikudancestudio::mdl::Mdl(m)->boneListRowType[Div14(y - 0xA0)]);
+            mdl::DisplayRowType(*mdl::Mdl(m), Div14(y - 0xA0));
         if (type == 1) {
             mdl::Mdl(m)->displayKeyframesPresent =
                 (mdl::Mdl(m)->displayKeyframesPresent == 0) ? 1 : 0;  // setz
@@ -823,7 +828,7 @@ static void HandleLButtonDown_NameColumnHit(MMDApp* app, HWND hwnd,
         }
         if (type == 2) {
             for (int i = 0;
-                 i < static_cast<int>(mdl::Mdl(m)->facialFrameCount); ++i) {
+                 i < static_cast<int>(mikudancestudio::mdl::FacialFrameCount(*mikudancestudio::mdl::Mdl(m))); ++i) {
                 mdl::FrameGroup& face = mdl::DisplayFrames(m)[i];
                 face.selected = (face.selected == 0) ? 1 : 0;
             }
@@ -843,8 +848,8 @@ static void HandleLButtonDown_NameColumnHit(MMDApp* app, HWND hwnd,
         for (int i = 0;
              i < static_cast<int>(mdl::Mdl(m)->rigidBodyCount); ++i) {
             mdl::FrameGroup& rigid = mdl::RigidGroups(m)[i];
-            if (static_cast<std::int8_t>(rigid.groupIndex) == type) {
-                const std::int32_t boneIdx = rigid.targetIndex;
+            if (mikudancestudio::mdl::FrameGroupIndex(rigid) == type) {
+                const std::int32_t boneIdx = mikudancestudio::mdl::FrameTargetIndex(rigid);
                 unsigned char* p =
                     mikudancestudio::mdl::Mdl(m)->boneSelection + boneIdx;
                 if (*p != 0)
@@ -1036,8 +1041,9 @@ static void HandleLButtonDown_FrameStripHit(MMDApp* app, HWND hwnd,
     // scrollbar 0x1A1 sync (0x44A520-0x44A5BA): frame =
     // (x-100)/13 + scroll offset; EM_SETSEL (0xB1) to the end of the old
     // text, then WM_SETTEXT (0xC2) with the new frame
-    app->state.currentFrame =
-        Div13(x - 0x64) + app->state.timelineStartFrame;
+    const auto clickedFrame=std::int64_t(Div13(x-0x64))+app->state.timelineStartFrame;
+    if(clickedFrame<0||clickedFrame>frame_limits::maximum)return;
+    app->state.currentFrame=static_cast<std::int32_t>(clickedFrame);
     const LRESULT textLen = GetWindowTextLengthA(GetDlgItem(hwnd, panel::kCurrentFrameEdit));
     SendMessageA(GetDlgItem(hwnd, panel::kCurrentFrameEdit), EM_SETSEL, 0, textLen);
     char frameText[0x100];

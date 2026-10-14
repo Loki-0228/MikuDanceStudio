@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 // ===========================================================================
 // File 菜单八命令 + 保存 PMM：WM_COMMAND 202..206/209/210/213（及 208）
@@ -504,11 +505,11 @@ void CmdSaveMotion(MMDApp* app) {
     if (app->state.optflag[0] != 0) {
         // 相机/配件模式：只扫三张 app 表（0x46BE76 起），模型表不扫。
         any = anySelectedByte(reinterpret_cast<unsigned char*>(
-                                  app->state.cameraKeyTrack), 0x48, 0x54, 10000) ||
+                                  app->state.cameraKeyTrack), 0x48, 0x54, mdl::KeyPoolCapacity(app->CameraKeys())) ||
               anySelectedByte(reinterpret_cast<unsigned char*>(
-                                  app->state.lightKeyTrack), 0x24, 0x28, 10000) ||
+                                  app->state.lightKeyTrack), 0x24, 0x28, mdl::KeyPoolCapacity(app->LightKeys())) ||
               anySelectedByte(reinterpret_cast<unsigned char*>(
-                                  app->state.selfShadowKeyTrack), 0x14, 0x18, 10000) ||
+                                  app->state.selfShadowKeyTrack), 0x14, 0x18, mdl::KeyPoolCapacity(app->ShadowKeys())) ||
               // MMS: selected `.x` keys are saved behind the standard sections.
               accessory_motion_io::AnySelected(app);
     } else {
@@ -519,7 +520,7 @@ void CmdSaveMotion(MMDApp* app) {
             any = anyAllocatedKey(mdl::BoneKeys(model),
                                   mdl::BoneKeyCapacity(*mdl::Mdl(model))) ||
                   anyAllocatedKey(mdl::MorphKeys(model), mdl::MorphKeyCapacity(mdl::MorphKeys(model))) ||
-                  anyAllocatedKey(mdl::DisplayKeys(model), mdl::kDisplayKeyCapacity);
+                  anyAllocatedKey(mdl::DisplayKeys(model), mdl::KeyPoolCapacity(mdl::DisplayKeys(model)));
         }
     }
     if (!any) {

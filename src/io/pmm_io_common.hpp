@@ -35,6 +35,7 @@
 #include "mikudancestudio/accessory_layout.hpp"
 #include "mikudancestudio/global_key_layout.hpp"
 #include "mikudancestudio/model.hpp"
+#include "mikudancestudio/frame_limits.hpp"
 #include "mikudancestudio/bone_pose_safety.hpp"
 #include "mikudancestudio/unicode_window.hpp"
 
@@ -67,6 +68,14 @@ inline int Rd(int fd, void* buf, unsigned int count) {
     return received;
 }
 
+inline void CheckFrame(std::uint32_t frame) {
+    if (frame > frame_limits::maximum) throw std::runtime_error("Unsupported PMM frame number");
+}
+inline void ReadFrame(int fd, std::uint32_t& frame) {
+    Rd(fd, &frame, 4);
+    CheckFrame(frame);
+}
+
 // ---- record readers (stream byte order is the original's) -----------------
 
 // v1 body: ReadV1BoneKey (0x459DF4 dense / 0x459F18 sparse helper shape);
@@ -74,7 +83,7 @@ inline int Rd(int fd, void* buf, unsigned int count) {
 // tail byte.
 template <PmmStream S>
 inline void ReadPmmBoneKey(int fd, mdl::BoneKey& key) {
-    Rd(fd, &key.frame, 4); Rd(fd, &key.previous, 4); Rd(fd, &key.next, 4);
+    ReadFrame(fd, key.frame); Rd(fd, &key.previous, 4); Rd(fd, &key.next, 4);
     for (int lane = 0; lane < 4; ++lane) {
         Rd(fd, &key.interpolation[lane], 1);
         Rd(fd, &key.interpolation[lane + 4], 1);
@@ -92,7 +101,7 @@ inline void ReadPmmBoneKey(int fd, mdl::BoneKey& key) {
 // v1 body: ReadV1MorphKey (0x45A0D7); v2 body: ReadPmmMorphKey (0x453427).
 // Byte-identical dialects.
 inline void ReadPmmMorphKey(int fd, mdl::MorphKey& key) {
-    Rd(fd, &key.frame, 4); Rd(fd, &key.previous, 4); Rd(fd, &key.next, 4);
+    ReadFrame(fd, key.frame); Rd(fd, &key.previous, 4); Rd(fd, &key.next, 4);
     Rd(fd, &key.value, 4);
     Rd(fd, &key.allocated, 1);
 }
@@ -106,6 +115,7 @@ inline void ReadPmmMorphKey(int fd, mdl::MorphKey& key) {
 template <PmmStream S>
 inline void ReadPmmCameraKey(int fd, mdl::CameraKey& key) {
     Rd(fd, &key, 0x28);
+    CheckFrame(key.frame);
     if constexpr (S == PmmStream::V2) {
         Rd(fd, &key.parentModel, 4);
         Rd(fd, &key.parentBone, 4);
@@ -126,7 +136,7 @@ inline void ReadPmmCameraKey(int fd, mdl::CameraKey& key) {
 
 // Light track record, 37 stream bytes (v1 0x45B090 / v2 0x455286; identical).
 inline void ReadPmmLightKey(int fd, mdl::LightKey& key) {
-    Rd(fd, &key.frame, 4);
+    ReadFrame(fd, key.frame);
     Rd(fd, &key.previous, 4);
     Rd(fd, &key.next, 4);
     Rd(fd, &key.color[0], 4);
@@ -143,7 +153,7 @@ inline void ReadPmmLightKey(int fd, mdl::LightKey& key) {
 // Self-shadow track record, 18 stream bytes (v1 readSelRecord 0x45D82D / v2
 // readShadowRecord 0x457A4F; identical).  mode is consumed raw.
 inline void ReadPmmSelfShadowKey(int fd, mdl::SelfShadowKey& key) {
-    Rd(fd, &key.frame, 4);
+    ReadFrame(fd, key.frame);
     Rd(fd, &key.previous, 4);
     Rd(fd, &key.next, 4);
     Rd(fd, &key.mode, 1);
@@ -155,7 +165,7 @@ inline void ReadPmmSelfShadowKey(int fd, mdl::SelfShadowKey& key) {
 
 // Gravity/selection track record, 34 stream bytes (v2 only, 0x45777C region).
 inline void ReadPmmGravityKey(int fd, mdl::GravityKey& key) {
-    Rd(fd, &key.frame, 4);
+    ReadFrame(fd, key.frame);
     Rd(fd, &key.previous, 4);
     Rd(fd, &key.next, 4);
     unsigned char b = 0;
@@ -174,7 +184,7 @@ inline void ReadPmmGravityKey(int fd, mdl::GravityKey& key) {
 // identical), including the (100 - b/2)/100.0 transparency quirk byte.
 inline void ReadPmmAccessoryKey(int fd, mdl::AccessoryKey& key) {
     unsigned char b = 0;
-    Rd(fd, &key.frame, 4);
+    ReadFrame(fd, key.frame);
     Rd(fd, &key.previous, 4);
     Rd(fd, &key.next, 4);
     Rd(fd, &b, 1);

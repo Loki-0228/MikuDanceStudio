@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // ===========================================================================
 // Window procedures (separate/recording windows)
 // ===========================================================================
@@ -252,11 +253,9 @@ void DispatchSeparateWindowCommand(MMDApp* app, unsigned short id) {  // was Sub
         break;
     }
     case 0x229: {                                                // 0x462810
-        GetWindowTextA(GetDlgItem(separate, panel::kGotoFrameEdit), text, 10);
-        std::int32_t frame = atol(text);
-        if (frame < 0)
-            frame = 0;
-        s.CurrentFrame() = frame;                                // 0x980
+        GetWindowTextA(GetDlgItem(separate,panel::kGotoFrameEdit),text,sizeof text);
+        std::int32_t frame=0;if(!frame_limits::Parse(text,frame))break;
+        s.CurrentFrame()=frame;
         RefreshAfterFrameApply(app);                             // 0x432FA0
         PostViewRefresh(app);
         sprintf_s(text, 0x100, "%d",

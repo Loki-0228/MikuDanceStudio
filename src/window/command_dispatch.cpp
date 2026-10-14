@@ -1,3 +1,4 @@
+#include "mikudancestudio/display_capacity.hpp"
 #include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/force_paste.hpp"
@@ -123,8 +124,8 @@ void MorphRowSelect(MMDApp* app, HWND hwnd, HWND combo, std::size_t lane,
     // display-frame row sweep (0x48ec01..0x48ec41)
     mdl::ModelRecord* live = mdl::Mdl(app->SelectedModel());
     mdl::FrameGroup* groups = live->displayFrames;
-    for (std::uint8_t i = 0; i < live->facialFrameCount; ++i) {
-        groups[i].selected = (groups[i].targetIndex == index) ? 1 : 0;
+    for (std::uint32_t i = 0; i < mikudancestudio::mdl::FacialFrameCount(*live); ++i) {
+        groups[i].selected = (mikudancestudio::mdl::FrameTargetIndex(groups[i]) == index) ? 1 : 0;
     }
     PostLanguageSweep(app);   // 0x42F1E0 (x64 sub_7FF7CB47F7F0)
     PostLanguageSweep2(app);  // 0x40D070 (x64 sub_7FF7CB440CE0)

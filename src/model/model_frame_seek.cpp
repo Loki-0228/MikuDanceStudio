@@ -499,7 +499,7 @@ int SeekModelFrame(unsigned char* model, int frameArg, int physicsMode) {  // wa
             result = b + 1;
         }
     }
-    bone_scale::Evaluate(model, static_cast<float>(frameArg));
+    bone_scale::Evaluate(model, frameArg);
     morph_curve::Evaluate(model, static_cast<double>(frameArg));
 #if !MMD_ORIGINAL_PROFILE
     bone_curve::Evaluate(model, static_cast<double>(frameArg));

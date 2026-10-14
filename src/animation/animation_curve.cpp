@@ -1,3 +1,4 @@
+#include <cstdint>
 // MAINTENANCE: pure-CPU curve core shared by the host attachment/expression
 // pipeline and the MMV parameter pipeline.  Keep it free of Win32, DirectX and
 // GUI dependencies so both callers can link it unchanged.
@@ -39,7 +40,7 @@ constexpr double kMaximumWeight = 0.9999;
 // handles would share an abscissa and the time inversion would be ambiguous.
 constexpr double kMaximumWeightSum = 0.9999;
 constexpr std::size_t kMaximumIdBytes = 1024;
-constexpr std::size_t kMaximumEncodedBytes = 64u * 1024u * 1024u;
+constexpr std::size_t kMaximumEncodedBytes = (std::min)(std::size_t(UINT32_MAX), std::size_t(PTRDIFF_MAX));
 
 // On-disk size of one key record in format version 1.
 constexpr std::size_t kKeyRecordBytes = 4 + 5 * 8 + 4 + 4;

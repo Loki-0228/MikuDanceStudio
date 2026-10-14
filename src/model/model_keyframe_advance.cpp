@@ -255,7 +255,7 @@ void NotifyBonePhysicsMode(unsigned char* model, int boneIdx, unsigned char mode
 // ---- VA 0x004A2CD0 --------------------------------------------------------
 // Initializes every per-model animation cursor at playback start.  Unlike
 // SeekModelFrame this preserves the incremental-track state consumed by 0x4A31D0.
-void InitModelTrackCursors(unsigned char* model, float cursor, int physicsMode) {  // was Sub4A2CD0
+void InitModelTrackCursors(unsigned char* model, double cursor, int physicsMode) {  // was Sub4A2CD0
     unsigned char* const m = model;
     const double frame = static_cast<double>(cursor) * 30.0;
 
@@ -351,7 +351,7 @@ void InitModelTrackCursors(unsigned char* model, float cursor, int physicsMode) 
 }
 
 // ---- VA 0x004A31D0 --------------------------------------------------------
-void AdvanceModelKeyframes(unsigned char* model, float cursor, int physicsMode) {  // was Sub4A31D0
+void AdvanceModelKeyframes(unsigned char* model, double cursor, int physicsMode) {  // was Sub4A31D0
     unsigned char* const m = model;
     mdl::ModelRecord& state = *mdl::Mdl(m);
 
@@ -360,8 +360,8 @@ void AdvanceModelKeyframes(unsigned char* model, float cursor, int physicsMode) 
     double frame = static_cast<double>(cursor) * 30.0;
     {
         const double scaled = frame * 1000.0;
-        if (scaled - static_cast<double>(static_cast<int>(scaled)) >= 0.5)
-            frame = static_cast<double>(static_cast<int>(scaled) + 1) / 1000.0;
+        if (scaled - std::floor(scaled) >= 0.5)
+            frame = (std::floor(scaled) + 1.0) / 1000.0;
     }
 
     // ==== section 1: IK master tracks (0x4A3236) ==========================
@@ -638,10 +638,8 @@ void AdvanceModelKeyframes(unsigned char* model, float cursor, int physicsMode) 
                                  rec.rotation[2], rec.rotation[3]};
             // x64 0x7FF7CB4F1D34..DD: cvtsi2ss + subss + divss - the raw
             // fraction divides in SINGLE precision on the float-cast frame.
-            const float tF =
-                (static_cast<float>(frame) - static_cast<float>(prevFrame)) /
-                static_cast<float>(static_cast<int>(curFrame) -
-                                   static_cast<int>(prevFrame));
+            const float tF = static_cast<float>((frame - double(prevFrame)) /
+                double(curFrame - prevFrame));
             // EASED rotation fraction - the slerp below uses this value
             // (see the file header's decompiler-trap note)
             const float eRot = BoneEase(m, 3, cursorIdx, tF);
@@ -760,7 +758,7 @@ void AdvanceModelKeyframes(unsigned char* model, float cursor, int physicsMode) 
             }
         }
     }
-    bone_scale::Evaluate(model, static_cast<float>(frame));
+    bone_scale::Evaluate(model, frame);
     morph_curve::Evaluate(model, frame);
 #if !MMD_ORIGINAL_PROFILE
     bone_curve::Evaluate(model, frame);

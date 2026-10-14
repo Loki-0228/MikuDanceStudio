@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/ui_language.hpp"
 // ===========================================================================
@@ -323,19 +324,17 @@ void RegisterSelfShadowState(MMDApp* app, int frameValue) {
         return;
     }
 
-    std::uint32_t freeIndex = 1;
-    while (freeIndex < mdl::kTimelineKeyCapacity && keys[freeIndex].frame != 0)
-        ++freeIndex;
-    if (freeIndex >= mdl::kTimelineKeyCapacity) {
-        char message[0x100];
-        sprintf_s(message, sizeof(message),
-                  "You cannot regist over %dpoint.\n"
-                  "Please execute 'delete unused frame'", 10000);
-        LegacyUiMessageBoxA(app->state.hwnd, message,
-                    "register frame", 0);
+    std::uint32_t freeIndex = 0;
+    if (!mdl::KeyPoolFreeSlot(app->ShadowKeys(), freeIndex)) {
+        MessageBoxW(static_cast<HWND>(app->Hwnd()),
+            app->EnglishUI() == 2 ? L"无法扩展关键帧存储，本次注册已取消。" :
+            app->EnglishUI() == 0 ? L"メモリを確保できないため、登録を中止しました。" :
+            L"Unable to allocate keyframe storage. Registration was cancelled.",
+            L"MikuDanceStudio", MB_OK | MB_ICONERROR);
         return;
     }
-
+    keys = app->ShadowKeys();
+    currentRecord = &keys[current];
     auto* added = &keys[freeIndex];
     if (currentRecord->frame < frame) {
         currentRecord->next = freeIndex;

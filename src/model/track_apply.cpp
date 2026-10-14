@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x00412330 - ApplyGravityTrack (was Sub412330)  (0x7F1 bytes)  gravity-track apply + physics
 //                                    dialog (hwnd @ app+0xA0CCC) refresh
@@ -117,7 +118,7 @@ void ApplyGravityTrack(MMDApp* app) {  // was Sub412330, VA 0x00412330
                 RefreshPhysicsDialog(app);
                 return;
             }
-            if (next >= mdl::kTimelineKeyCapacity)
+            if (next >= mdl::KeyPoolCapacity(track))
                 break;
             idx = next;
             if (recFrame(idx) >= frame) break;
@@ -133,7 +134,7 @@ void ApplyGravityTrack(MMDApp* app) {  // was Sub412330, VA 0x00412330
     }
 
     // between keys: lerp against the previous record (0x412860..0x4128E0)
-    if (rec.previous >= mdl::kTimelineKeyCapacity)
+    if (rec.previous >= mdl::KeyPoolCapacity(track))
         return;
     const mdl::GravityKey& prev = track[rec.previous];
     float num = static_cast<float>(

@@ -12,6 +12,7 @@
 #include "mikudancestudio/channel_bake.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/model.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/physics_bake.hpp"
 #include "mikudancestudio/pmm_extension.hpp"
 #include <atomic>
@@ -179,7 +180,14 @@ struct Scene {
         accessory[2].visible = 1;
         accessory[2].shadowEnabled = 1;
     }
-    ~Scene() { curve_host::Reset(app.get()); }
+    ~Scene() {
+        curve_host::Reset(app.get());
+        if(app->CameraKeys()!=camera.get())mdl::KeyPoolReleaseOwned(app->CameraKeys());
+        if(app->LightKeys()!=light.get())mdl::KeyPoolReleaseOwned(app->LightKeys());
+        if(app->ShadowKeys()!=shadow.get())mdl::KeyPoolReleaseOwned(app->ShadowKeys());
+        if(app->GravityKeys()!=gravity.get())mdl::KeyPoolReleaseOwned(app->GravityKeys());
+        if(app->AccessoryKeys(0)!=accessory.get())mdl::KeyPoolReleaseOwned(app->AccessoryKeys(0));
+    }
 };
 
 std::vector<unsigned char> LightBytes(const Scene& scene) {
@@ -259,6 +267,8 @@ void CameraBake() {
     request.step = 10;
     SelectCameraXY(request);
     std::wstring message;
+    std::vector<curve_editor::Channel> source;
+    Check(curve_host::Read(*scene->app, curve_host::Kind::Camera, 0, source, message), "read source camera before bake");
     channel_bake::Plan plan;
     Check(channel_bake::Prepare(*scene->app, request, plan, message) == channel_bake::Error::None,
           "prepare an empty scene camera bake");
@@ -274,7 +284,7 @@ void CameraBake() {
     Check(frames == std::vector<int>({0, 5, 15, 25, 40}),
           "the selected range is resampled and every key outside it is kept");
     bool xValues = true;
-    for (const auto& key : channels[0].track.keys) xValues = xValues && Near(key.value, key.frame);
+    for (const auto& key : channels[0].track.keys) xValues = xValues && Near(key.value, animation_curve::Evaluate(source[0].track, key.frame).value);
     bool yValues = true;
     for (const auto& key : channels[1].track.keys) yValues = yValues && Near(key.value, 0);
     Check(xValues, "camera X is resampled from the source curve");
@@ -325,12 +335,12 @@ void Transactional() {
               "a zero step is refused");
         Check(CameraBytes(*scene) == cameraBefore, "a refused step leaves the camera untouched");
     }
-    // Capacity: the scene track cannot hold one key per frame of the whole
-    // domain, and the refusal must not have rewritten the first selected track.
+    // Expanded capacity is automatic, and rollback must retain every original byte.
     {
+        auto scene = std::make_unique<Scene>();
         channel_bake::Request dense = request;
         dense.firstFrame = 0;
-        dense.lastFrame = 100000;
+        dense.lastFrame = 10050;
         dense.step = 1;
         dense.selection.choices.clear();
         auto& lightChoice = dense.selection.Touch(channel_bake::Kind::Light, 0, 6);
@@ -338,10 +348,19 @@ void Transactional() {
         lightChoice.fields[0] = true;  // one lane is enough to exceed the capacity
         dense.selection.Touch(channel_bake::Kind::Camera, 0, 11);
         channel_bake::Plan plan;
-        Check(channel_bake::Prepare(*scene->app, dense, plan, message) == channel_bake::Error::Capacity,
-              "a bake larger than the native key capacity is refused");
+        Check(channel_bake::Prepare(*scene->app, dense, plan, message) == channel_bake::Error::None,
+              "bake preparation accepts automatic growth beyond the former native capacity");
         Check(LightBytes(*scene) == lightBefore && CameraBytes(*scene) == cameraBefore,
-              "a capacity refusal leaves every selected track untouched");
+              "preparing an expanded bake leaves selected tracks untouched");
+        Check(channel_bake::Commit(*scene->app, plan, message) == channel_bake::Error::None,
+              "commit expands scene pools automatically");
+        Check(mdl::KeyPoolCapacity(scene->app->LightKeys())>10000 &&
+              NativeFrames(scene->app->LightKeys(),mdl::KeyPoolCapacity(scene->app->LightKeys()),0).size()==10051,
+              "expanded light bake retains every requested frame");
+        Check(channel_bake::Rollback(*scene->app,plan),"rollback expanded scene bake");
+        Check(std::memcmp(scene->app->LightKeys(),lightBefore.data(),lightBefore.size())==0 &&
+              std::memcmp(scene->app->CameraKeys(),cameraBefore.data(),cameraBefore.size())==0,
+              "expanded rollback restores source records exactly");
     }
     // A value the track cannot carry is refused in the same way: the light track
     // is selected first and must survive the camera's refusal byte for byte.
@@ -1210,8 +1229,7 @@ void BoneScope() {
 }
 
 // ---- the Baking popup carries the mesh bake entry ---------------------------
-// The mesh bake is its own menu entry next to the ABC export, so the key bake
-// and the mesh bake can never be confused.  A hidden host window is enough: no
+// Mesh baking follows key baking; its dialog also offers ABC export.  A hidden host window is enough: no
 // device and no dialog is opened here.
 void MeshMenuEntry() {
     auto scene = std::make_unique<Scene>();
@@ -1241,8 +1259,8 @@ void MeshMenuEntry() {
         return -1;
     };
     Check(commandAt(0) == bake::kBakeMenuCommand, "bake keyframes stays the first entry");
-    Check(positionOf(bake::kBakeMeshMenuCommand) == positionOf(bake::kExportMenuCommand) + 1,
-          "the mesh bake sits next to the ABC export");
+    Check(positionOf(bake::kBakeMeshMenuCommand) == positionOf(bake::kBakeMenuCommand) + 1 && positionOf(bake::kExportMenuCommand) == -1,
+          "mesh baking follows key baking without the retired duplicate ABC command");
     const auto caption = [&] {
         wchar_t text[128]{};
         GetMenuStringW(baking, bake::kBakeMeshMenuCommand, text, 128, MF_BYCOMMAND);
@@ -1260,7 +1278,7 @@ void MeshMenuEntry() {
                             : language == 1 ? std::wstring(L"Bake mesh…")
                                             : std::wstring(L"メッシュ焼き込み…")),
               "the mesh bake caption follows the UI language");
-        Check(positionOf(bake::kBakeMeshMenuCommand) == positionOf(bake::kExportMenuCommand) + 1 &&
+        Check(positionOf(bake::kBakeMeshMenuCommand) == positionOf(bake::kBakeMenuCommand) + 1 && positionOf(bake::kExportMenuCommand) == -1 &&
                   commandAt(0) == bake::kBakeMenuCommand,
               "the language change keeps the entry order");
     }
@@ -1309,7 +1327,7 @@ LRESULT CALLBACK CloseDialogHook(int code, WPARAM wp, LPARAM lp) {
                     GetDlgItemTextW(message.hwnd, 133, note, 512);
                     g_sceneNote =
                         !wcscmp(note,
-                                L"相机、灯光、附件页烧录场景轨道：相机、灯光、自阴影、重力，以及每个 .x 附件及其子参数。MMV 网格与物理请用「烘焙 → 烘焙网格…」，MME 顶点变形请用「烘焙 → 导出 ABC」。");
+                                L"相机、灯光、附件页烧录场景轨道：相机、灯光、自阴影、重力，以及每个 .x 附件及其子参数。网格烘焙和 ABC 导出请用「烘焙 → 烘焙网格…」。");
                     g_sceneKeyControls=IsWindowEnabled(GetDlgItem(message.hwnd,104))&&
                         IsWindowEnabled(GetDlgItem(message.hwnd,108))&&
                         !IsWindowEnabled(GetDlgItem(message.hwnd,103));

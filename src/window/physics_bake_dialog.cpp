@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -64,7 +65,7 @@ bool Real(HWND dlg,int id,float& value) {
     if(text.empty() || end==text.c_str() || !end || *end || !std::isfinite(parsed) || std::abs(parsed)>1e30)return false;
     value=static_cast<float>(parsed);return std::isfinite(value);
 }
-bool Integer(HWND dlg,int id,int& value){float v;if(!Real(dlg,id,v)||v<0||v>100000||v!=std::floor(v))return false;value=static_cast<int>(v);return true;}
+bool Integer(HWND dlg,int id,int& value){char text[256]{};GetDlgItemTextA(dlg,id,text,sizeof text);return frame_limits::Parse(text,value);}
 HWND Control(HWND dlg,const wchar_t* kind,const wchar_t* text,DWORD style,int id,int x,int y,int w,int h) {
     RECT r{x,y,x+w,y+h};MapDialogRect(dlg,&r);
     auto child=CreateWindowExW(wcscmp(kind,L"EDIT")==0?WS_EX_CLIENTEDGE:0,kind,text,
@@ -490,10 +491,10 @@ const wchar_t* BakeError(Context& c,Error e){switch(e){
 void Run(HWND d,Context& c) {
     c.request.keepLayerEffects=false;
     if(!Integer(d,Start,c.request.firstFrame)||!Integer(d,End,c.request.lastFrame)||c.request.firstFrame>c.request.lastFrame) {
-        ErrorBox(d,c,Text(c,L"起止帧须为 0 到 100000 的整数，起始帧不能大于结束帧。",L"Use frame numbers from 0 to 100000, with start no later than end.",L"0～100000 の整数を入力し、開始を終了以前にしてください。"));return;
+        ErrorBox(d,c,Text(c,L"起止帧须为有效的非负整数，起始帧不能大于结束帧。",L"Use valid nonnegative frame numbers, with start no later than end.",L"有効な非負のフレーム番号を入力し、開始を終了以前にしてください。"));return;
     }
-    if(!Integer(d,Step,c.request.step)||c.request.step<1||c.request.step>100000){
-        ErrorBox(d,c,Text(c,L"步长须为 1 到 100000 的整数。",L"Use a step from 1 to 100000.",L"ステップは 1～100000 の整数を入力してください。"));return;
+    if(!Integer(d,Step,c.request.step)||c.request.step<1||c.request.step>frame_limits::maximum){
+        ErrorBox(d,c,Text(c,L"步长须为有效的正整数。",L"Use a valid positive integer step.",L"ステップは有効な正の整数を入力してください。"));return;
     }
     // Scene physics collects every model independently of the selected page.
     const bool modelPage=c.request.channelScope==channel_bake::Scope::Model;

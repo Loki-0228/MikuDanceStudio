@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x00466D20 - CreateUIControls  (original: sub_466D20, 0x436B bytes)
 // ===========================================================================
@@ -396,17 +397,17 @@ bool CreateUIControls(MMDApp* app, HWND hwnd) {
     // slot at app+0x780 is deliberately left unallocated by the original -
     // it reads the first model-slot pointer there, gated off by its zero
     // active flag in a fresh app).
-    unsigned char* cam = NewZeroed(sizeof(mdl::CameraKey) * mdl::kTimelineKeyCapacity);                    // 840000
+    unsigned char* cam = reinterpret_cast<unsigned char*>(mdl::KeyPoolCreate<mdl::CameraKey>());                    // 840000
     s.state.cameraKeyTrack = cam;                               // 0x374
-    unsigned char* trkLight = NewZeroed(sizeof(mdl::LightKey) * mdl::kTimelineKeyCapacity);               // 400000
+    unsigned char* trkLight = reinterpret_cast<unsigned char*>(mdl::KeyPoolCreate<mdl::LightKey>());               // 400000
     s.state.lightKeyTrack = trkLight;                           // 0x378
-    unsigned char* trkShadow = NewZeroed(sizeof(mdl::SelfShadowKey) * mdl::kTimelineKeyCapacity);              // 240000
+    unsigned char* trkShadow = reinterpret_cast<unsigned char*>(mdl::KeyPoolCreate<mdl::SelfShadowKey>());              // 240000
     s.state.selfShadowKeyTrack = trkShadow;                     // 0x37C
-    unsigned char* trkPhys = NewZeroed(sizeof(mdl::GravityKey) * mdl::kTimelineKeyCapacity);                // 360000
+    unsigned char* trkPhys = reinterpret_cast<unsigned char*>(mdl::KeyPoolCreate<mdl::GravityKey>());                // 360000
     s.state.gravityKeyTrack = trkPhys;                          // 0x380
     for (int i = 0; i < 255; ++i) {                             // 0x467705
         auto* acc = reinterpret_cast<mdl::AccessoryKey*>(
-            NewZeroed(sizeof(mdl::AccessoryKey) * mdl::kTimelineKeyCapacity));
+            reinterpret_cast<unsigned char*>(mdl::KeyPoolCreate<mdl::AccessoryKey>()));
         s.AccessoryKeys(i) = acc;
         acc[0].visible = 1;
         acc[0].parentModel = -1;

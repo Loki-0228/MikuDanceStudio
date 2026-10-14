@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // Disk-backed cache of baked deformed meshes.  See the header for the archive
 // naming contract, the PMM record layout and the file-lifetime rules.
 #define NOMINMAX
@@ -50,9 +51,9 @@ constexpr std::size_t kMaxRelativePathBytes = 512;
 constexpr std::size_t kMaxSidecarStemBytes = 64;
 constexpr std::size_t kHashChunkBytes = 64 * 1024;
 // The timeline works in whole frames at a fixed 30 fps rate, and MMD accepts no
-// frame beyond 10000000.  A retime may not push a native range past it.
+// frame beyond mikudancestudio::frame_limits::maximum.  A retime may not push a native range past it.
 constexpr double kBakeFrameRate = 30.0;
-constexpr double kMaxTimelineFrames = 10000000.0;
+constexpr double kMaxTimelineFrames = double(mikudancestudio::frame_limits::maximum);
 
 std::string Utf8(const std::filesystem::path& path) { return path.u8string(); }
 
@@ -263,7 +264,7 @@ bool OpenArchive(const std::filesystem::path& file, bool temporary,
         if(properties.getPropertyHeader("mdsBakeFirstFrame")||properties.getPropertyHeader("mdsBakeLastFrame")){
             const auto first=Abc::IInt32Property(properties,"mdsBakeFirstFrame").getValue();
             const auto last=Abc::IInt32Property(properties,"mdsBakeLastFrame").getValue();
-            if(first<0||last<first||last>100000)throw std::runtime_error("Invalid native bake frame range");
+            if(first<0||last<first||last>frame_limits::maximum)throw std::runtime_error("Invalid native bake frame range");
             archive->rangeLimited=true;archive->firstSeconds=first/30.;archive->endSeconds=(last+1)/30.;
         }
     }catch(const std::exception& e){error=e.what();return false;}

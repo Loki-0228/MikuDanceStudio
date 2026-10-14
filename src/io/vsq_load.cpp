@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 // ===========================================================================
 // VA 0x00435FE0..0x00438CC9 - LoadVsqFile  (VSQ load / auto lipsync)
@@ -882,7 +883,7 @@ void LoadVsqFile(MMDApp* app, const wchar_t* path) {  // was Sub435FE0
     for (int i = 0; i < morphCapacity1; ++i)
         morphKeys[i].allocated = 0;
     mdl::DisplayKey* const displayKeys = mdl::DisplayKeys(model);
-    for (int i = 0; i < 1000; ++i)
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(displayKeys); i < capacity; ++i)
         displayKeys[i].allocated = 0;
 
     // ---- 0x43813B: per-event morph keyframes ------------------------

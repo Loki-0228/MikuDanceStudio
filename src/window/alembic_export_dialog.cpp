@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -110,7 +111,7 @@ HWND Control(HWND d,const wchar_t* kind,const wchar_t* caption,DWORD style,int i
 }
 bool Integer(HWND d,int id,int& number) {
     wchar_t value[64]{};GetDlgItemTextW(d,id,value,64);wchar_t* end=nullptr;const long parsed=wcstol(value,&end,10);
-    if(end==value||*end||parsed<0||parsed>100000)return false;number=int(parsed);return true;
+    if(end==value||*end||parsed<0||parsed>frame_limits::maximum)return false;number=int(parsed);return true;
 }
 std::wstring Wide(const std::string& input) {
     const int n=MultiByteToWideChar(CP_UTF8,0,input.c_str(),-1,nullptr,0);if(n<=0)return L"";
@@ -204,7 +205,7 @@ INT_PTR CALLBACK Proc(HWND d,UINT message,WPARAM wp,LPARAM lp) {
         Control(d,L"STATIC",Text(*c,L"结束帧",L"End frame",L"終了フレーム"),0,-1,122,12,48,12);
         Control(d,L"EDIT",L"0",WS_TABSTOP|ES_NUMBER,Last,172,10,48,14);
         unsigned last=0;for(int i=0;i<kModelSlotCount;++i)if(auto* p=c->app->ModelSlot(i))last=std::max(last,mdl::Mdl(p)->maxFrame);
-        last=std::min(last,100000u);SetDlgItemInt(d,Last,last,FALSE);
+        last=std::min(last,unsigned(frame_limits::maximum));SetDlgItemInt(d,Last,last,FALSE);
         Control(d,L"STATIC",Text(*c,L"采样帧率",L"Sample FPS",L"サンプル FPS"),0,-1,234,12,66,12);
         Control(d,L"EDIT",L"30",WS_TABSTOP|ES_NUMBER,Rate,304,10,48,14);
         Control(d,L"BUTTON",Text(*c,L"只选当前模型",L"Select current model",L"選択モデルを選ぶ"),WS_TABSTOP|BS_PUSHBUTTON,Selected,10,32,136,16);

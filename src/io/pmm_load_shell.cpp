@@ -1,3 +1,4 @@
+#include "mikudancestudio/build_profile.hpp"
 // ===========================================================================
 // VA 0x00408870 - PathToProjectDir  (original: sub_408870, 0xEF bytes)
 // VA 0x00458F80 - LoadSceneFile    (original: sub_458F80, 0x589B bytes,
@@ -45,6 +46,7 @@
 #include <io.h>
 #include <cstdlib>
 #include <new>
+#include <stdexcept>
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "pmm_io_common.hpp"
@@ -148,10 +150,15 @@ void LoadSceneFile() {
         // closes it on every path itself (pmm_load_v1.cpp).
         try { LoadSceneV1(app, fd); }
         catch (const std::bad_alloc&) { KeyPoolLoadFailed(app, fd); }
+        catch (const std::runtime_error&) { _close(fd); ResetAppState(app); ShowUiMessage(app, app->MainWindow(), UiMessage::InvalidProjectFile, MB_OK | MB_ICONERROR); }
         LocalizeUI(app);
         return;
     }
-    if (strncmp(hdr + 0x14, "0002", 5) == 0) {
+    if (strncmp(hdr + 0x14, "0002", 5) == 0
+#if !MMD_ORIGINAL_PROFILE
+        || strncmp(hdr + 0x14, "0003", 5) == 0
+#endif
+    ) {
         try {
             pmm_io::CheckedReads checked(fd);
             LoadSceneV2(app, fd);
@@ -168,6 +175,10 @@ void LoadSceneFile() {
             ResetAppState(app);
             app->EnglishUI()=language;
             ShowUiMessage(app,app->MainWindow(),UiMessage::IncompleteProjectFile,MB_OK|MB_ICONERROR,detail);
+        } catch (const std::runtime_error&) {
+            const auto language = app->EnglishUI();
+            _close(fd); ResetAppState(app); app->EnglishUI() = language;
+            ShowUiMessage(app, app->MainWindow(), UiMessage::InvalidProjectFile, MB_OK | MB_ICONERROR);
         }
         LocalizeUI(app);                                     // 0x459106
         return;                                                 // 0x45E7F7

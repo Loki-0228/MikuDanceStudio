@@ -1,3 +1,5 @@
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/frame_limits.hpp"
 // MAINTENANCE: regression-keep; runtime bone-key pool capacity
 // (mikudancestudio/bone_key_pool.hpp).
 //
@@ -5,6 +7,8 @@
 // the capacity bookkeeping itself, so they use a deliberately small pool and
 // never touch the GPU, a window or a device.
 #include "mikudancestudio/bone_key_pool.hpp"
+#include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/global_key_layout.hpp"
 
 #include <array>
 #include <cstdint>
@@ -305,7 +309,80 @@ void MorphPoolGrowth() {
 
 }  // namespace
 
+void GlobalAndDisplayGrowth() {
+    namespace mdl = mikudancestudio::mdl;
+    auto* camera = mdl::KeyPoolCreate<mdl::CameraKey>();
+    for (unsigned i = 1; i < 10000; ++i) {
+        camera[i].frame = i;
+        camera[i].previous = i - 1;
+        camera[i].next = i + 1 < 10000 ? i + 1 : 0;
+    }
+    camera[0].next = 1;
+    camera[9999].distance = -71;
+    std::uint32_t slot = 0;
+    Check(mdl::KeyPoolFreeSlot(camera, slot) && slot == 10000,
+          "global pool accepts the first key beyond 10000 slots");
+    Check(camera[9999].distance == -71 && camera[9999].previous == 9998 &&
+          camera[0].next == 1 && camera[slot].frame == 0,
+          "global growth preserves values and absolute chain indices");
+    auto* before = camera;
+    Check(!mdl::KeyPoolEnsure(camera, std::uint64_t(mdl::KeyPoolLimit<mdl::CameraKey>()) + 1) &&
+          camera == before && camera[9999].distance == -71,
+          "impossible growth leaves the allocation and keys unchanged");
+    mdl::KeyPoolDestroy(camera);
+
+    auto model = std::make_unique<mdl::ModelRecord>();
+    model->ikChainCount = 3;
+    model->boneOrderCount = 2;
+    Check(mdl::DisplayKeyPoolEnsure(*model, 1000), "display pool initializes owned payloads");
+    const auto initial = mdl::KeyPoolCapacity(model->displayKeys);
+    for (std::size_t i = 1; i < initial; ++i) model->displayKeys[i].frame = static_cast<unsigned>(i);
+    auto* originalIk = model->displayKeys[1].ikStates;
+    originalIk[2] = 0;
+    model->displayKeys[1].selectorStates[1].modelIndex = 17;
+    Check(mdl::DisplayKeyFreeSlot(*model, slot) && slot == initial,
+          "display pool grows after all original slots are occupied");
+    Check(model->displayKeys[1].ikStates == originalIk && originalIk[2] == 0 &&
+          model->displayKeys[1].selectorStates[1].modelIndex == 17,
+          "display growth preserves ownership and existing IK parent values");
+    Check(model->displayKeys[slot].ikStates[2] == 1 &&
+          model->displayKeys[slot].selectorStates[1].modelIndex == -1,
+          "new display slots have usable initialized payload arrays");
+    auto* displayBefore = model->displayKeys;
+    Check(!mdl::DisplayKeyPoolEnsure(*model, std::uint64_t(mdl::KeyPoolLimit<mdl::DisplayKey>()) + 1) &&
+          model->displayKeys == displayBefore && model->displayKeys[1].ikStates == originalIk,
+          "failed display growth preserves all prior state");
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(model->displayKeys); i < capacity; ++i) {
+        std::free(model->displayKeys[i].ikStates);
+        std::free(model->displayKeys[i].selectorStates);
+    }
+    mdl::KeyPoolDestroy(model->displayKeys);
+}
+
+void ExpandedDisplayAndFrames() {
+    namespace mdl=mikudancestudio::mdl;
+    auto model=std::make_unique<mdl::ModelRecord>();
+    std::vector<mdl::DisplayGroup> groups(700);model->groupNames=groups.data();
+    mdl::SetDisplayCapacity(*model,700,900);
+    Check(model->groupCount==255&&model->facialFrameCount==255,"plugin count mirrors saturate instead of wrapping");
+    Check(mdl::DisplayGroupCount(*model)==700&&mdl::FacialFrameCount(*model)==900,"display counts retain their complete values");
+    mdl::SetDisplayRowType(*model,12,699);
+    Check(mdl::DisplayRowType(*model,12)==699,"visible row selects a group above byte range");
+    std::array<mdl::FrameGroup,1> rows{};model->rbGroups=rows.data();model->rigidBodyCount=1;
+    mdl::SetFrameIndices(rows[0],70000,90000);
+    Check(mdl::FrameGroupIndex(rows[0])==70000&&mdl::FrameTargetIndex(rows[0])==90000,"display row indices retain values beyond 16 bits");
+    mdl::ForgetDisplayCapacity(*model);
+    mdl::SetFrameIndices(rows[0],1,2);
+    Check(mdl::FrameGroupIndex(rows[0])==1&&mdl::FrameTargetIndex(rows[0])==2,"reused storage does not inherit wide indices");
+    std::uint32_t result=0;
+    Check(mikudancestudio::frame_limits::Add(10000000,37,result)&&result==10000037,"frame arithmetic extends beyond the former cap");
+    result=77;
+    Check(!mikudancestudio::frame_limits::Add(mikudancestudio::frame_limits::maximum,1,result)&&result==77,"structural frame overflow preserves the output");
+}
+
 int main() {
+    ExpandedDisplayAndFrames();
+    GlobalAndDisplayGrowth();
     MorphPoolGrowth();
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     CapacityOfAHandBuiltPool();

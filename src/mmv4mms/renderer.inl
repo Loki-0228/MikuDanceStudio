@@ -33,7 +33,7 @@ int Render(MMDApp* app,const float world[16]) {
             MmvFrame query{};query.structureSize=sizeof(query);query.frameId=frameNumber+1;
             query.objects=views.data();query.objectCount=uint32_t(views.size());
             query.width=viewport.Width;query.height=viewport.Height;
-            query.timeSeconds=app->state.playbackActive?app->state.playbackCursorSeconds:double(app->CurrentFrame())/30.;
+            query.timeSeconds=app->state.playbackActive?app->PlaybackCursorSeconds():double(app->CurrentFrame())/30.;
             device->GetTransform(D3DTS_PROJECTION,reinterpret_cast<D3DMATRIX*>(query.projection));
             uint32_t requested=MMV_INPUT_DEMAND_ALL;
             if(api.runtime.queryInputDemand(plugin,&query,&requested)==MMV_OK){
@@ -76,7 +76,7 @@ int Render(MMDApp* app,const float world[16]) {
         auto& frame=input.scene;frame.structureSize=sizeof(frame);frame.frameId=++frameNumber;frame.objects=objects.data();frame.objectCount=uint32_t(objects.size());frame.objectRenderData=renderData.data();frame.objectOpacity=opacity.data();
         frame.elapsedSeconds=app->PlaybackActive()?std::max(0.f,app->DeltaTime()):0;
         snapshotNativePhysics=1;
-        frame.timeSeconds=app->state.playbackActive?app->state.playbackCursorSeconds:double(app->CurrentFrame())/30.;
+        frame.timeSeconds=app->state.playbackActive?app->PlaybackCursorSeconds():double(app->CurrentFrame())/30.;
         D3DMATRIX view{};device->GetTransform(D3DTS_VIEW,&view);auto& dx=d3dx::Get();if(!dx.Load())throw std::runtime_error("D3DX unavailable for MMV view");
         dx.multiply(reinterpret_cast<d3dx::D3DXMATRIXF*>(frame.view),reinterpret_cast<const d3dx::D3DXMATRIXF*>(world),reinterpret_cast<const d3dx::D3DXMATRIXF*>(&view));
         device->GetTransform(D3DTS_PROJECTION,reinterpret_cast<D3DMATRIX*>(frame.projection));std::copy_n(app->LightDirection(),3,frame.lightDirection);std::copy_n(app->LightColor(),3,frame.lightColor);

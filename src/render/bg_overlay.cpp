@@ -23,6 +23,8 @@
 #define NOMINMAX
 #include "mikudancestudio/native_media.hpp"
 #include <Windows.h>
+#include <algorithm>
+#include <climits>
 #include <d3d9.h>
 #include <vfw.h>
 
@@ -256,13 +258,18 @@ void AviBgOverlayRefresh(MMDApp* app) {
     // LoadAviFile (0x433250, ported in src/media/media_load.cpp).
     PAVISTREAM stream = static_cast<PAVISTREAM>(s.AviStream());
     PGETFRAME getFrame = static_cast<PGETFRAME>(s.AviFrameReader());
+    const auto milliseconds = [](double seconds) {
+        return static_cast<LONG>(std::clamp(seconds * 1000.0, 0.0, double(LONG_MAX)));
+    };
+    const auto boundedSample = [](std::int64_t value) {
+        return static_cast<LONG>(std::clamp(value, std::int64_t(LONG_MIN), std::int64_t(LONG_MAX)));
+    };
     LONG sample;
     if (s.PlaybackActive() == 0) {
         if (s.AviUsesThirtyFpsTiming() == 0) {
             sample = stream != nullptr
                 ? AVIStreamTimeToSample(
-                      stream, s.state.currentFrame *
-                                   1000 / 30)                       // 0x416B27
+                      stream, milliseconds(s.state.currentFrame / 30.0))                       // 0x416B27
                 : 0;
         } else {
             sample = s.state.currentFrame;
@@ -272,28 +279,24 @@ void AviBgOverlayRefresh(MMDApp* app) {
                s.state.aviRecordFps != g_FrameScale) {
         // 0x416ADE: wall-clock driven sample from the seconds field
         // (9E64C is the frameB float copy; 0x52BA60 = double 1000.0).
-        float secondsF;
-        std::memcpy(&secondsF, &s.state.playbackCursorSeconds, sizeof secondsF);
-        const LONG t = static_cast<LONG>(
-            static_cast<double>(secondsF) * 1000.0);
-        sample = (stream != nullptr ? AVIStreamTimeToSample(stream, t)
-                                    : 0) +
-                 static_cast<std::int32_t>(s.state.a0B10);
+        const double secondsF = s.PlaybackCursorSeconds();
+        const LONG t = milliseconds(secondsF);
+        sample = boundedSample(std::int64_t(stream != nullptr ? AVIStreamTimeToSample(stream, t) : 0) +
+                 static_cast<std::int32_t>(s.state.a0B10));
     } else {
         sample = s.state.aviBackgroundSample;      // 0x416ABC
-        s.state.aviBackgroundSample = sample + 1;
+        s.state.aviBackgroundSample = boundedSample(std::int64_t(sample) + 1);
     }
     if (sample < s.AviStreamStartFrame())
         sample = s.AviStreamStartFrame();
-    const LONG last = s.AviStreamEndFrame() - 1;
+    const LONG last = boundedSample(std::int64_t(s.AviStreamEndFrame()) - 1);
     if (last < sample)
         sample = last;
 
     std::wstring decodeError;
     double videoSeconds = s.state.currentFrame / 30.0;
     if (s.PlaybackActive() != 0) {
-        float cursor = 0;
-        std::memcpy(&cursor, &s.state.playbackCursorSeconds, sizeof cursor);
+        const double cursor = s.PlaybackCursorSeconds();
         videoSeconds = cursor + static_cast<std::int32_t>(s.state.a0B10) / 30.0;
     }
     void* bits = media::HasVideo(app) ? media::VideoFrame(app, videoSeconds, decodeError)

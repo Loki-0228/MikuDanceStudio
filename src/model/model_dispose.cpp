@@ -1,3 +1,5 @@
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/text_encoding.hpp"
@@ -125,6 +127,7 @@ void ReleasePhysRigid(void* scene, void* bodyPointer) {
 // VA 0x0048F830
 void ModelDispose(unsigned char* m) {
     text_encoding::ForgetMaterialNames(*mdl::Mdl(m));
+    mdl::ForgetDisplayCapacity(*mdl::Mdl(m));
     text_encoding::ForgetDisplayGroupNames(*mdl::Mdl(m));
     mmv4mms::Forget(m);
     native_mesh::Forget(m);
@@ -180,12 +183,12 @@ void ModelDispose(unsigned char* m) {
 
     // ---- animation pools --------------------------------------------------
     if (mdl::DisplayKeys(m) != nullptr) {
-        for (int i = 0; i < 1000; ++i) {
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(mdl::DisplayKeys(m)); i < capacity; ++i) {
             FreeOwned(mdl::IkStates(mdl::DisplayKeys(m)[i]));
             FreeOwned(mdl::SelectorStates(mdl::DisplayKeys(m)[i]));
         }
     }
-    std::free(mdl::DisplayKeys(m));
+    mdl::KeyPoolDestroy(mdl::DisplayKeys(m));
     mdl::DisplayKeys(m) = nullptr;
     mdl::MorphKeyPoolDestroy(mdl::MorphKeys(m));
     // Registered pool: releases the storage this port allocated (possibly grown

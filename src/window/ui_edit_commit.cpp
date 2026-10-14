@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // ===========================================================================
 // VA 0x00463640 - EditCommit  (original: sub_463640, 0xB2A bytes)
 // VA 0x0044BEF0 - EditCommitTail  (original: sub_44BEF0)
@@ -328,13 +329,10 @@ void CommitEditControl(MMDApp* app, HWND edit) {  // was Sub463640
 
     if (edit == GetDlgItem(main, panel::kCurrentFrameEdit)) {            // frame number
         char text[256];
-        GetWindowTextA(edit, text, 8);
-        const long v = atol(text);
-        s.CurrentFrame() = static_cast<std::int32_t>(v);
-        if (static_cast<unsigned long>(v) > 0x80000000UL) {
-            s.CurrentFrame() = 0;
-            SetWindowTextA(edit, "0");
-        }
+        GetWindowTextA(edit,text,sizeof text);
+        std::int32_t frame=0;
+        if(GetWindowTextLengthA(edit)>=sizeof(text)||!frame_limits::Parse(text,frame)){PostViewRefresh(app);MessageBeep(MB_ICONWARNING);return;}
+        s.CurrentFrame()=frame;
         RefreshAfterFrameApply(app);
         PostViewRefresh(app);
         CommitEditControlTail(app, edit);

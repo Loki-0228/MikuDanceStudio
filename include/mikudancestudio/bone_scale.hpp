@@ -83,7 +83,7 @@ Matrix Interpolate(const Matrix& a, const Matrix& b, float t);
 Matrix Pose(const unsigned char* model, int bone);
 Matrix Key(const unsigned char* model, int index);
 // Read a track without changing the live pose, undo state or bone matrices.
-Matrix Sample(const unsigned char* model, int bone, float frame);
+Matrix Sample(const unsigned char* model, int bone, double frame);
 bool SetPose(unsigned char* model, int bone, const Matrix& value);
 // Writes a key's scale matrix.  The key's curve (if any) is preserved, so a
 // registration that overwrites an existing keyframe keeps the curve the user
@@ -145,7 +145,7 @@ private:
 // existing curve alone, except under DefaultCurveScope.
 void ApplyRegistration(unsigned char* model, int index, bool fresh);
 void Register(unsigned char* model, int bone, int key);
-void Evaluate(unsigned char* model, float frame);
+void Evaluate(unsigned char* model, double frame);
 Snapshot Capture(const unsigned char* model);
 // Changes only for edits/import/undo, not frame evaluation or rendering.
 std::uint64_t Revision(const unsigned char* model);

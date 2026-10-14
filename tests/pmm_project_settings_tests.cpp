@@ -1,3 +1,12 @@
+#include "mikudancestudio/autosave.hpp"
+#include "mikudancestudio/extended_names.hpp"
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/save_compatibility.hpp"
+#include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/text_encoding.hpp"
+#include <memory>
 // MAINTENANCE: regression-keep; PMM settings, portable processor matching and unknown fields.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -208,11 +217,106 @@ void AntialiasRoundtrip(MMDApp& app, const std::filesystem::path& directory) {
 }
 }
 
+void AutomaticMetadata() {
+    auto app=std::make_unique<MMDApp>();auto model=std::make_unique<mdl::ModelRecord>();
+    std::memset(&app->state,0,sizeof app->state);
+    std::array<mdl::BoneRecord,2> bones{};std::array<mdl::MorphRecord,1> morphs{};
+    std::vector<mdl::DisplayGroup> groups(300);
+    model->boneTable=bones.data();model->boneCount=2;model->morphs=morphs.data();model->morphCount=1;model->groupNames=groups.data();
+    app->ModelSlot(0)=reinterpret_cast<unsigned char*>(model.get());
+    mdl::SetDisplayCapacity(*model,300,512);groups[299].flags=1;
+    const std::wstring first=L"共同前缀_超过十四字符_完整左名称_\U0001f31f",second=L"共同前缀_超过十四字符_完整右名称_\U0001f31f";
+    Check(extended_names::Assign(bones[0].jpText,first)&&extended_names::Assign(bones[1].jpText,second),"allocate Unicode model metadata");
+    std::strcpy(bones[0].name,"boneA");std::strcpy(bones[1].name,"boneB");std::strcpy(morphs[0].name,"face");
+    text_encoding::SetDisplayGroupName(*model,groups[299],L"最后一个分组的完整名称",L"Last complete display group");
+    ext::Document document;extended_names::CapturePmm(*app,document);
+    Check(extended_names::Assign(bones[0].jpText,L"changed"),"change metadata before restore");groups[299].flags=0;
+    extended_names::LoadPmm(*app,document);
+    Check(text_encoding::BoneName(bones[0],false)==first&&text_encoding::BoneName(bones[1],false)==second,"PMM metadata restores distinct complete Unicode names");
+    Check(mdl::DisplayGroupCount(*model)==300&&mdl::FacialFrameCount(*model)==512&&groups[299].flags==1,"expanded display counts and final group state survive PMM metadata");
+    Check(save_compatibility::InspectPmm(*app).needsNewPmm,"group capacity beyond original PMM selects the new version");
+    app->ModelSlot(0)=nullptr;
+    auto*& camera=app->CameraKeys();camera=mdl::KeyPoolCreate<mdl::CameraKey>();
+    Check(!save_compatibility::InspectPmm(*app).needsNewPmm,"ordinary project prefers original PMM");
+    Check(mdl::KeyPoolEnsure(camera,10001),"grow camera pool for format selection");
+    Check(!save_compatibility::InspectPmm(*app).needsNewPmm,"unused expanded capacity does not force a new PMM");
+    camera[0].next=10000;camera[10000].frame=21;camera[10000].previous=0;
+    Check(!save_compatibility::InspectPmm(*app).needsNewPmm,"sparse high slots still fit legacy PMM after save compaction");
+    for (unsigned i=1;i<10001;++i) camera[i].frame=i;
+    Check(save_compatibility::InspectPmm(*app).needsNewPmm,"only actual live count beyond old capacity selects new PMM");
+    mdl::KeyPoolDestroy(camera);
+    mdl::ForgetDisplayCapacity(*model);text_encoding::ForgetDisplayGroupNames(*model);
+    for(auto* p:model->pmxTextBuffers)std::free(p);
+    for(auto& bone:bones){std::free(bone.jpText);std::free(bone.enText);}
+    for(auto& morph:morphs){std::free(morph.jpText);std::free(morph.enText);}
+    std::puts("PASS automatic Unicode metadata, display counts and legacy-first format selection");
+}
+
+void AutomaticCameraRoundtrip(MMDApp& app, const std::filesystem::path& directory) {
+    const auto compact = directory / L"automatic-compact.pmm";
+    const auto expanded = directory / L"automatic-expanded.pmm";
+    Check(mdl::KeyPoolEnsure(app.CameraKeys(),10001), "reserve expanded camera track");
+    app.CameraKeys()[0].next=10000;
+    app.CameraKeys()[10000].frame=23;
+    app.CameraKeys()[10000].distance=-83;
+    Check(SaveSceneCopy(&app,compact.c_str()), "save sparse pool using legacy format");
+    int fd=Open(compact,_O_RDONLY);char header[30]{};Check(_read(fd,header,30)==30,"read compact header");_close(fd);
+    Check(std::memcmp(header,"Polygon Movie maker 0002",24)==0,"sparse high slots save as original PMM");
+    Check(app.CameraKeys()[0].next==10000,"save compaction does not alter live indices");
+    Load(app,compact);
+    const auto slot=app.CameraKeys()[0].next;
+    Check(slot>0&&slot<10000&&app.CameraKeys()[slot].frame==23&&app.CameraKeys()[slot].distance==-83,
+          "compact PMM roundtrip retains links and values");
+    Check(mdl::KeyPoolEnsure(app.CameraKeys(),10001),"reserve fully occupied camera track");
+    for(unsigned i=0;i<10001;++i){auto& k=app.CameraKeys()[i];k.frame=i;k.previous=i?i-1:0;k.next=i<10000?i+1:0;k.distance=-float(i);}
+    Check(SaveSceneCopy(&app,expanded.c_str()),"save actual expanded camera content");
+    fd=Open(expanded,_O_RDONLY);Check(_read(fd,header,30)==30,"read expanded header");_close(fd);
+    Check(std::memcmp(header,"Polygon Movie maker 0003",24)==0,"actual key overflow selects new PMM");
+    Load(app,expanded);
+    Check(mdl::KeyPoolCapacity(app.CameraKeys())>10000&&app.CameraKeys()[9999].next==10000&&
+          app.CameraKeys()[10000].previous==9999&&app.CameraKeys()[10000].frame==10000&&app.CameraKeys()[10000].distance==-10000,
+          "new PMM roundtrip preserves the key beyond the original camera limit");
+    ResetAppState(&app);
+    const auto longFrame = directory / L"automatic-large-frame.pmm";
+    app.CurrentFrame()=frame_limits::maximum-20;
+    SetDlgItemTextA(app.MainWindow(),panel::kPlayStartFrameEdit,"10000001");
+    SetDlgItemTextA(app.MainWindow(),panel::kPlayStopFrameEdit,"2147483646");
+    Check(SaveSceneCopy(&app,longFrame.c_str()),"save extended UI frame range");
+    fd=Open(longFrame,_O_RDONLY);Check(_read(fd,header,30)==30,"read large-frame header");_close(fd);
+    Check(std::memcmp(header,"Polygon Movie maker 0003",24)==0,"large UI frame range selects extended PMM");
+    Load(app,longFrame);
+    char range[32]{};GetDlgItemTextA(app.MainWindow(),panel::kPlayStopFrameEdit,range,sizeof range);
+    Check(app.CurrentFrame()==frame_limits::maximum-20 && std::string(range)=="2147483646",
+          "extended frame range roundtrips without digit truncation");
+    std::wstring copy1,copy2;
+    Check(save_compatibility::CopyPrefix(compact.c_str(),30,copy1) && save_compatibility::CopyPrefix(compact.c_str(),30,copy2) && copy1!=copy2,
+          "compatible copies use distinct names without overwriting");
+    Check(std::filesystem::file_size(copy1)==30 && std::filesystem::file_size(copy2)==30,"compatible copy contains only requested legacy prefix");
+    ResetAppState(&app);
+    SetDlgItemTextA(app.MainWindow(),panel::kPlayStartFrameEdit,"0");
+    SetDlgItemTextA(app.MainWindow(),panel::kPlayStopFrameEdit,"0");
+    std::puts("PASS real legacy-first and expanded PMM camera roundtrip");
+}
+
 int wmain(int argc, wchar_t** argv) {
     if (argc < 2 || argc > 4) return 2;
     const bool capacityOnly = argc == 4 && wcscmp(argv[3], L"--key-capacity") == 0;
     if (argc == 4 && !capacityOnly) return 2;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    SetWindowsHookExW(WH_CBT,[](int code,WPARAM wp,LPARAM lp)->LRESULT {
+        if(code==HCBT_ACTIVATE){
+            auto window=reinterpret_cast<HWND>(wp);wchar_t cls[32]{};GetClassNameW(window,cls,32);
+            if(!wcscmp(cls,L"#32770") && GetDlgItem(window,IDOK)){
+                EnumChildWindows(window,[](HWND child,LPARAM)->BOOL {
+                    wchar_t text[1024]{};GetWindowTextW(child,text,1024);
+                    if(*text)std::fwprintf(stderr,L"PMM unexpected dialog: %ls\n",text);
+                    return TRUE;
+                },0);
+                std::exit(3);
+            }
+        }
+        return CallNextHookEx(nullptr,code,wp,lp);
+    },nullptr,GetCurrentThreadId());
     const auto directory = std::filesystem::absolute(argv[1]);
     std::filesystem::create_directories(directory);
     const auto aaPreference = directory / L"antialias-user.ini";
@@ -221,11 +325,13 @@ int wmain(int argc, wchar_t** argv) {
     WritePrivateProfileStringW(L"Antialias", L"Algorithm", L"4", aaPreference.c_str());
     WritePrivateProfileStringW(L"Antialias", L"Enabled", L"0", aaPreference.c_str());
     WritePrivateProfileStringW(L"Antialias", L"LastSmaaAlgorithm", L"6", aaPreference.c_str());
+    AutomaticMetadata();
     MatchTypes();
     auto* app = new MMDApp(); g_Block = app;
     app->state = MMDAppState{}; app->InitDefaults();
     Check(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "initialize hidden production app");
     ShowWindow(app->MainWindow(), SW_HIDE);
+    AutomaticCameraRoundtrip(*app,directory);
     const auto a = directory / L"settings-a.pmm";
     const auto b = directory / L"settings-b.pmm";
     const auto legacy = directory / L"legacy.pmm";
@@ -238,6 +344,22 @@ int wmain(int argc, wchar_t** argv) {
         Check(app->ModelSlot(0) != nullptr, "load optional real model fixture");
     }
 
+
+    if (auto* raw=app->ModelSlot(0); raw && mdl::DisplayGroupCount(*mdl::Mdl(raw))>255) {
+        const auto groups=mdl::DisplayGroupCount(*mdl::Mdl(raw));
+        const auto faces=mdl::FacialFrameCount(*mdl::Mdl(raw));
+        const auto name=text_encoding::BoneName(mdl::Mdl(raw)->boneTable[0],false);
+        mdl::DisplayGroups(raw)[groups-1].flags=1;
+        const auto expanded=directory/L"expanded-display.pmm";
+        Check(SaveSceneCopy(app,expanded.c_str()),"save complete expanded display groups");
+        Load(*app,expanded);raw=app->ModelSlot(0);
+        Check(raw && mdl::DisplayGroupCount(*mdl::Mdl(raw))==groups && mdl::FacialFrameCount(*mdl::Mdl(raw))==faces,
+              "real PMM roundtrip retains groups and facial rows beyond byte counts");
+        Check(text_encoding::BoneName(mdl::Mdl(raw)->boneTable[0],false)==name && mdl::DisplayGroups(raw)[groups-1].flags==1,
+              "real PMM roundtrip retains complete Unicode name and last expanded group state");
+        ShutdownCleanup(app);delete app;g_Block=nullptr;
+        std::puts("PASS expanded model PMM display and name roundtrip");return 0;
+    }
 
     if (capacityOnly) {
         auto* raw = app->ModelSlot(0);
@@ -265,10 +387,13 @@ int wmain(int argc, wchar_t** argv) {
         raw = app->ModelSlot(0);
         Check(raw != nullptr, "reload model with grown sparse morphs");
         auto& loaded = *mdl::Mdl(raw);
-        Check(mdl::MorphKeyCapacity(loaded) > first + 1, "PMM loader expands for sparse indices");
-        Check(loaded.morphKeys[1].next == first && loaded.morphKeys[first].frame == 101 &&
-                  loaded.morphKeys[first].value == .75f && loaded.morphKeys[first+1].frame == 202 &&
-                  loaded.morphKeys[first+1].value == .25f && loaded.morphKeys[first+1].previous == first,
+        const auto savedFirst = loaded.morphKeys[1].next;
+        const auto savedSecond = loaded.morphKeys[savedFirst].next;
+        Check(savedFirst < mdl::kMorphKeyCapacity && savedSecond < mdl::kMorphKeyCapacity,
+              "sparse high indices compact into the original PMM capacity");
+        Check(loaded.morphKeys[savedFirst].frame == 101 &&
+                  loaded.morphKeys[savedFirst].value == .75f && loaded.morphKeys[savedSecond].frame == 202 &&
+                  loaded.morphKeys[savedSecond].value == .25f && loaded.morphKeys[savedSecond].previous == savedFirst,
               "PMM roundtrip preserves every sparse morph link, frame and value");
         app->SetSelectedModelSlot(0); app->state.optflag[0] = 0;
         const auto vmd = directory / L"grown.vmd";
@@ -291,7 +416,7 @@ int wmain(int argc, wchar_t** argv) {
         _close(fd);
         Check(found101 && found202, "standard VMD exports grown sparse morph keys");
         Save(*app, b); Load(*app, b);
-        Check(mdl::Mdl(app->ModelSlot(0))->morphKeys[first+1].frame == 202,
+        Check(mdl::Mdl(app->ModelSlot(0))->morphKeys[savedSecond].frame == 202,
               "grown morph keys survive a second PMM save/load");
         std::puts("PASS real PMM and standard VMD grown-morph roundtrip");
         return 0;

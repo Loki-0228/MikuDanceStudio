@@ -1,3 +1,4 @@
+#include "mikudancestudio/extended_names.hpp"
 // MAINTENANCE: native morph (expression) curves for one model.
 //
 // What this module owns
@@ -1475,11 +1476,16 @@ std::size_t ApplyVmd(unsigned char* model, const std::uint8_t* data, std::size_t
         //    ambiguous name is skipped rather than guessed.
         int match = -1;
         int matches = 0;
+        if (const auto* targets=extended_names::importedMorphTargets) {
+            if (claimed>=0 && std::size_t(claimed)<targets->size()) match=(*targets)[claimed];
+            matches=match>=0 && std::uint32_t(match)<record.morphCount ? 1 : 0;
+        } else {
         for (std::uint32_t index = 0; index < record.morphCount; ++index) {
             if (std::memcmp(name.data(), morphs[index].name, kNameBytes) == 0) {
                 match = static_cast<int>(index);
                 ++matches;
             }
+        }
         }
         if (matches != 1) {
             ++skipped;

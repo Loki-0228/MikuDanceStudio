@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include <algorithm>
 // ===========================================================================
 // VA 0x0044AEE0 - HandleHScroll  (original: sub_44AEE0)
 // ===========================================================================
@@ -280,12 +282,13 @@ void HandleHScroll(LPARAM lParam, WPARAM wParam) {
     }
     // ---- 428: timeline strip ------------------------------------------------
     else if (ctrl == GetDlgItem(hwnd, panel::kTimelineHScroll)) {
+        std::int64_t nextFrame = app->state.timelineStartFrame;
         switch (code) {
         case 0:  // SB_LINEUP
             if (app->FloatingWindow() != nullptr ||
                 app->MouseX() <=
                     app->state.hideRight) {
-                --app->state.timelineStartFrame;
+                --nextFrame;
             } else {
                 app->CameraDistance() = static_cast<float>(
                     static_cast<double>(app->CameraDistance()) + 1.0);
@@ -295,35 +298,32 @@ void HandleHScroll(LPARAM lParam, WPARAM wParam) {
             if (app->FloatingWindow() != nullptr ||
                 app->MouseX() <=
                     app->state.hideRight) {
-                ++app->state.timelineStartFrame;
+                ++nextFrame;
             } else {
                 app->CameraDistance() = static_cast<float>(
                     static_cast<double>(app->CameraDistance()) - 1.0);
             }
             break;
         case 2:  // SB_PAGEUP
-            app->state.timelineStartFrame -=
+            nextFrame -=
                 app->state.timelineScrollNPage;  // timeline SCROLLINFO nPage
             break;
         case 3:  // SB_PAGEDOWN
-            app->state.timelineStartFrame +=
+            nextFrame +=
                 app->state.timelineScrollNPage;
             break;
         case 5:  // SB_THUMBPOSITION
             // x64 0x7FF7CB45EF76：读的是内嵌 SCROLLINFO 的 nPos（app+0x1444）
             // 而非 nMin——按住滑块拖动时按增量 abs 新位置 - 上次位置移动。
-            app->state.timelineStartFrame +=
+            nextFrame +=
                 static_cast<std::int32_t>(HIWORD(wParam)) -
                 app->state.timelineScrollNPos;  // timeline SCROLLINFO nPos
             break;
         default:
             break;
         }
-        // unsigned wrap (asm: cmp/jbe against 0xFFFEF920)
-        if (static_cast<std::uint32_t>(app->state.timelineStartFrame) >
-            0xFFFEF920u) {
-            app->state.timelineStartFrame = 0;
-        }
+        const auto page = (std::max)(std::int64_t(1), std::int64_t(app->state.timelineScrollNPage));
+        app->state.timelineStartFrame = static_cast<int>((std::clamp)(nextFrame, std::int64_t(0), std::int64_t(frame_limits::maximum) - page));
         PanelPaint(app);                                        // 0x414610
         if (app->state.waveEnabled != 0) {
             TimelineDrawTicks(app->state.timelineStartFrame,

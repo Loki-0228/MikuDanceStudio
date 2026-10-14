@@ -1,3 +1,6 @@
+#include "mikudancestudio/extended_names.hpp"
+#include <charconv>
+#include "mikudancestudio/frame_limits.hpp"
 #define NOMINMAX
 #include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/bone_key_pool.hpp"
@@ -119,8 +122,8 @@ bool Write(unsigned char* model, int bone, const Tracks& tracks, std::string& er
     std::set<int> frames;
     for (const auto& track : tracks) {
         if (!ac::Validate(track, error)) return false;
-        if (track.discrete || track.keys.empty() || track.keys.front().frame != 0 || track.keys.back().frame > 10000000) {
-            error="Bone curves must keep frame zero and use frames 0..10000000."; return false;
+        if (track.discrete || track.keys.empty() || track.keys.front().frame != 0 || track.keys.back().frame > mikudancestudio::frame_limits::maximum) {
+            error="Bone curves must keep frame zero and use representable nonnegative frame numbers."; return false;
         }
         for (const auto& key : track.keys) {
             if (std::abs(key.value)>1e12 || std::abs(key.inSlope)>1e12 || std::abs(key.outSlope)>1e12) {
@@ -167,7 +170,7 @@ bool Write(unsigned char* model, int bone, const Tracks& tracks, std::string& er
             Quaternion(tracks,frame,key.rotation);
             // Compatibility mirror. Exact fractional evaluation stays in tracks.
             for(int c=0;c<4;++c) for(int k=0;k<4;++k) key.interpolation[c+k*4]=k<2?20:107;
-            auto scale=Scale(tracks,frame,bone_scale::Sample(model,bone,float(frame)));
+            auto scale=Scale(tracks,frame,bone_scale::Sample(model,bone,frame));
             if(!bone_scale::Valid(scale)){error="Invalid bone scale.";return false;}
             scaleState.keys[int(slots[keys.size()])]=scale;
             scaleState.curves.erase(int(slots[keys.size()]));
@@ -296,13 +299,31 @@ bool ApplyVmd(unsigned char* model,const std::uint8_t* data,std::size_t size,int
     if(!model||offset<0||VmdBlockSize(data,size)!=size){error="Invalid bone curve extension.";return false;}
     std::vector<ac::NamedTrack> decoded;if(!ac::Decode(data+12,size-12,decoded,error))return false;
     std::map<std::string,const ac::Track*> byName;
-    for(const auto& item:decoded){const auto lane=item.id.find('/',5);if(item.id.rfind("bone/",0)!=0||lane==std::string::npos)continue;byName.emplace(item.id.substr(lane+1),&item.track);}
+    std::map<std::pair<int,int>,const ac::Track*> byIndex;
+    const auto* unicodeTargets=extended_names::importedBoneTargets;
+    for(const auto& item:decoded){
+        const auto lane=item.id.find('/',5);
+        if(item.id.rfind("bone/",0)!=0||lane==std::string::npos)continue;
+        if(unicodeTargets){
+            const auto channelEnd=item.id.find('/',lane+1);
+            if(channelEnd==std::string::npos)continue;
+            unsigned source=0;int channel=0;
+            const auto owner=std::from_chars(item.id.data()+5,item.id.data()+lane,source);
+            const auto parsed=std::from_chars(item.id.data()+lane+1,item.id.data()+channelEnd,channel);
+            if(owner.ec!=std::errc{}||owner.ptr!=item.id.data()+lane||parsed.ec!=std::errc{}||parsed.ptr!=item.id.data()+channelEnd||source>=unicodeTargets->size()||channel<0||channel>=9)continue;
+            const int target=(*unicodeTargets)[source];
+            if(target>=0)byIndex.emplace(std::make_pair(target,channel),&item.track);
+        }else byName.emplace(item.id.substr(lane+1),&item.track);
+    }
     std::vector<std::pair<int,Tracks>> staged;
     for(unsigned bone=0;bone<mdl::Mdl(model)->boneCount;++bone){
         Tracks tracks;bool complete=true;
         for(int c=0;c<9;++c){auto id=StableId(model,bone,c);id.erase(0,id.find('/',5)+1);
-            auto it=byName.find(id);if(it==byName.end()){complete=false;break;}tracks[c]=*it->second;
-            for(auto& key:tracks[c].keys){if(key.frame<0||key.frame>10000000-offset){error="Bone curve frame is out of range.";return false;}key.frame+=offset;}
+            const ac::Track* source=nullptr;
+            if(unicodeTargets){auto it=byIndex.find({int(bone),c});if(it!=byIndex.end())source=it->second;}
+            else{auto it=byName.find(id);if(it!=byName.end())source=it->second;}
+            if(!source){complete=false;break;}tracks[c]=*source;
+            for(auto& key:tracks[c].keys){if(key.frame<0||key.frame>mikudancestudio::frame_limits::maximum-offset){error="Bone curve frame is out of range.";return false;}key.frame+=offset;}
             if(tracks[c].keys.empty()){error="Empty bone curve.";return false;}
             if(tracks[c].keys.front().frame>0){auto anchor=tracks[c].keys.front();anchor.frame=0;anchor.inSlope=anchor.outSlope=0;tracks[c].keys.front().interpolation=ac::Interpolation::Step;tracks[c].keys.insert(tracks[c].keys.begin(),anchor);}
         }

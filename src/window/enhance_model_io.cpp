@@ -1,3 +1,5 @@
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/save_compatibility.hpp"
 #include "mikudancestudio/autosave.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/image_sequence_export.hpp"
@@ -345,6 +347,17 @@ void SaveEnhancedModel(MMDApp* app, const wchar_t* path) {  // was Sub41EC10, 0x
     }
 #endif
     mdl::ModelRecord& model = *mdl::Mdl(app->SelectedModel());
+#if MMD_ORIGINAL_PROFILE
+    if (mdl::DisplayGroupCount(model)>255 || mdl::FacialFrameCount(model)>255) {
+        RefuseOriginalPmd(app,PmdRefusal::Representation);return;
+    }
+#else
+    if (!save_compatibility::CanSavePmd(model)) {
+        const wchar_t* message = L"PMD 无法无损保存这些名称或显示项，操作已取消。请保留原模型并保存 PMM 工程。\nPMD cannot preserve these names or display entries. Keep the source model and save a PMM project.";
+        if(app->MainWindow())MessageBoxW(app->MainWindow(), message, L"PMD", MB_OK | MB_ICONWARNING);
+        SetLastError(ERROR_INVALID_DATA);return;
+    }
+#endif
     D3DRenderer* renderer = app->Renderer();
 
     int fh = -1;

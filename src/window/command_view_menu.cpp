@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // CommandDispatch family: View/Edit option-menu cases 251..303 (0x47E8A0)
 // ===========================================================================
@@ -668,17 +669,15 @@ void ApplyGravitySettingDialog(MMDApp* app) {  // was Sub460080, VA 0x00460080
     if (camera == nullptr || light == nullptr || shadow == nullptr ||
         gravity == nullptr)
         return;
-    for (std::size_t i = 0; i < 10000; ++i) {
-        camera[i].selected = 0;
-        light[i].selected = 0;
-        shadow[i].selected = 0;
-        gravity[i].selected = 0;
-    }
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(camera); i < capacity; ++i) camera[i].selected = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(light); i < capacity; ++i) light[i].selected = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(shadow); i < capacity; ++i) shadow[i].selected = 0;
+    for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(gravity); i < capacity; ++i) gravity[i].selected = 0;
     for (int slot = 0; slot < 255; ++slot) {
         mdl::AccessoryKey* acc = app->AccessoryKeys(slot);
         if (acc == nullptr)
             continue;
-        for (std::size_t i = 0; i < 10000; ++i)
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(acc); i < capacity; ++i)
             acc[i].selected = 0;
     }
     RegisterGravityKeyCurrent(app, app->state.currentFrame);  // 0x412B20
@@ -797,37 +796,16 @@ void RegisterGravityKeyCurrent(MMDApp* app, std::int32_t frame) {  // VA 0x00412
         return;
     }
 
-    // Fresh slot from the frame == 0 holes (record 1 first, then 2..).
-    std::uint32_t freeIndex = 1;
-    if (keys[1].frame != 0) {
-        bool freeFound = false;
-        for (std::uint32_t index = 2; index < mdl::kTimelineKeyCapacity;
-             ++index) {
-            if (keys[index].frame == 0) {
-                freeIndex = index;
-                freeFound = true;
-                break;
-            }
-        }
-        if (!freeFound) {
-            char text[256];
-            if (app->EnglishUI() != 0) {
-                sprintf_s(text, 0x100,
-                          "You cannot regist over %dpoint.\n"
-                          "Please execute 'delete unused frame'",
-                          static_cast<int>(mdl::kTimelineKeyCapacity));
-                LegacyUiMessageBoxA(static_cast<HWND>(app->Hwnd()), text,
-                            "register frame", 0);
-            } else {
-                sprintf_s(text, 0x100, kJpOverflow,
-                          static_cast<int>(mdl::kTimelineKeyCapacity));
-                LegacyUiMessageBoxA(static_cast<HWND>(app->Hwnd()), text,
-                            kJpFrameRegTitle, 0);
-            }
-            return;
-        }
+    std::uint32_t freeIndex = 0;
+    if (!mdl::KeyPoolFreeSlot(app->GravityKeys(), freeIndex)) {
+        MessageBoxW(static_cast<HWND>(app->Hwnd()),
+            app->EnglishUI() == 2 ? L"无法扩展关键帧存储，本次注册已取消。" :
+            app->EnglishUI() == 0 ? L"メモリを確保できないため、登録を中止しました。" :
+            L"Unable to allocate keyframe storage. Registration was cancelled.",
+            L"MikuDanceStudio", MB_OK | MB_ICONERROR);
+        return;
     }
-
+    keys = app->GravityKeys();
     mdl::GravityKey& added = keys[freeIndex];
     if (spliceBefore) {
         const std::uint32_t previous = keys[current].previous;
@@ -2216,7 +2194,7 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         const auto morphCapacity1 = mdl::MorphKeyCapacity(record);
         for (std::size_t i = 0; i < morphCapacity1; ++i)
             record.morphKeys[i].allocated = 0;
-        for (std::size_t i = 0; i < mdl::kDisplayKeyCapacity; ++i)
+        for (std::size_t i = 0; i < mdl::KeyPoolCapacity(mdl::DisplayKeys(model)); ++i)
             record.displayKeys[i].allocated = 0;
         // Pool capacity of this record, resolved once for both sweeps below.
         const std::size_t boneKeyCapacity = mdl::BoneKeyCapacity(record);

@@ -1,3 +1,4 @@
+#include "mikudancestudio/display_capacity.hpp"
 // ===========================================================================
 // VA 0x0049C850 - PostLoadInit  (original: sub_49C850, 3007 bytes)
 // ===========================================================================
@@ -200,16 +201,16 @@ void PostLoadInit(unsigned char* m) {
         addScope(FrameScope::SelectedMorphs, L"Sel facial", kJpSelFacial, L"选中表情");
         addScope(FrameScope::AllMorphs, L"All facial", kJpAllFacial, L"全部表情");
         const auto* groups = model->displayFrames;
-        for (std::uint8_t g = 0; g < model->facialFrameCount; ++g) {
-            if (!model->morphs || groups[g].targetIndex >= model->morphCount) continue;
-            const auto name = text_encoding::MorphLabel(model->morphs[groups[g].targetIndex], useEnglishNames);
+        for (std::uint32_t g = 0; g < mikudancestudio::mdl::FacialFrameCount(*model); ++g) {
+            if (!model->morphs || mikudancestudio::mdl::FrameTargetIndex(groups[g]) >= model->morphCount) continue;
+            const auto name = text_encoding::MorphLabel(model->morphs[mikudancestudio::mdl::FrameTargetIndex(groups[g])], useEnglishNames);
             SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
         addScope(FrameScope::AllBones, L"All bone", kJpAllBone, L"全部骨骼");
         const auto* frames = static_cast<const mdl::FrameGroup*>(model->rbGroups);
         for (std::uint32_t f = 0; f < model->rigidBodyCount; ++f) {
-            if (!bones || frames[f].targetIndex >= model->boneCount) continue;
-            const auto name = text_encoding::BoneLabel(bones[frames[f].targetIndex], useEnglishNames);
+            if (!bones || mikudancestudio::mdl::FrameTargetIndex(frames[f]) >= model->boneCount) continue;
+            const auto name = text_encoding::BoneLabel(bones[mikudancestudio::mdl::FrameTargetIndex(frames[f])], useEnglishNames);
             SendMessageW(frameCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
     }

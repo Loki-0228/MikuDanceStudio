@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // ===========================================================================
 // VA 0x0044AAA0 - HandleLButtonDblClk  (original: sub_44AAA0)
 // ===========================================================================
@@ -130,8 +131,9 @@ void HandleLButtonDblClk(MMDApp* app) {
 
         // ---- 2. frame number -> edit box (control 0x1A1 = 417) ------------
         // this+0x980 = this+0x97C + (this+4 - 100) / 13
-        app->state.currentFrame =
-            app->state.timelineStartFrame + (app->MouseX() - 100) / 13;
+        const auto nextFrame = std::int64_t(app->state.timelineStartFrame) + (std::int64_t(app->MouseX()) - 100) / 13;
+        if (nextFrame < 0 || nextFrame > frame_limits::maximum) { MessageBeep(MB_ICONWARNING); return; }
+        app->state.currentFrame = static_cast<int>(nextFrame);
         const LRESULT textLen = GetWindowTextLengthA(GetDlgItem(hwnd, panel::kCurrentFrameEdit));
         SendMessageA(GetDlgItem(hwnd, panel::kCurrentFrameEdit), EM_SETSEL, 0, textLen);
         char frameText[256];                                    // 0x100

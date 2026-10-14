@@ -43,7 +43,7 @@ bool Inverse(const Matrix& a, Matrix& out) {
 Matrix Interpolate(const Matrix&, const Matrix&, float) { return {}; }
 Matrix Pose(const unsigned char*, int) { return {}; }
 Matrix Key(const unsigned char*, int) { return {}; }
-Matrix Sample(const unsigned char*, int, float) { return {}; }
+Matrix Sample(const unsigned char*, int, double) { return {}; }
 bool SetPose(unsigned char*, int, const Matrix&) { return false; }
 void SetKey(unsigned char*, int, const Matrix&) {}
 void SetKeyFresh(unsigned char*, int, const Matrix&) {}
@@ -63,7 +63,7 @@ DefaultCurveScope::DefaultCurveScope() : previousDefaultCurve(false) {}
 DefaultCurveScope::~DefaultCurveScope() = default;
 void ApplyRegistration(unsigned char*, int, bool) {}
 void Register(unsigned char*, int, int) {}
-void Evaluate(unsigned char*, float) {}
+void Evaluate(unsigned char*, double) {}
 Snapshot Capture(const unsigned char*) { return {}; }
 std::uint64_t Revision(const unsigned char*) { return 0; }
 bool Restore(unsigned char*, Snapshot value) { return value.pose.empty() && value.keys.empty() && value.curves.empty(); }

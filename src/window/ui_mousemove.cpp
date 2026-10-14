@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x00444CC0 - HandleMouseMove  (original: sub_444CC0)
 // ===========================================================================
@@ -227,8 +228,8 @@ void RemapAccList(MMDApp* app, const int* recs, int count, int row) {
     for (int i = 0; i < count; ++i) {
         const int idx = recs[4 * i + 1];
         const int slot = recs[4 * i + 2];
-        if (idx < 0 || idx >= static_cast<int>(mdl::kTimelineKeyCapacity) ||
-            slot < 0 || slot >= 255 || listOf(slot) == nullptr) {
+        if (idx < 0 || slot < 0 || slot >= 255 || listOf(slot) == nullptr ||
+            idx >= static_cast<int>(mdl::KeyPoolCapacity(listOf(slot)))) {
             std::fprintf(stderr,
                          "REMAPACC-GUARD: rec[%d/%d]={%d,%d,%d,%d} row=%d\n",
                          i, count, recs[4 * i], idx, slot, recs[4 * i + 3],
@@ -404,7 +405,7 @@ void HandleMouseMove(std::uint32_t lParam, int mouseY) {
                           app->TimelineSelectionCount(TimelineSelectionBand::ModelBone),
                           mdl::DisplayKeys(model), row, -1,
                           &record.maxFrame,
-                          static_cast<int>(mdl::kDisplayKeyCapacity));
+                          static_cast<int>(mdl::KeyPoolCapacity(mdl::DisplayKeys(model))));
                 // morph list: 20-byte records, idx >= model count
                 // (0x445B38..0x445D90)
                 RemapList(app,

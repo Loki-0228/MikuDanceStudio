@@ -1186,15 +1186,9 @@ public:
     std::uint8_t FrameStepPlayback() const {
         return state.frameStepPlayback;
     }
-    float& PlaybackStartSeconds() {
-        return state.playbackStartSeconds;
-    }
-    float& PlaybackCursorSeconds() {
-        return state.playbackCursorSeconds;
-    }
-    float& PlaybackEndSeconds() {
-        return state.playbackEndSeconds;
-    }
+    double& PlaybackStartSeconds() { return m_playbackStartSeconds; }
+    double& PlaybackCursorSeconds() { return m_playbackCursorSeconds; }
+    double& PlaybackEndSeconds() { return m_playbackEndSeconds; }
     std::uint32_t& PlaybackClockAnchorLow() {
         return state.playbackClockAnchorLow;
     }
@@ -1653,6 +1647,16 @@ public:
     // Keep display accounting outside the original PMM/ABI state, appended so
     // existing runtime members retain their offsets as well.
     frame_rate::State frameRate;
+    // Keep precise timeline time outside the compatibility layout. The old
+    // float fields remain available to plugins as approximate mirrors.
+    double m_playbackStartSeconds = 0;
+    double m_playbackCursorSeconds = 0;
+    double m_playbackEndSeconds = 0;
+    void SyncPlaybackTimeCompatibility() noexcept {
+        state.playbackStartSeconds = static_cast<float>(m_playbackStartSeconds);
+        state.playbackCursorSeconds = static_cast<float>(m_playbackCursorSeconds);
+        state.playbackEndSeconds = static_cast<float>(m_playbackEndSeconds);
+    }
 };
 
 static_assert(sizeof(MMDApp) >= sizeof(MMDAppState),

@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/native_media.hpp"
 #include "mikudancestudio/ui_translation.hpp"
@@ -924,10 +925,10 @@ static void LoadSceneV2_ModelStateLoad(PmmV2LoadContext& ctx, int fd,
                                  mdl::MorphKeys(model));
                 // physics key record 0 + sparse (0x4537D6..0x453B57)
                 {
-                    mdl::DisplayKey* keys = mdl::DisplayKeys(model);
+                    mdl::DisplayKey*& keys = mdl::DisplayKeys(model);
                     LogPmmModelStage(fd, "physics-section", workspace.ikCount,
                                      workspace.rigidBodyCount, keys);
-                    Rd(fd, &keys[0].frame, 4);
+                    ReadFrame(fd, keys[0].frame);
                     Rd(fd, &keys[0].previous, 4);
                     Rd(fd, &keys[0].next, 4);
                     unsigned char visible = 0;
@@ -984,15 +985,10 @@ static void LoadSceneV2_ModelStateLoad(PmmV2LoadContext& ctx, int fd,
                         // record after consuming its bytes, so the stream position
                         // remains unchanged.
                         // Defect B3-01.
-                        if (frame < 0 ||
-                            static_cast<std::size_t>(frame) >=
-                                mdl::kDisplayKeyCapacity) {
-                            DiscardPmmDisplayKey(fd, workspace.ikCount,
-                                                 workspace.rigidBodyCount);
-                            continue;
-                        }
+                        if (frame < 0) throw std::runtime_error("Negative PMM key slot");
+                        if (!mdl::DisplayKeyPoolEnsure(*mdl::Mdl(model), std::uint64_t(frame) + 1)) throw std::bad_alloc();
                         mdl::DisplayKey& k = keys[frame];
-                        Rd(fd, &k.frame, 4);
+                        ReadFrame(fd, k.frame);
                         Rd(fd, &k.previous, 4);
                         Rd(fd, &k.next, 4);
                         unsigned char visible = 0;
@@ -1924,23 +1920,19 @@ static void LoadSceneV2_ReallocateTracks(PmmV2LoadContext& ctx) {
     mdl::AccessoryRecord** const accs = ctx.accs;
     mdl::AccessoryKey** const accTracks = ctx.accTracks;
     // ---- track re-allocation (0x454C95..0x454DFB) -------------------------
-    ctx.cameraKeys = static_cast<mdl::CameraKey*>(operator new(
-        sizeof(mdl::CameraKey) * kGlobalKeyCapacity));
+    ctx.cameraKeys = mdl::KeyPoolCreate<mdl::CameraKey>();
     s->CameraKeys() = ctx.cameraKeys;
     std::memset(ctx.cameraKeys, 0,
                 sizeof(mdl::CameraKey) * kGlobalKeyCapacity);
-    ctx.lightKeys = static_cast<mdl::LightKey*>(operator new(
-        sizeof(mdl::LightKey) * kGlobalKeyCapacity));
+    ctx.lightKeys = mdl::KeyPoolCreate<mdl::LightKey>();
     s->LightKeys() = ctx.lightKeys;
     std::memset(ctx.lightKeys, 0,
                 sizeof(mdl::LightKey) * kGlobalKeyCapacity);
-    ctx.selfShadowKeys = static_cast<mdl::SelfShadowKey*>(
-        operator new(sizeof(mdl::SelfShadowKey) * kGlobalKeyCapacity));
+    ctx.selfShadowKeys = mdl::KeyPoolCreate<mdl::SelfShadowKey>();
     s->ShadowKeys() = ctx.selfShadowKeys;
     std::memset(ctx.selfShadowKeys, 0,
                 sizeof(mdl::SelfShadowKey) * kGlobalKeyCapacity);
-    ctx.gravityKeys = static_cast<mdl::GravityKey*>(operator new(
-        sizeof(mdl::GravityKey) * kGlobalKeyCapacity));
+    ctx.gravityKeys = mdl::KeyPoolCreate<mdl::GravityKey>();
     s->GravityKeys() = ctx.gravityKeys;
     std::memset(ctx.gravityKeys, 0,
                 sizeof(mdl::GravityKey) * kGlobalKeyCapacity);
@@ -1955,8 +1947,7 @@ static void LoadSceneV2_ReallocateTracks(PmmV2LoadContext& ctx) {
     for (std::size_t i = 0; i < kGlobalKeyCapacity; ++i)        // 0x454D92
         ctx.cameraKeys[i].parentModel = -1;
     for (int i = 0; i < 255; ++i) {                             // 0x454D9A
-        auto* const keys = static_cast<mdl::AccessoryKey*>(
-            operator new(sizeof(mdl::AccessoryKey) * kGlobalKeyCapacity));
+        auto* const keys = mdl::KeyPoolCreate<mdl::AccessoryKey>();
         accTracks[i] = keys;
         std::memset(keys, 0, sizeof(mdl::AccessoryKey) * kGlobalKeyCapacity);
         keys[0].visible = 1;
@@ -1974,7 +1965,7 @@ static void LoadSceneV2_CameraTrack(PmmV2LoadContext& ctx, int fd) {
     auto* const s = ctx.s;
     HWND const main = ctx.main;
     char* const text = ctx.text;
-    mdl::CameraKey* const cameraKeys = ctx.cameraKeys;
+    mdl::CameraKey*& cameraKeys = ctx.cameraKeys;
     // ---- camera track read (0x454E07..0x455286) ---------------------------
     {
         // Record shape (0x28 head + parent dwords + interpolation + tail)
@@ -1992,12 +1983,9 @@ static void LoadSceneV2_CameraTrack(PmmV2LoadContext& ctx, int fd) {
             // record after reading its bytes, so the stream position does not
             // change.
             // Defect B3-02.
-            if (frame < 0 ||
-                static_cast<std::size_t>(frame) >= kGlobalKeyCapacity) {
-                mdl::CameraKey discardedKey{};
-                ReadPmmCameraKey<PmmStream::V2>(fd, discardedKey);
-                continue;
-            }
+            if (frame < 0) throw std::runtime_error("Negative PMM key slot");
+            if (!mdl::KeyPoolEnsure(cameraKeys, std::uint64_t(frame) + 1)) throw std::bad_alloc();
+            s->CameraKeys() = cameraKeys;
             ReadPmmCameraKey<PmmStream::V2>(fd, cameraKeys[frame]);
         }
     }
@@ -2041,7 +2029,7 @@ static void LoadSceneV2_LightTrack(PmmV2LoadContext& ctx, int fd) {
     auto* const s = ctx.s;
     HWND const main = ctx.main;
     char* const text = ctx.text;
-    mdl::LightKey* const lightKeys = ctx.lightKeys;
+    mdl::LightKey*& lightKeys = ctx.lightKeys;
     // ---- light track read (0x455286..0x4554D3) ----------------------------
     {
         // Record shape (37 stream bytes) lives in pmm_io_common.hpp
@@ -2059,12 +2047,9 @@ static void LoadSceneV2_LightTrack(PmmV2LoadContext& ctx, int fd) {
             // record after consuming its bytes, so the stream position remains
             // unchanged.
             // Defect B3-02.
-            if (frame < 0 ||
-                static_cast<std::size_t>(frame) >= kGlobalKeyCapacity) {
-                mdl::LightKey discardedKey{};
-                ReadPmmLightKey(fd, discardedKey);
-                continue;
-            }
+            if (frame < 0) throw std::runtime_error("Negative PMM key slot");
+            if (!mdl::KeyPoolEnsure(lightKeys, std::uint64_t(frame) + 1)) throw std::bad_alloc();
+            s->LightKeys() = lightKeys;
             ReadPmmLightKey(fd, lightKeys[frame]);
         }
     }
@@ -2261,8 +2246,7 @@ static bool LoadSceneV2_AccessoryBlock(PmmV2LoadContext& ctx, int fd) {
         // accessory track record 0 + sparse keys (0x455DCA..0x4562E5);
         // record shape (55 stream bytes, transparency quirk included) lives
         // in pmm_io_common.hpp ReadPmmAccessoryKey - byte-identical to v1.
-        auto* const accessoryKeys =
-            reinterpret_cast<mdl::AccessoryKey*>(accTracks[accSlot]);
+        auto*& accessoryKeys = accTracks[accSlot];
         ReadPmmAccessoryKey(fd, accessoryKeys[0]);
         {
             std::int32_t cnt = 0;
@@ -2277,12 +2261,8 @@ static bool LoadSceneV2_AccessoryBlock(PmmV2LoadContext& ctx, int fd) {
                 // drops the record after consuming its bytes, leaving the stream
                 // position unchanged.
                 // Defect B3-02.
-                if (frame < 0 ||
-                    static_cast<std::size_t>(frame) >= kGlobalKeyCapacity) {
-                    mdl::AccessoryKey discardedKey{};
-                    ReadPmmAccessoryKey(fd, discardedKey);
-                    continue;
-                }
+                if (frame < 0) throw std::runtime_error("Negative PMM key slot");
+            if (!mdl::KeyPoolEnsure(accessoryKeys, std::uint64_t(frame) + 1)) throw std::bad_alloc();
                 ReadPmmAccessoryKey(fd, accessoryKeys[frame]);
             }
         }
@@ -2693,8 +2673,8 @@ static void LoadSceneV2_PhysicsTracksAndClose(PmmV2LoadContext& ctx, int fd,
     HWND const main = ctx.main;
     unsigned char** const slots = ctx.slots;
     char* const lbText = ctx.lbText;
-    mdl::GravityKey* const gravityKeys = ctx.gravityKeys;
-    mdl::SelfShadowKey* const selfShadowKeys = ctx.selfShadowKeys;
+    mdl::GravityKey*& gravityKeys = ctx.gravityKeys;
+    mdl::SelfShadowKey*& selfShadowKeys = ctx.selfShadowKeys;
     // gravity/physics track read (0x45777C..0x4579FA).  This is the
     // 36-byte app+0x380 table; using the 24-byte app+0x37C
     // self-shadow table) cross-contaminates both tracks and overruns its
@@ -2717,12 +2697,9 @@ static void LoadSceneV2_PhysicsTracksAndClose(PmmV2LoadContext& ctx, int fd,
             // record after consuming its bytes, so the stream position stays the
             // same.
             // Defect B3-02.
-            if (frame < 0 ||
-                static_cast<std::size_t>(frame) >= kGlobalKeyCapacity) {
-                mdl::GravityKey discardedKey{};
-                ReadPmmGravityKey(fd, discardedKey);
-                continue;
-            }
+            if (frame < 0) throw std::runtime_error("Negative PMM key slot");
+            if (!mdl::KeyPoolEnsure(gravityKeys, std::uint64_t(frame) + 1)) throw std::bad_alloc();
+            s->GravityKeys() = gravityKeys;
             LogPmmModelStage(fd, "selection-frame", i, frame,
                              &gravityKeys[frame]);
             ReadPmmGravityKey(fd, gravityKeys[frame]);
@@ -2754,12 +2731,9 @@ static void LoadSceneV2_PhysicsTracksAndClose(PmmV2LoadContext& ctx, int fd,
             // record after consuming its bytes, leaving the stream position
             // unchanged.
             // Defect B3-02.
-            if (frame < 0 ||
-                static_cast<std::size_t>(frame) >= kGlobalKeyCapacity) {
-                mdl::SelfShadowKey discardedKey{};
-                ReadPmmSelfShadowKey(fd, discardedKey);
-                continue;
-            }
+            if (frame < 0) throw std::runtime_error("Negative PMM key slot");
+            if (!mdl::KeyPoolEnsure(selfShadowKeys, std::uint64_t(frame) + 1)) throw std::bad_alloc();
+            s->ShadowKeys() = selfShadowKeys;
             ReadPmmSelfShadowKey(fd, selfShadowKeys[frame]);
         }
     }
@@ -2883,7 +2857,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
     char* const text = ctx.text;
     char* const lbText = ctx.lbText;
     wchar_t* const wndText = ctx.wndText;
-    mdl::CameraKey* const cameraKeys = ctx.cameraKeys;
+    mdl::CameraKey*& cameraKeys = ctx.cameraKeys;
     // ---- success tail (0x458120..0x458F53) --------------------------------
     if (wrap->postProcessEnabled != 0) {
         RefreshSelfShadowPanel(s);                                           // 0x45813E
@@ -2974,7 +2948,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
                 }
                 mdl::DisplayKey* const displayKeys = mdl::DisplayKeys(m);
                 for (std::size_t keyIndex = 0;
-                     keyIndex < mdl::kDisplayKeyCapacity; ++keyIndex) {
+                     keyIndex < mdl::KeyPoolCapacity(displayKeys); ++keyIndex) {
                     mdl::BoneReference* const references =
                         mdl::SelectorStates(displayKeys[keyIndex]);
                     for (std::uint32_t k = 0; k < mdl::BoneOrderCount(m); ++k) {
@@ -2992,7 +2966,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
                 SelectBoneCombo(GetDlgItem(main, panel::kBoneRegisterCombo), s->state.cameraParentBone);
             }
             for (std::size_t keyIndex = 0;
-                 keyIndex < kGlobalKeyCapacity; ++keyIndex) {
+                 keyIndex < mdl::KeyPoolCapacity(cameraKeys); ++keyIndex) {
                 mdl::CameraKey& key = cameraKeys[keyIndex];
                 if (key.parentModel == workspace.modelSlot) {
                     key.parentBone = remapBoneIndex(key.parentBone);
@@ -3008,7 +2982,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
                 }
                 auto* const keys = reinterpret_cast<mdl::AccessoryKey*>(
                     accTracks[ai]);
-                for (std::size_t i = 0; i < kGlobalKeyCapacity; ++i) {
+                for (std::size_t i = 0; i < mdl::KeyPoolCapacity(keys); ++i) {
                     if (keys[i].parentModel == workspace.modelSlot) {
                         keys[i].parentBone = remapBoneIndex(keys[i].parentBone);
                     }
@@ -3038,7 +3012,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
                 }
                 mdl::DisplayKey* const displayKeys = mdl::DisplayKeys(m);
                 for (std::size_t keyIndex = 0;
-                     keyIndex < mdl::kDisplayKeyCapacity; ++keyIndex) {
+                     keyIndex < mdl::KeyPoolCapacity(displayKeys); ++keyIndex) {
                     mdl::BoneReference* const references =
                         mdl::SelectorStates(displayKeys[keyIndex]);
                     for (std::uint32_t k = 0; k < mdl::BoneOrderCount(m); ++k) {
@@ -3057,7 +3031,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
                 SendMessageA(GetDlgItem(main, panel::kBoneRegisterCombo), CB_RESETCONTENT, 0, 0);
             }
             for (std::size_t keyIndex = 0;
-                 keyIndex < kGlobalKeyCapacity; ++keyIndex) {
+                 keyIndex < mdl::KeyPoolCapacity(cameraKeys); ++keyIndex) {
                 mdl::CameraKey& key = cameraKeys[keyIndex];
                 if (key.parentModel == workspace.modelSlot) {
                     key.parentModel = -1;
@@ -3074,7 +3048,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
                 }
                 auto* const keys = reinterpret_cast<mdl::AccessoryKey*>(
                     accTracks[ai]);
-                for (std::size_t i = 0; i < kGlobalKeyCapacity; ++i) {
+                for (std::size_t i = 0; i < mdl::KeyPoolCapacity(keys); ++i) {
                     if (keys[i].parentModel == workspace.modelSlot) {
                         keys[i].parentModel = -1;
                         keys[i].visible = 0;
@@ -3101,7 +3075,7 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
             // path, leaving the stream position and every valid chain unchanged.
             // Defect B3-13.
             while (cur > 0 &&
-                   static_cast<std::size_t>(cur) < mdl::kDisplayKeyCapacity &&
+                   static_cast<std::size_t>(cur) < mdl::KeyPoolCapacity(keys) &&
                    static_cast<std::int32_t>(keys[cur].previous) == prev) {
                 prev = cur;
                 cur = static_cast<std::int32_t>(keys[cur].next);

@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/physics_scale.hpp"
 #include "mikudancestudio/physics_bake.hpp"
 #include "mikudancestudio/morph_curve.hpp"
@@ -201,7 +203,7 @@ std::vector<int> Targets(const mdl::ModelRecord& m,const Request& request) {
     }
     return out;
 }
-void Evaluate(std::vector<std::unique_ptr<ModelCopy>>& models,const std::array<unsigned char*,kModelSlotCount>& slots,float seconds,bool init) {
+void Evaluate(std::vector<std::unique_ptr<ModelCopy>>& models,const std::array<unsigned char*,kModelSlotCount>& slots,double seconds,bool init) {
     for(auto& m:models) {
         if(init) InitModelTrackCursors(m->raw(),seconds,2);
         AdvanceModelKeyframes(m->raw(),seconds,2);
@@ -217,19 +219,19 @@ void Readback(std::vector<std::unique_ptr<ModelCopy>>& models,const std::array<u
     for(int order=0;order<kModelSlotCount;++order) for(auto& m:models) if(m->model->comboSelIndex2==order)
         { ModelApplyMorphs(m->raw()); SetPhysicsMode(m->raw(),1,slots.data(),2); }
 }
-void SetGravity(MMDApp& app,btDiscreteDynamicsWorld& world,float frame) {
+void SetGravity(MMDApp& app,btDiscreteDynamicsWorld& world,double frame) {
     const auto* keys=app.GravityKeys();
     btVector3 direction(app.GravityX(),app.GravityY(),app.GravityZ()); float magnitude=app.GravityMagnitude();
     int noise=app.GravityNoise(); bool enabled=app.GravityNoiseEnabled()!=0;
     if(keys) {
         unsigned i=0; int guard=0;
         while(keys[i].next) {
-            if(keys[i].next>=1000) throw SceneError{};
+            if(keys[i].next>=mdl::KeyPoolCapacity(keys)) throw SceneError{};
             if(keys[keys[i].next].frame>frame) break;
-            i=keys[i].next; if(i>=1000 || ++guard>=1000) throw SceneError{};
+            i=keys[i].next; if(i>=mdl::KeyPoolCapacity(keys) || ++guard>=mdl::KeyPoolCapacity(keys)) throw SceneError{};
         }
         const auto& a=keys[i]; float t=0;
-        if(a.next && keys[a.next].frame>a.frame) t=std::clamp((frame-a.frame)/(keys[a.next].frame-a.frame),0.f,1.f);
+        if(a.next && keys[a.next].frame>a.frame) t=float(std::clamp((frame-a.frame)/(keys[a.next].frame-a.frame),0.0,1.0));
         const auto& b=keys[a.next ? a.next : i];
         direction=btVector3(a.direction[0],a.direction[1],a.direction[2]).lerp(btVector3(b.direction[0],b.direction[1],b.direction[2]),t);
         magnitude=a.acceleration+(b.acceleration-a.acceleration)*t; noise=a.noise; enabled=a.noiseEnabled!=0;
@@ -322,7 +324,7 @@ bool HasExistingKeys(const unsigned char* bytes,const Request& request) {
 }
 static SceneResult ComputeBatch(MMDApp& app,const Request& request,bool wholeScene,const Progress& progress) {
     SceneResult result; SettingsError settingError;
-    if(request.firstFrame<0 || request.lastFrame<request.firstFrame || request.lastFrame>100000 || request.step<1 || request.step>100000 ||
+    if(request.firstFrame<0 || request.lastFrame<request.firstFrame || request.lastFrame>frame_limits::maximum || request.step<1 || request.step>frame_limits::maximum ||
        (!request.physics&&!request.keyframes) || !ValidateSettings(request.settings,settingError)) { result.error=Error::InvalidRequest;return result; }
     auto* selected=wholeScene?nullptr:app.SelectedModel();
     if((!wholeScene&&!selected) || !app.Physics() || !app.Physics()->world) {result.error=Error::NoModel;return result;}
@@ -360,12 +362,12 @@ static SceneResult ComputeBatch(MMDApp& app,const Request& request,bool wholeSce
         const float dt=1.f/(request.settings.baseRateHz*request.settings.rateMultiplier*subdivisions);
         const int finalFrame=request.lastFrame+(request.physics?1:0);
         BakePreview preview(&app);
-        for(int frame=0;frame<=finalFrame;++frame) {
+        for(std::int64_t frame=0;frame<=finalFrame;++frame) {
             if(frame>0)for(int tick=0;tick<ticks;++tick)for(int sub=0;sub<subdivisions;++sub) {
                 const double seconds=(frame-1)/30.0+(tick*subdivisions+sub+1)/static_cast<double>(request.settings.baseRateHz*request.settings.rateMultiplier*subdivisions);
-                Evaluate(models,slots,static_cast<float>(seconds),false);
+                Evaluate(models,slots,seconds,false);
                 for(auto& m:models)ModelKinematicSync(m->raw());
-                SetGravity(app,world.world,static_cast<float>(seconds*30));
+                SetGravity(app,world.world,seconds*30);
                 world.world.stepSimulation(dt,1,dt);++result.simulationSteps;
                 Readback(models,slots);
             }
@@ -383,7 +385,7 @@ static SceneResult ComputeBatch(MMDApp& app,const Request& request,bool wholeSce
                 RepairBonePose(p,q,b.trans,b.rotQuat);
                 if(!Finite(p,3)||!Finite(q,4))throw SceneError{};
                 if(!builder.Put(bone,frame,p,q,inside&&physical?1:b.physicsDisabled,guard,
-                    simulated ? bone_scale::Pose(target->raw(),bone) : bone_scale::Sample(entry.live,bone,float(frame)))){result.error=Error::Capacity;return result;}
+                    simulated ? bone_scale::Pose(target->raw(),bone) : bone_scale::Sample(entry.live,bone,frame))){result.error=Error::Capacity;return result;}
             }
             }
             if(request.preview&&sample&&preview.Due(frame==request.lastFrame)){
@@ -391,7 +393,7 @@ static SceneResult ComputeBatch(MMDApp& app,const Request& request,bool wholeSce
                 // bones and live slot identities even if a renderer fails.
                 struct Restore {
                     MMDApp& app;std::array<unsigned char*,kModelSlotCount> live{};
-                    int frame;float cursor;decltype(app.state.messageSeen) seen;
+                    int frame;double cursor;decltype(app.state.messageSeen) seen;
                     std::vector<std::pair<ModelCopy*,std::vector<mdl::BoneRecord>>> bones;
                     explicit Restore(MMDApp& a):app(a),frame(a.CurrentFrame()),cursor(a.PlaybackCursorSeconds()),seen(a.state.messageSeen){
                         for(int i=0;i<kModelSlotCount;++i)live[i]=app.ModelSlot(i);
@@ -402,7 +404,7 @@ static SceneResult ComputeBatch(MMDApp& app,const Request& request,bool wholeSce
                 } restore(app);
                 for(auto& model:models)restore.bones.emplace_back(model.get(),model->bones);
                 for(int i=0;i<kModelSlotCount;++i)app.ModelSlot(i)=slots[i];
-                app.CurrentFrame()=frame;app.PlaybackCursorSeconds()=frame/30.0f;app.state.messageSeen=1;
+                app.CurrentFrame()=frame;app.PlaybackCursorSeconds()=frame/30.0;app.state.messageSeen=1;
                 preview.RenderNative();
             }
             if(progress&&!progress(frame,finalFrame)){result.error=Error::Cancelled;return result;}
@@ -434,7 +436,7 @@ static SceneResult ComputeBatch(MMDApp& app,const Request& request,bool wholeSce
                 if(slot>=builder.keys.size()||++guard>builder.keys.size())throw SceneError{};
                 if(changed[slot]) {
                     auto scale=builder.scales.find(int(slot));
-                    result.scales[int(slot)]=scale==builder.scales.end() ? bone_scale::Sample(entry.live,bone,float(builder.keys[slot].frame)) : scale->second;
+                    result.scales[int(slot)]=scale==builder.scales.end() ? bone_scale::Sample(entry.live,bone,builder.keys[slot].frame) : scale->second;
                 }
                 slot=builder.keys[slot].next;
             } while(slot);
@@ -880,7 +882,7 @@ Result ComputeLayered(MMDApp& app,const Request& request,const native_mesh::Laye
     Result result;
     frames.clear();
     if(!sampling.Active()||request.firstFrame<0||request.lastFrame<request.firstFrame||
-       request.lastFrame>100000||request.step<1||request.step>100000||
+       request.lastFrame>frame_limits::maximum||request.step<1||request.step>frame_limits::maximum||
        (!request.physics&&!request.keyframes)){result.error=Error::InvalidRequest;return result;}
     auto* selected=app.SelectedModel();
     if(!selected){result.error=Error::NoModel;return result;}
@@ -897,7 +899,7 @@ Result ComputeLayered(MMDApp& app,const Request& request,const native_mesh::Laye
         // The physics boundary keys of the non-layered bake extend the sampled
         // range by one frame on each side.
         const int firstGuard=std::max(0,request.firstFrame-1);
-        const int lastGuard=std::min(100000,request.lastFrame+1);
+        const int lastGuard=std::min(frame_limits::maximum,request.lastFrame+1);
         // An MMV solver that owns the physics (native physics switched off by
         // the solver takeover) must never be advanced a second time by this
         // offline world; with no solver active the world steps as before, and
@@ -980,7 +982,7 @@ Result ComputeLayered(MMDApp& app,const Request& request,const native_mesh::Laye
                 const unsigned char disabled=physical?1u:
                     (source.bonePhysicsState?source.bonePhysicsState[bone]:0u);
                 if(!builder.Put(bone,unsigned(pose.frame),p,q,disabled,guard,
-                                bone_scale::Sample(selected,bone,float(pose.frame)))){
+                                bone_scale::Sample(selected,bone,pose.frame))){
                     result.error=Error::Capacity;return result;}
             }
         }
@@ -1003,7 +1005,7 @@ Result ComputeLayered(MMDApp& app,const Request& request,const native_mesh::Laye
                 if(changed[slot]){
                     auto scale=builder.scales.find(int(slot));
                     result.scales[int(slot)]=scale==builder.scales.end()
-                        ?bone_scale::Sample(selected,bone,float(builder.keys[slot].frame)):scale->second;
+                        ?bone_scale::Sample(selected,bone,builder.keys[slot].frame):scale->second;
                 }
                 slot=builder.keys[slot].next;
             }while(slot);
@@ -1018,13 +1020,13 @@ Result ComputeLayered(MMDApp& app,const Request& request,const native_mesh::Laye
 }
 
 namespace mikudancestudio {
-void InitExportPlaybackTracks(MMDApp*, float);
+void InitExportPlaybackTracks(MMDApp*, double);
 void SampleGlobalPlaybackTracks(MMDApp*);
 namespace scene_sampling {
 bool Visit(MMDApp& app, int firstFrame, int lastFrame, int fps,
            const std::function<bool(double,bool)>& visitor, std::string& error) {
     using namespace bake;
-    if (firstFrame<0 || lastFrame<firstFrame || lastFrame>100000 || fps<1 || fps>120 || !visitor) {
+    if (firstFrame<0 || lastFrame<firstFrame || lastFrame>frame_limits::maximum || fps<1 || fps>120 || !visitor) {
         error="Invalid frame range or sampling rate"; return false;
     }
     if (!app.Physics() || !app.Physics()->world) { error="The physics scene is unavailable"; return false; }
@@ -1042,11 +1044,12 @@ bool Visit(MMDApp& app, int firstFrame, int lastFrame, int fps,
         struct AppRestore {
             MMDApp& app;
             std::unique_ptr<MMDAppState> saved;
+            double cursor, start, end;
             std::vector<std::pair<mdl::AccessoryRecord*,mdl::AccessoryRecord>> accessories;
-            explicit AppRestore(MMDApp& a):app(a),saved(new MMDAppState(a.state)) {
+            explicit AppRestore(MMDApp& a):app(a),saved(new MMDAppState(a.state)), cursor(a.PlaybackCursorSeconds()), start(a.PlaybackStartSeconds()), end(a.PlaybackEndSeconds()) {
                 for(int i=0;i<255;++i)if(auto* p=a.AccessorySlot(i)) accessories.emplace_back(p,*p);
             }
-            ~AppRestore(){for(auto& a:accessories)*a.first=a.second;app.state=*saved;}
+            ~AppRestore(){for(auto& a:accessories)*a.first=a.second;app.state=*saved;app.PlaybackCursorSeconds()=cursor;app.PlaybackStartSeconds()=start;app.PlaybackEndSeconds()=end;}
         } restore(app);
         Evaluate(models,slots,0,true);
         for(auto& m:models){ModelDynamicReseat(m->raw());ModelKinematicSync(m->raw());}
@@ -1062,18 +1065,18 @@ bool Visit(MMDApp& app, int firstFrame, int lastFrame, int fps,
             while(time+1e-9<target) {
                 const double next=std::min(target,time+1.0/60.0);
                 for(auto& m:models)bone_scale::RestoreTransforms(m->raw());
-                Evaluate(models,slots,float(next),false);
+                Evaluate(models,slots,next,false);
                 for(auto& m:models)ModelKinematicSync(m->raw());
-                SetGravity(app,world.world,float(next*30));
+                SetGravity(app,world.world,next*30);
                 const float dt=float(next-time);
                 // A layered bake with an MMV solver owning the physics must not
                 // advance the same bodies a second time here.
                 if(!layerPhysicsSuppressed)world.world.stepSimulation(dt,1,dt);
                 Readback(models,slots);time=next;
             }
-            app.PlaybackCursorSeconds()=float(target);app.CurrentFrame()=int(std::floor(target*30+1e-6));
+            app.PlaybackCursorSeconds()=target;app.CurrentFrame()=int(std::floor(target*30+1e-6));
             app.PlaybackActive()=1;app.state.optflag[0]=1;app.state.messageSeen=1;
-            InitExportPlaybackTracks(&app,float(target*30));
+            InitExportPlaybackTracks(&app,target*30);
             SampleGlobalPlaybackTracks(&app);
             // Preserve object addresses for MME while borrowing private pose,
             // morph and mesh storage only for this synchronous render.
@@ -1091,9 +1094,9 @@ bool Visit(MMDApp& app, int firstFrame, int lastFrame, int fps,
         };
         const double begin=firstFrame/30.0,end=lastFrame/30.0;
         // Effects with a previous-frame dependency receive the same preroll.
-        for(unsigned n=0;double(n)/fps+1e-9<begin;++n)
+        for(std::uint64_t n=0;double(n)/fps+1e-9<begin;++n)
             if(!render(double(n)/fps,false))return false;
-        for(unsigned n=0;begin+double(n)/fps<=end+1e-9;++n)
+        for(std::uint64_t n=0;begin+double(n)/fps<=end+1e-9;++n)
             if(!render(begin+double(n)/fps,true))return false;
         return true;
     } catch(const std::exception& e) {error=e.what();}

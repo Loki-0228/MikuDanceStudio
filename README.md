@@ -129,6 +129,16 @@ See the [release notes](docs/RELEASE_NOTES_20261014.md#english) for the full lis
 - **UI and compatibility**: English/Chinese/Japanese interface, Unicode file
   paths, timeline, accessory editing, undo/redo
 
+#### Automatic capacity and legacy-first saving (unreleased source changes)
+
+Names retain their complete Unicode text. Bone, morph, display, camera, light, shadow, gravity, and accessory key pools grow as needed. Display groups and facial display lists also retain counts beyond the original byte fields. No capacity settings are required.
+
+PMM saving prefers the original `0002` header. Unused reserved space does not force a new format, and sparse high key slots are compacted when their live contents still fit. Only content outside the original limits or legacy path encoding selects the MMS `0003` format. Original MMD and the minimal build cannot open that format.
+
+If names cannot be encoded without loss, MMS preserves the complete names in an extension and reports the difference. It also writes a `.compat.pmm` or `.compat.vmd` copy with legacy short names when that copy is usable. Existing copies receive a numbered suffix. Capacity overflow, ambiguous short names, or unsupported reference paths prevent a compatible copy; MMS reports this instead of dropping keys or assigning motion to the wrong bone.
+
+Frame numbers use checked arithmetic through 2,147,483,646, with precise playback time for adjacent keys at large frames. Memory and file field sizes still bound automatic growth. See [project format and compatibility](docs/PMM_V2_EXTENSIONS.md).
+
 #### Image sequence export and backups
 
 Both packages support image sequence export with a directory, filename prefix, image format, and frame range. The format choices match single-image export, and numbering width follows the output range.
@@ -352,6 +362,16 @@ MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌
 - **渲染**：原生 DX12 预览与 GPU 蒙皮；DX12 不可用时回退到 DX9/CPU。支持 MME Effect、toon 纹理、地面阴影、立体视觉（NVIDIA 3D Vision），并可分别选择主渲染、顶点计算和可选 MMV 处理设备
 - **多媒体**：通过 Windows Media Foundation 导入多种音频格式和 MP4/MOV 视频，具体格式取决于系统媒体组件。支持 Wave 音频播放、DirectShow AVI（使用已安装的传统编码器）、Media Foundation MP4/H.264 录制，以及透明 MOV 录制。导出页列出系统已注册的 H.264 编码器并支持等比例修改分辨率。另支持 VSQ 乐谱导入和 Kinect 骨骼输入
 - **UI 与兼容**：英中日三语界面、Unicode 文件路径、时间轴、附件编辑、撤销/重做
+
+#### 自动扩容与旧版优先保存（当前源码，尚未发布）
+
+名称保留完整 Unicode 文本。骨骼、表情、显示、镜头、灯光、自阴影、重力和附件关键帧按需扩容；显示分组和表情显示项也不再受原有单字节计数限制，无需手动填写容量。
+
+保存 PMM 时优先采用旧版 `0002`。未使用的预留空间不会触发新版格式；高位关键帧槽位存在空洞时，保存器会压紧槽位。只有实际内容超出旧版能力或引用路径无法用旧编码表示时，才采用 MMS `0003`。原版 MMD 和最小包不能打开该格式。
+
+名称无法无损编码时，MMS 在扩展中保留完整名称并提示，同时在能生成可用副本时自动写入 `.compat.pmm` 或 `.compat.vmd`。副本采用旧格式短名称，同名副本添加序号。容量不足、短名称冲突或引用路径不兼容时，MMS 会说明无法生成兼容副本，不会删减关键帧或把动作分配给错误的骨骼。
+
+帧号通过溢出检查扩展至 2,147,483,646，大帧号播放仍能区分相邻关键帧。自动扩容受可用内存和文件字段范围约束。格式说明见 [PMM 项目扩展与兼容规则](docs/PMM_V2_EXTENSIONS.md)。
 
 #### 图片序列与自动备份
 
@@ -585,6 +605,16 @@ MikuDanceStudio（MMS）は、MMD のダンスアニメーションを制作・�
 - **マルチメディア**：Windows Media Foundation を使って多くの音声形式と MP4/MOV 動画を読み込みます。利用可能な形式は Windows のメディアコンポーネントに依存します。Wave 再生、インストール済みコーデックを使う DirectShow AVI、Media Foundation による MP4/H.264、透過 MOV の録画にも対応します。出力画面で登録済み H.264 エンコーダーを確認でき、縦横比を保った解像度変更も可能です。VSQ と Kinect 入力も利用できます。
 - **UI**：英語・中国語・日本語 UI、タイムライン、
   Unicode ファイルパス、アクセサリ編集、元に戻す／やり直し
+
+#### 容量の自動拡張と旧形式優先の保存（ソース版・未公開）
+
+名前は完全な Unicode 文字列を保持します。ボーン、モーフ、表示、カメラ、照明、セルフシャドウ、重力、アクセサリのキーフレーム容量は必要に応じて拡張します。表示グループとモーフ表示項目も、従来の 1 バイトの件数制限を超えて保持します。容量の手動設定は不要です。
+
+PMM は従来の `0002` 形式を優先します。未使用の予約領域では新形式に切り替わりません。高い番号に残ったキーは、保存時に空きスロットを詰めます。実際の内容が従来の範囲を超える場合、または参照パスを旧文字コードで表現できない場合にだけ、MMS `0003` 形式を使います。オリジナル MMD と最小版はこの形式を開けません。
+
+名前を無損失で保存できない場合は、拡張に完全な名前を保存して通知します。利用可能な互換コピーを作れる場合は、旧形式の短い名前を使った `.compat.pmm` または `.compat.vmd` を自動保存します。同名のコピーは上書きせず連番を付けます。容量不足、短縮名の重複、参照パスの制約がある場合は、キーの省略や誤ったボーンへの割り当てを行わず、コピーを作れない理由を通知します。
+
+フレーム番号はオーバーフローを検査し、2,147,483,646 まで扱います。大きなフレーム番号でも隣接キーの再生時刻を区別します。自動拡張は利用可能なメモリとファイルの表現範囲に制約されます。[PMM 形式](docs/PMM_V2_EXTENSIONS.md)を参照してください。
 
 #### 連番画像と自動バックアップ
 

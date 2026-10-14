@@ -1,3 +1,5 @@
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/text_encoding.hpp"
 // MAINTENANCE: regression-keep; malformed PMX text must fail before allocation
 // or string conversion, and partially constructed models must remain disposable.
 #include "mikudancestudio/model.hpp"
@@ -74,7 +76,32 @@ void Reject(const Bytes& bytes, const wchar_t* boneName = nullptr) {
     Check(DeleteFileW(path) != FALSE, "loader closed rejected file");
 }
 }
+void ExpandedDisplay() {
+    auto bytes=AfterBone(L"超过十四字符的完整骨骼名称_左侧_\U0001f31f");
+    Put(bytes,1u);Text(bytes,L"完整的表情名称_\U0001f31f");Text(bytes,L"");
+    Put(bytes,static_cast<unsigned char>(1));Put(bytes,static_cast<unsigned char>(1));Put(bytes,0u);
+    Put(bytes,300u);
+    for(unsigned i=0;i<300;++i){
+        const auto name=L"显示分组_"+std::to_wstring(i);Text(bytes,name.c_str());Text(bytes,L"");
+        Put(bytes,static_cast<unsigned char>(i<2));Put(bytes,3u);
+        for(int j=0;j<2;++j){Put(bytes,static_cast<unsigned char>(1));Put(bytes,static_cast<unsigned char>(0));}
+        Put(bytes,static_cast<unsigned char>(0));Put(bytes,static_cast<unsigned char>(0));
+    }
+    Put(bytes,0u);Put(bytes,0u);
+    wchar_t directory[MAX_PATH]{},path[MAX_PATH]{};GetTempPathW(MAX_PATH,directory);GetTempFileNameW(directory,L"pmx",0,path);
+    int fd=_wopen(path,_O_BINARY|_O_WRONLY|_O_TRUNC);Check(fd>=0,"open expanded PMX fixture");
+    Check(_write(fd,bytes.data(),unsigned(bytes.size()))==bytes.size(),"write expanded PMX");_close(fd);
+    fd=_wopen(path,_O_BINARY|_O_RDONLY);_lseek(fd,3,SEEK_SET);
+    auto model=std::make_unique<mdl::ModelRecord>();PathResolutionWorkspace paths{};
+    auto* raw=reinterpret_cast<unsigned char*>(model.get());
+    Check(LoadPMX(raw,nullptr,0,0,paths,fd),"load expanded display PMX");
+    Check(mdl::DisplayGroupCount(*model)>=300&&mdl::FacialFrameCount(*model)==600,"all groups and facial display items survive PMX load");
+    Check(mdl::FrameTargetIndex(model->displayFrames[599])==0,"last facial item retains its morph index");
+    Check(text_encoding::BoneName(model->boneTable[0],false)==L"超过十四字符的完整骨骼名称_左侧_\U0001f31f","PMX preserves complete Unicode bone identity");
+    ModelDispose(raw);Check(DeleteFileW(path)!=FALSE,"expanded PMX is closed and disposable");
+}
 int main() {
+    ExpandedDisplay();
     unsigned cases = 0;
     for (bool buffered : {false, true}) {
         fileio::bufferedReads = buffered;

@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include <algorithm>
 // ===========================================================================
 // VA 0x00433A40 - playback-start state initialization
 // VA 0x004341E0 - playback-stop UI/state restoration
@@ -187,7 +189,7 @@ void CopyLightTerminal(MMDApp* app, const mdl::LightKey& key) {
 
 template <typename Key>
 static const Key* SeekTypedTrackEnd(Key* keys, std::uint32_t& cursor,
-                                    float frame,
+                                    double frame,
                                     bool& ended) {
     cursor = 0;
     ended = false;
@@ -208,7 +210,7 @@ static const Key* SeekTypedTrackEnd(Key* keys, std::uint32_t& cursor,
     }
 }
 
-void InitLightAndShadowTracks(MMDApp* app, float frame) {
+void InitLightAndShadowTracks(MMDApp* app, double frame) {
     bool ended = false;
     app->LightTrackActive() = 1;
     const mdl::LightKey* lightKey = SeekTypedTrackEnd(
@@ -229,7 +231,7 @@ void InitLightAndShadowTracks(MMDApp* app, float frame) {
     }
 }
 
-void InitGlobalTracks(MMDApp* app, float frame) {
+void InitGlobalTracks(MMDApp* app, double frame) {
     app->ViewOffsetX() = 0.0f;
     app->ViewOffsetY() = 0.0f;
 
@@ -257,7 +259,7 @@ void InitGlobalTracks(MMDApp* app, float frame) {
     }
 }
 
-void InitAccessoryTracks(MMDApp* app, float frame) {
+void InitAccessoryTracks(MMDApp* app, double frame) {
     for (int i = 0; i < 255; ++i) {
         app->AccessoryTrackActive(i) = 0;
         mdl::AccessoryRecord* accessory = app->AccessorySlot(i);
@@ -353,13 +355,14 @@ void SavePlaybackUndoSnapshot(MMDApp* app, unsigned char* model) {
 
 }  // namespace
 
-void InitExportPlaybackTracks(MMDApp* app, float frame) {
+void InitExportPlaybackTracks(MMDApp* app, double frame) {
     InitGlobalTracks(app, frame);
     InitAccessoryTracks(app, frame);
 }
 
 void UpdateBoneFrames(MMDApp* app) {
-    const float cursor = app->PlaybackCursorSeconds();
+    app->SyncPlaybackTimeCompatibility();
+    const double cursor = app->PlaybackCursorSeconds();
     app->SavedPlaybackPhysicsMode() = app->PlaybackPhysicsMode();
     if (app->state.playbackAlwaysOnOffMode != 0)
         app->PlaybackPhysicsMode() = 2;
@@ -376,8 +379,7 @@ void UpdateBoneFrames(MMDApp* app) {
     else
         app->PhysicsResetPending() = 1;
 
-    const float frame = static_cast<float>(
-        static_cast<double>(cursor) * kFrameRate);
+    const double frame = cursor * kFrameRate;
     if (app->state.optflag[0] != 0 ||
         app->state.followCameraEnabled != 0)
         InitGlobalTracks(app, frame);
@@ -447,9 +449,7 @@ void StopPlayback(MMDApp* app) {  // was Sub4341E0
     if (app->state.playbackReturnsToStartFrame != 0) {
         if (activeModel != nullptr)
             SavePlaybackUndoSnapshot(app, activeModel);
-        const int frame = static_cast<int>(
-            static_cast<double>(app->PlaybackCursorSeconds()) *
-            kFrameRate);
+        const int frame = static_cast<int>((std::clamp)(app->PlaybackCursorSeconds() * kFrameRate, 0.0, double(frame_limits::maximum)));
         app->state.currentFrame = frame;
         app->state.timelineStartFrame =
             frame > 6 ? frame - 6 : 0;

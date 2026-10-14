@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #define NOMINMAX
 #include "mikudancestudio/animation_curve_host.hpp"
 #include "mikudancestudio/accessory_layout.hpp"
@@ -108,8 +110,8 @@ template<class K> bool Native(K* pool,Kind kind,std::vector<Channel>& out){
     out.clear(); const auto& f=Fields(kind); out.resize(f.size());
     for(size_t c=0;c<f.size();++c){out[c].id=f[c].id;out[c].track.discrete=f[c].discrete;}
     uint32_t i=0,previousFrame=0;
-    for(size_t visited=0;visited<mdl::kTimelineKeyCapacity;++visited){
-        if(i>=mdl::kTimelineKeyCapacity || pool[i].frame>int32_t(10000000) ||
+    for(size_t visited=0;visited<mdl::KeyPoolCapacity(pool);++visited){
+        if(i>=mdl::KeyPoolCapacity(pool) || pool[i].frame>int32_t(mikudancestudio::frame_limits::maximum) ||
            (visited && pool[i].frame<=previousFrame))return false;
         for(size_t c=0;c<f.size();++c){
             ac::Key key;key.frame=int(pool[i].frame);key.value=Value(pool[i],c);
@@ -227,8 +229,8 @@ using Address=std::tuple<MMDApp*,Kind,int>;
 std::map<Address,State> states;
 template<class K> uint64_t Fingerprint(K*pool){
     if(!pool)return 0;uint64_t hash=14695981039346656037ull;uint32_t index=0;
-    for(size_t hops=0;hops<mdl::kTimelineKeyCapacity;++hops){
-        if(index>=mdl::kTimelineKeyCapacity)return 0;
+    for(size_t hops=0;hops<mdl::KeyPoolCapacity(pool);++hops){
+        if(index>=mdl::KeyPoolCapacity(pool))return 0;
         const auto*bytes=reinterpret_cast<const uint8_t*>(&pool[index]);
         for(size_t i=0;i<sizeof(K);++i){hash^=bytes[i];hash*=1099511628211ull;}
         if(pool[index].next==0)return hash;index=pool[index].next;
@@ -296,7 +298,30 @@ State* Current(MMDApp&app,Kind k,int slot){
     std::vector<Channel> native;if(!NativeRead(app,k,slot,native))return &it->second;
     Reconcile(it->second,native);it->second.fingerprint=fingerprint;return &it->second;
 }
-template<class K> void Mirror(K* pool,const std::vector<Channel>&channels,const std::set<int>&frames){
+struct PoolTransaction {
+    void* address=nullptr;void* before=nullptr;void* after=nullptr;
+    std::size_t beforeBytes=0;
+    void (*restore)(void*,void*)=nullptr;void (*release)(void*)=nullptr;
+    bool committed=false,reuseBefore=false;
+    template<class K> void Begin(K*& pool) {
+        auto* candidate=mdl::KeyPoolCreate<K>(mdl::KeyPoolCapacity(pool));
+        address=&pool;before=pool;after=candidate;
+        beforeBytes=mdl::KeyPoolCapacity(pool)*sizeof(K);reuseBefore=true;
+        restore=[](void* a,void* value){*static_cast<K**>(a)=static_cast<K*>(value);};
+        release=[](void* value){mdl::KeyPoolReleaseOwned(static_cast<K*>(value));};
+        pool=candidate;
+    }
+    // Mirror may grow the staged pool; refresh its address before unwinding.
+    template<class K> void Updated(K* pool){after=pool;reuseBefore=mdl::KeyPoolCapacity(pool)*sizeof(K)<=beforeBytes;}
+    void* FinalIdentity() const {return reuseBefore?before:after;}
+    ~PoolTransaction(){
+        if(!address)return;
+        if(committed&&!reuseBefore){release(before);return;}
+        if(committed)std::memcpy(before,after,beforeBytes);
+        restore(address,before);release(after);
+    }
+};
+template<class K> void Mirror(K*& pool,const std::vector<Channel>&channels,const std::set<int>&frames){
     std::vector<K> records; records.reserve(frames.size());
     for(int frame:frames){
         K key{};key.frame=uint32_t(frame);key.selected=1;
@@ -304,7 +329,8 @@ template<class K> void Mirror(K* pool,const std::vector<Channel>&channels,const 
         records.push_back(key);
     }
     for(size_t i=0;i<records.size();++i){records[i].previous=uint32_t(i?i-1:0);records[i].next=uint32_t(i+1<records.size()?i+1:0);}
-    std::memset(pool,0,sizeof(K)*mdl::kTimelineKeyCapacity);
+    if(!mdl::KeyPoolEnsure(pool,records.size()))throw std::bad_alloc();
+    std::memset(pool,0,sizeof(K)*mdl::KeyPoolCapacity(pool));
     std::copy(records.begin(),records.end(),pool);
 }
 }
@@ -331,16 +357,20 @@ bool Write(MMDApp&app,Kind kind,int slot,const std::vector<Channel>&input,std::w
         if(input[c].id!=f[c].id||t.discrete!=f[c].discrete||!ac::Validate(t,detail)||t.keys.empty()||t.keys.front().frame!=0){
             error=Error(app,L"各トラックの 0 フレームキーを保持してください。",L"Keep a valid frame-zero key in every track.",L"每个轨道须保留有效的第 0 帧关键帧。");return false;}
         for(const auto&k:t.keys){
-            if(k.frame>10000000||k.value<f[c].minimum||k.value>f[c].maximum||(f[c].discrete&&std::floor(k.value)!=k.value)){
+            if(k.frame>mikudancestudio::frame_limits::maximum||k.value<f[c].minimum||k.value>f[c].maximum||(f[c].discrete&&std::floor(k.value)!=k.value)){
                 error=Error(app,L"値またはフレームが範囲外です。",L"Value or frame is outside the allowed range.",L"数值或帧号超出允许范围。");return false;}
             frames.insert(k.frame);
         }
     }
-    if(frames.size()>mdl::kTimelineKeyCapacity){error=Error(app,L"キー容量を超えました。",L"Native key capacity exceeded.",L"超过原生关键帧容量。");return false;}
+    const auto stateKey=std::make_tuple(&app,kind,slot);
+    auto stateSlot=states.try_emplace(stateKey);
+    PoolTransaction transaction;
+    try {
     State next;next.identity=Identity(app,kind,slot);next.channels=input;
     switch(kind){
     case Kind::Camera:
-        Mirror(app.CameraKeys(),input,frames);
+        transaction.Begin(app.CameraKeys());
+        Mirror(app.CameraKeys(),input,frames);transaction.Updated(app.CameraKeys());
         // The standard PMM body contains a linear proxy; full curves follow it.
         for(size_t i=0;i<frames.size();++i)for(int c=0;c<6;++c){
             app.CameraKeys()[i].interpolation[0][c]=20;app.CameraKeys()[i].interpolation[1][c]=20;
@@ -362,18 +392,35 @@ bool Write(MMDApp&app,Kind kind,int slot,const std::vector<Channel>&input,std::w
                 for(size_t component=0;component<4;++component)key.interpolation[component][lane]=uint8_t(std::lround(controls[component]));
             }
         }
-        app.CameraTrackCursor()=0;app.CameraTrackActive()=1;break;
-    case Kind::Light:Mirror(app.LightKeys(),input,frames);app.LightTrackCursor()=0;app.LightTrackActive()=1;break;
-    case Kind::Shadow:Mirror(app.ShadowKeys(),input,frames);app.ShadowTrackCursor()=0;app.ShadowTrackActive()=1;break;
-    case Kind::Gravity:Mirror(app.GravityKeys(),input,frames);app.GravityTrackCursor()=0;app.GravityTrackActive()=1;break;
-    case Kind::Accessory:Mirror(app.AccessoryKeys(slot),input,frames);app.AccessoryTrackCursor(slot)=0;app.AccessoryTrackActive(slot)=1;break;
+        break;
+    case Kind::Light:transaction.Begin(app.LightKeys());Mirror(app.LightKeys(),input,frames);transaction.Updated(app.LightKeys());break;
+    case Kind::Shadow:transaction.Begin(app.ShadowKeys());Mirror(app.ShadowKeys(),input,frames);transaction.Updated(app.ShadowKeys());break;
+    case Kind::Gravity:transaction.Begin(app.GravityKeys());Mirror(app.GravityKeys(),input,frames);transaction.Updated(app.GravityKeys());break;
+    case Kind::Accessory:transaction.Begin(app.AccessoryKeys(slot));Mirror(app.AccessoryKeys(slot),input,frames);transaction.Updated(app.AccessoryKeys(slot));break;
     }
-    NativeRead(app,kind,slot,next.baseline);
+    next.identity=kind==Kind::Accessory ? app.AccessorySlot(slot) : transaction.FinalIdentity();
+    if (!NativeRead(app,kind,slot,next.baseline)) throw std::runtime_error("Invalid mirrored key track");
     next.fingerprint=Fingerprint(app,kind,slot);
-    states[{&app,kind,slot}]=std::move(next);
+    stateSlot.first->second=std::move(next);
+    transaction.committed=true;
+    switch(kind){
+    case Kind::Camera:app.CameraTrackCursor()=0;app.CameraTrackActive()=1;break;
+    case Kind::Light:app.LightTrackCursor()=0;app.LightTrackActive()=1;break;
+    case Kind::Shadow:app.ShadowTrackCursor()=0;app.ShadowTrackActive()=1;break;
+    case Kind::Gravity:app.GravityTrackCursor()=0;app.GravityTrackActive()=1;break;
+    case Kind::Accessory:app.AccessoryTrackCursor(slot)=0;app.AccessoryTrackActive(slot)=1;break;
+    }
     app.LastRegisteredFrame()=std::max(app.LastRegisteredFrame(),uint32_t(*frames.rbegin()));
     app.SceneModified()=1;
     return true;
+    } catch(const std::exception&) {
+        // If Mirror grew its candidate before a later allocation failed, the
+        // current identity still owns that new candidate.
+        transaction.after=kind==Kind::Accessory ? static_cast<void*>(app.AccessoryKeys(slot)) : Identity(app,kind,slot);
+        if(stateSlot.second)states.erase(stateSlot.first);
+        error=Error(app,L"メモリ不足のため編集を適用できません。",L"Not enough memory to apply the edit.",L"内存不足，无法应用编辑，原关键帧已保留。");
+        return false;
+    }
 }
 void Apply(MMDApp*app,Kind kind,double frame,int slot){
     if(!app||!std::isfinite(frame)||states.empty())return;
@@ -445,7 +492,7 @@ void Load(MMDApp&app,const pmm_extension::Document&doc){
         for(auto&c:next.channels){auto t=std::find_if(g.second.begin(),g.second.end(),[&](const auto&v){return v.id==c.id;});
             if(t==g.second.end()||t->track.keys.empty()||t->track.keys[0].frame!=0||t->track.discrete!=c.track.discrete){valid=false;break;}
             const auto index=size_t(&c-next.channels.data());const auto&field=Fields(k)[index];
-            for(const auto&key:t->track.keys)if(key.frame>10000000||key.value<field.minimum||key.value>field.maximum||
+            for(const auto&key:t->track.keys)if(key.frame>mikudancestudio::frame_limits::maximum||key.value<field.minimum||key.value>field.maximum||
                 (field.discrete&&std::floor(key.value)!=key.value)){valid=false;break;}
             if(!valid)break;c.track=t->track;}
         if(valid){next.identity=Identity(app,k,slot);next.fingerprint=nativeAvailable?Fingerprint(app,k,slot):0;states[{&app,k,slot}]=std::move(next);}

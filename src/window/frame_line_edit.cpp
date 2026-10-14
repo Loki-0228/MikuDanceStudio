@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // Edit-menu frame-line commands + select-all frame groups.
 //   VA 0x00439E40  insert frame line (bone / camera)    menu 0xFF,  key I
@@ -52,6 +54,11 @@ namespace {
 
 // App-field offsets (file-local).
 
+template<class K> bool CanInsertFrame(const K* keys,std::size_t capacity,std::size_t heads,std::uint32_t frame) {
+    for(std::size_t i=heads;keys&&i<capacity;++i)
+        if(keys[i].frame&&keys[i].frame>=frame&&keys[i].frame>=std::uint32_t(frame_limits::maximum))return false;
+    return true;
+}
 unsigned char* ActiveModel(MMDApp* app) {
     return app->SelectedModel();
 }
@@ -231,6 +238,7 @@ int ShiftBoneKeysForFrameLineInsert(MMDApp* app, std::uint32_t cur) {
     const int boneKeyCapacity = static_cast<int>(
         mdl::BoneKeyCapacity(*mdl::Mdl(model)));
 
+    if(!CanInsertFrame(keys,boneKeyCapacity,boneCount,cur))return 0;
     int affected = 0;  // stack0xfffffff8 (0x439E75..0x439F9D)
     for (int i = 0; i < boneKeyCapacity; ++i) {
         const std::uint32_t f = keys[i].frame;
@@ -290,8 +298,9 @@ int InsertBoneCameraFrameLine(MMDApp* app) {
     // ---- camera mode: shift every camera key at frame >= cur up one
     // (0x439FBB..0x439FAA; only the 0x374 table moves)
     auto* keys = app->CameraKeys();
+    if(!CanInsertFrame(keys,mdl::KeyPoolCapacity(keys),1,cur))return 0;
     int moved = 0;
-    for (int r = 0; r < 10000; ++r) {
+    for (std::size_t r = 0, capacity = mdl::KeyPoolCapacity(keys); r < capacity; ++r) {
         mdl::CameraKey& key = keys[r];
         const std::uint32_t f = key.frame;
         if (f != 0 && f >= cur) {
@@ -452,7 +461,7 @@ int DeleteBoneCameraFrameLine(MMDApp* app) {
     // ---- camera mode (0x43A905..0x43A9B6)
     auto* keys = app->CameraKeys();
     int changed = 0;
-    for (int r = 0; r < 10000; ++r) {
+    for (std::size_t r = 0, capacity = mdl::KeyPoolCapacity(keys); r < capacity; ++r) {
         mdl::CameraKey& key = keys[r];
         const std::uint32_t f = key.frame;
 
@@ -502,7 +511,8 @@ int InsertFacialLightFrameLine(MMDApp* app) {
         // ---- light mode: shift every light key at frame >= cur up one
         // (0x43B72D..0x43B878; only the 0x378 table moves; no undo)
         auto* keys = app->LightKeys();
-        for (int r = 0; r < 10000; ++r) {
+        if(!CanInsertFrame(keys,mdl::KeyPoolCapacity(keys),1,cur))return 0;
+        for (std::size_t r = 0, capacity = mdl::KeyPoolCapacity(keys); r < capacity; ++r) {
             mdl::LightKey& key = keys[r];
             const std::uint32_t f = key.frame;
             if (f != 0 && f >= cur) {
@@ -524,6 +534,7 @@ int InsertFacialLightFrameLine(MMDApp* app) {
     const std::int32_t morphCount = mdl::Mdl(model)->morphCount;
     mdl::MorphKey* keys = mdl::MorphKeys(model);
     const auto morphCapacity1 = mdl::MorphKeyCapacity(mdl::MorphKeys(model));
+    if(!CanInsertFrame(keys,morphCapacity1,morphCount,cur))return 0;
     for (int i = 0; i < morphCapacity1; ++i) {
         mdl::MorphKey& key = keys[i];
         const std::uint32_t f = key.frame;
@@ -609,7 +620,7 @@ int DeleteFacialLightFrameLine(MMDApp* app) {
 
     // ---- light mode: 40B records x 10000 (0x43BC64..0x43BC88)
     auto* keys = app->LightKeys();
-    for (int r = 0; r < 10000; ++r) {
+    for (std::size_t r = 0, capacity = mdl::KeyPoolCapacity(keys); r < capacity; ++r) {
         mdl::LightKey& key = keys[r];
         const std::uint32_t f = key.frame;
 
@@ -679,7 +690,7 @@ void SelectFrameGroup(MMDApp* app, int group) {
     } else if (group == 1) {
         // 0xDA: all disp/IK/OP frames (0x26E8 table, 0x1C x 1000)
         mdl::DisplayKey* frames = mdl::DisplayKeys(model);
-        for (int i = 0; i < 1000; ++i) {
+        for (std::size_t i = 0, capacity = mdl::KeyPoolCapacity(frames); i < capacity; ++i) {
             mdl::DisplayKey& key = frames[i];
             key.allocated = 0;
             if (key.frame != 0) {

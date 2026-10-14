@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 // ===========================================================================
 // VA 0x0046EEE0..0x0046F575 - playback / frame-step catch-up section of the
 // FrameDriver (original: sub_46B090)
@@ -112,11 +113,11 @@ namespace {
 // fild dword + "test/jge/fadd flt_52B9F0" (x86) / zero-extended
 // cvtsi2ss r64 (x64, e.g. 0x7FF7CB44B96B): signed dword reinterpreted as
 // unsigned before the float conversion.
-float UnsigFlt(std::int32_t v) {
-    return static_cast<float>(static_cast<std::uint32_t>(v));
+double UnsigFlt(std::int32_t v) {
+    return static_cast<double>(static_cast<std::uint32_t>(v));
 }
 
-inline float& Cursor(MMDApp* app) {
+inline double& Cursor(MMDApp* app) {
     return app->PlaybackCursorSeconds();
 }
 
@@ -138,7 +139,8 @@ void StepWorld(btDiscreteDynamicsWorld* world) {
 // Cursor += 1/60.  x64: addss against the .rdata float 0x3C888889
 // (xmm10 slot 0x7FF7CB552D34) - one single-precision rounding.
 void BumpCursor(MMDApp* app) {
-    Cursor(app) += 1.0f / 60.0f;
+    Cursor(app) += 1.0 / 60.0;
+    app->SyncPlaybackTimeCompatibility();
 }
 
 // 0x46F171..0x46F1DD (block 1) / 0x46F41B..0x46F4BE (block 2): per-model
@@ -258,10 +260,11 @@ void PlayingBeyondEnd(MMDApp* app) {
     }
 
     if (s.PlaybackLoopEnabled() != 0) {
-        char text[8];
+        char text[256]{};
         GetWindowTextA(GetDlgItem(static_cast<HWND>(s.Hwnd()), panel::kPlayStartFrameEdit),
-                       text, 8);
-        const std::int32_t frame = std::atol(text);
+                       text, sizeof text);
+        std::int32_t frame = 0;
+        if (!frame_limits::Parse(text, frame)) { s.PlaybackActive() = 0; StopPlayback(app); return; }
         // x64 0x7FF7CB44BC3E..0x7FF7CB44BC4B: cvtsi2ss of the
         // zero-extended frame, then divss by the 30.0f slot.
         s.PlaybackStartSeconds() = UnsigFlt(frame) / 30.0f;
@@ -372,9 +375,9 @@ void PlaybackCatchup(MMDApp* app, unsigned char selActive) {
         // recording cursor at 0.  NOTE: the display formula above
         // multiplies N*30 as INTEGERS first; this path multiplies as
         // float - keep the two apart.
-        const float term = static_cast<float>(n) * 30.0f / fps +
+        const double term = static_cast<double>(n) * 30.0 / fps +
                            UnsigFlt(frameA);
-        const float target = term / 30.0f;                  // 0x46F054
+        const double target = term / 30.0;                  // 0x46F054
         const std::uint32_t gate = static_cast<std::uint32_t>(
             static_cast<std::int64_t>(term));
         const std::uint32_t limit = static_cast<std::uint32_t>(
@@ -492,9 +495,9 @@ void PlaybackCatchup(MMDApp* app, unsigned char selActive) {
         static_cast<std::int64_t>(now - t0);
     if (now < t0)
         elapsed += static_cast<std::int64_t>(1) << 32;
-    const float target = static_cast<float>(elapsed) * s.MilliToSec() +
+    const double target = static_cast<double>(elapsed) * s.MilliToSec() +
                          s.PlaybackStartSeconds();
-    const float end = s.PlaybackEndSeconds();
+    const double end = s.PlaybackEndSeconds();
 
 #ifdef MIKUDANCESTUDIO_DIAG
     if (tracePassLeft > 0) {

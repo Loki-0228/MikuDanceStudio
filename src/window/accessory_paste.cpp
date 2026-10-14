@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 // ===========================================================================
 // Accessory-frame paste/refresh helpers ("paste to difference flame",
@@ -53,27 +55,17 @@ const char kJpTitle[] = "\xcc\xda\xb0\xd1\x93\x6f\x98\x5e";
 // Free-slot scan of a 10000-record accessory table starting at index 1
 // (0x4143E2..0x414428 / 0x4145C9..0x414601).  Returns 0 (and raises the
 // overflow box) when no frame == 0 slot remains.
-std::uint32_t FindFreeAccSlot(MMDApp* app, mdl::AccessoryKey* table) {
-    std::uint32_t freeIndex = 1;
-    while (table[freeIndex].frame != 0) {
-        ++freeIndex;
-        if (freeIndex >= 10000) {
-            char message[0x100];
-            if (app->state.englishUI != 0) {
-                sprintf_s(message, sizeof(message),
-                          "You cannot regist over %dpoint.\n"
-                          "Please execute 'delete unused frame'", 10000);
-                LegacyUiMessageBoxA(app->state.hwnd, message,
-                            "register frame", 0);
-            } else {
-                sprintf_s(message, sizeof(message), kJpOverflow, 10000);
-                LegacyUiMessageBoxA(app->state.hwnd, message,
-                            kJpTitle, 0);
-            }
-            return 0;
-        }
+std::uint32_t FindFreeAccSlot(MMDApp* app, mdl::AccessoryKey*& table) {
+    std::uint32_t slot = 0;
+    if (!mdl::KeyPoolFreeSlot(table, slot)) {
+        MessageBoxW(app->state.hwnd,
+            app->EnglishUI() == 2 ? L"无法扩展关键帧存储，本次粘贴已取消。" :
+            app->EnglishUI() == 0 ? L"メモリを確保できないため、貼り付けを中止しました。" :
+            L"Unable to allocate keyframe storage. Paste was cancelled.",
+            L"MikuDanceStudio", MB_OK | MB_ICONERROR);
+        return 0;
     }
-    return freeIndex;
+    return slot;
 }
 
 // Payload copy of one pasted 0x34-byte source record into a 60B key
@@ -219,9 +211,9 @@ int PasteAccessoryKeyRecord(MMDApp* app, void* recData, int useSelectedSlot) {
         return 1;
     }
 
-    mdl::AccessoryKey* table = app->AccessoryKeys(slot);
-    const std::uint32_t frame =
-        static_cast<std::uint32_t>(app->CurrentFrame()) + src.frameOffset;
+    mdl::AccessoryKey*& table = app->AccessoryKeys(slot);
+    std::uint32_t frame;
+    if(!frame_limits::Add(app->CurrentFrame(),src.frameOffset,frame))return 0;
 
     // Walk to the first record with frame >= target (0x41416D..0x4141AF).
     std::uint32_t index = 0;
@@ -239,18 +231,17 @@ int PasteAccessoryKeyRecord(MMDApp* app, void* recData, int useSelectedSlot) {
         }
     }
 
-    mdl::AccessoryKey& current = table[index];
-
-    if (!offEnd && current.frame == frame) {
+    if (!offEnd && table[index].frame == frame) {
         // Exact hit: overwrite in place, no frame-number store, no
         // max-frame watermark update (0x4141B4..0x414210).
-        FillAccKeyRecord(current, src, frame);
+        FillAccKeyRecord(table[index], src, frame);
         return 1;
     }
 
     const std::uint32_t freeIndex = FindFreeAccSlot(app, table);
     if (freeIndex == 0) return 0;  // overflow box already shown
 
+    mdl::AccessoryKey& current = table[index];
     mdl::AccessoryKey& added = table[freeIndex];
     if (offEnd) {
         // Append after the last record (0x4142B7..0x414321).

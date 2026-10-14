@@ -1,3 +1,7 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/extended_names.hpp"
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // VA 0x0049D880 / 0x0049E310 / 0x0049F190 / 0x0049F8C0 /
 //    0x004A4940 / 0x004A49A0 / 0x004A27F0
@@ -366,6 +370,7 @@ void RegisterMorphKeyCurrent(unsigned char* model, int morph, int frameArg) {
 
     mdl::MorphKey* keys = mdl::MorphKeys(m);
     std::size_t capacity = mdl::MorphKeyCapacity(keys);
+    if(frameArg<0||frameArg>frame_limits::maximum)return;
     const std::uint32_t frame = static_cast<std::uint32_t>(frameArg);
     const float value = mikudancestudio::mdl::Morphs(m)[morph].value;
 
@@ -426,8 +431,8 @@ bool RegisterBoneKey(unsigned char* model, unsigned char* rec, int frameOffset,
     // Non-const: a free-slot scan below may grow the pool and move it.
     mdl::BoneKey* keys = mdl::BoneKeys(m);
     std::size_t boneKeyCapacity = mdl::BoneKeyCapacity(*mdl::Mdl(m));
-    const std::uint32_t frame =
-        static_cast<std::uint32_t>(frameOffset) + Rd32(rec + 32);
+    std::uint32_t frame;
+    if(!frame_limits::Add(frameOffset, Rd32(rec+32), frame))return false;
 
     // bone lookup by name (or the selected index)
     int boneIdx;
@@ -586,8 +591,8 @@ bool RegisterMirroredBoneKey(unsigned char* model, unsigned char* rec,
     // Non-const: a free-slot scan below may grow the pool and move it.
     mdl::BoneKey* keys = mdl::BoneKeys(m);
     std::size_t boneKeyCapacity = mdl::BoneKeyCapacity(*mdl::Mdl(m));
-    const std::uint32_t frame =
-        static_cast<std::uint32_t>(frameOffset) + Rd32(rec + 32);
+    std::uint32_t frame;
+    if(!frame_limits::Add(frameOffset, Rd32(rec+32), frame))return false;
     const int boneIdx = FindMirroredBone(m, rec);
     if (boneIdx < 0) return true;
 
@@ -712,8 +717,8 @@ bool RegisterMirroredBoneKey(unsigned char* model, unsigned char* rec,
 bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
                                 int frameOffset) {
     unsigned char* const m = model;
-    const std::uint32_t frame =
-        static_cast<std::uint32_t>(frameOffset) + Rd32(rec + 32);
+    std::uint32_t frame;
+    if(!frame_limits::Add(frameOffset, Rd32(rec+32), frame))return false;
 
     int morphIdx = 0;
     const int morphCnt = static_cast<int>(mdl::Mdl(m)->morphCount);
@@ -733,6 +738,7 @@ bool RegisterMorphKeyFromRecord(unsigned char* model, const unsigned char* rec,
 bool RegisterMorphKeyAtIndex(unsigned char* model, int morphIdx,
                              std::uint32_t frame, float value) {
     unsigned char* const m = model;
+    if(frame>std::uint32_t(frame_limits::maximum))return false;
     if (!m || morphIdx < 0 || static_cast<unsigned>(morphIdx) >= mdl::Mdl(m)->morphCount)
         return false;
     mdl::MorphKey* keys = mdl::MorphKeys(m);
@@ -797,9 +803,9 @@ bool RegisterDisplayKeyFromRecord(unsigned char* model, int frameArg,
                                   const unsigned char* entries28,
                                   int frameOffset) {
     unsigned char* const m = model;
-    mdl::DisplayKey* const keys = mdl::DisplayKeys(m);
-    const std::uint32_t frame =
-        static_cast<std::uint32_t>(frameOffset + frameArg);
+    mdl::DisplayKey*& keys = mdl::DisplayKeys(m);
+    std::uint32_t frame;
+    if(frameArg<0 || !frame_limits::Add(frameOffset, std::uint32_t(frameArg), frame))return false;
     // 注意：x64（sub_7FF7CB4EB3C0 完整反编译）注册显示键时 *不* 写
     // displayKeyframesPresent。该字段是左面板 表示/IK 行的轨道选中开关，
     // 只在行点击时翻转（0x7FF7CB45A2DD..0x7FF7CB45A2EA，port 见
@@ -812,6 +818,12 @@ bool RegisterDisplayKeyFromRecord(unsigned char* model, int frameArg,
         auto* const ikBase = mdl::IkStates(keys[index]);
         for (int i = 0; i < ikCnt; ++i) {
             if (cnt > 0) {
+                if(extended_names::importedIkTargets){
+                    const auto& targets=*extended_names::importedIkTargets;
+                    for(int k=0;k<cnt&&std::size_t(k)<targets.size();++k)
+                        if(targets[k]==mdl::IkChains(m)[i].boneIndex){ikBase[i]=entries21[21*std::size_t(k)+20];break;}
+                    continue;
+                }
                 const unsigned char* e = entries21;
                 const unsigned char* const chainBone =
                     reinterpret_cast<const unsigned char*>(
@@ -885,17 +897,10 @@ bool RegisterDisplayKeyFromRecord(unsigned char* model, int frameArg,
         }
         if (keys[cur].frame < frame) {
             // append
-            int free_ = mdl::Mdl(m)->searchCursor;
-            if (keys[free_].frame != 0) {
-                for (;;) {
-                    ++mdl::Mdl(m)->searchCursor;
-                    ++free_;
-                    if (free_ >= 1000) {
-                        OverflowBox(m, 1000);
-                        return false;
-                    }
-                    if (keys[free_].frame == 0) break;
-                }
+            std::uint32_t free_ = 0;
+            if (!mdl::DisplayKeyFreeSlot(*mdl::Mdl(m), free_)) {
+                OverflowBox(m, static_cast<int>(mdl::KeyPoolCapacity(keys)));
+                return false;
             }
             keys[cur].next = static_cast<std::uint32_t>(free_);
             keys[free_].previous = static_cast<std::uint32_t>(cur);
@@ -916,17 +921,10 @@ bool RegisterDisplayKeyFromRecord(unsigned char* model, int frameArg,
         return true;
     }
     // insert before cur
-    int free_ = mdl::Mdl(m)->searchCursor;
-    if (keys[free_].frame != 0) {
-        for (;;) {
-            ++mdl::Mdl(m)->searchCursor;
-            ++free_;
-            if (free_ >= 1000) {
-                OverflowBox(m, 1000);
-                return false;
-            }
-            if (keys[free_].frame == 0) break;
-        }
+    std::uint32_t free_ = 0;
+    if (!mdl::DisplayKeyFreeSlot(*mdl::Mdl(m), free_)) {
+        OverflowBox(m, static_cast<int>(mdl::KeyPoolCapacity(keys)));
+        return false;
     }
     const int prev = static_cast<int>(keys[cur].previous);
     keys[prev].next = static_cast<std::uint32_t>(free_);
@@ -949,7 +947,8 @@ bool RegisterDisplayKeyFromRecord(unsigned char* model, int frameArg,
 // {dword,dword} pair per relationship at +24.
 void RegisterDisplayKeyCurrent(unsigned char* model, int frameArg) {
     unsigned char* const m = model;
-    mdl::DisplayKey* const keys = mdl::DisplayKeys(m);
+    mdl::DisplayKey*& keys = mdl::DisplayKeys(m);
+    if(frameArg<0||frameArg>frame_limits::maximum)return;
     const std::uint32_t frame = static_cast<std::uint32_t>(frameArg);
     // 同上：x64（sub_7FF7CB4EAF80）此处也不写 displayKeyframesPresent——
     // 它是左面板 表示/IK 行的选中开关（点击翻转，0x7FF7CB45A2DD..EA），
@@ -987,11 +986,9 @@ void RegisterDisplayKeyCurrent(unsigned char* model, int frameArg) {
         return;
     }
 
-    int freeIndex = 1;
-    while (freeIndex < 1000 && keys[freeIndex].frame != 0)
-        ++freeIndex;
-    if (freeIndex >= 1000) {
-        OverflowBox(m, 1000);
+    std::uint32_t freeIndex = 0;
+    if (!mdl::DisplayKeyFreeSlot(*mdl::Mdl(m), freeIndex)) {
+        OverflowBox(m, static_cast<int>(mdl::KeyPoolCapacity(keys)));
         return;
     }
 
@@ -1024,7 +1021,7 @@ int MarkKeyTrackRangeByName(unsigned char* model, std::uint32_t from,
 
     // 1. facial display-frame groups (0x4A2806..0x4A2855): SJIS name only
     //    (0x4A2820 inline strcmp), targetIndex roots the morph track.
-    const int facialCount = record.facialFrameCount;
+    const int facialCount = mikudancestudio::mdl::FacialFrameCount(record);
     if (facialCount > 0) {
         mdl::FrameGroup* const groups = mdl::DisplayFrames(model);
         for (int g = 0; g < facialCount; ++g) {
@@ -1037,7 +1034,7 @@ int MarkKeyTrackRangeByName(unsigned char* model, std::uint32_t from,
                 // This port rejects such a root and returns the same
                 // "nothing marked" result.
                 // Defect MB-19.
-                const int root = static_cast<int>(groups[g].targetIndex);
+                const int root = static_cast<int>(mikudancestudio::mdl::FrameTargetIndex(groups[g]));
                 if (root >= static_cast<int>(mdl::MorphKeyCapacity(mdl::MorphKeys(model))))
                     return 0;
                 return MarkTrackRange(mdl::MorphKeys(model), root, from, to);
@@ -1082,7 +1079,7 @@ int MarkKeyTrackRangeByName(unsigned char* model, std::uint32_t from,
                 // index against the bone-key pool rather than traversing from an
                 // unchecked index.
                 // Defect MB-19.
-                const int root = static_cast<int>(groups[g].targetIndex);
+                const int root = static_cast<int>(mikudancestudio::mdl::FrameTargetIndex(groups[g]));
                 if (root < 0 ||
                     static_cast<std::size_t>(root) >=
                         mdl::BoneKeyCapacity(record))

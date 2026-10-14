@@ -1,3 +1,6 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 #define WIN32_LEAN_AND_MEAN
@@ -44,7 +47,7 @@ void Refresh(MMDApp&app){
         for(int slot=0;slot<255;++slot)if(app.AccessorySlot(slot))Apply(&app,Kind::Accessory,app.CurrentFrame(),slot);
         if(app.SelectedModel()){
             morph_curve::Evaluate(app.SelectedModel(),app.CurrentFrame());
-            bone_scale::Evaluate(app.SelectedModel(),float(app.CurrentFrame()));
+            bone_scale::Evaluate(app.SelectedModel(),app.CurrentFrame());
             bone_curve::Evaluate(app.SelectedModel(),app.CurrentFrame());
         }
     }
@@ -74,7 +77,7 @@ void BindTransport(curve_editor::Session& session,MMDApp* app){
     const auto stop=session.setPlaying;
     session.seek=[app,seek,stop](int frame){
         if(app->PlaybackActive())stop(false);
-        if(seek)seek(std::clamp(frame,0,10000000));
+        if(seek)seek(std::clamp(frame,0,mikudancestudio::frame_limits::maximum));
     };
 }
 std::uint8_t& SelectionFlag(mdl::BoneKey& key){return key.allocated;}
@@ -389,11 +392,11 @@ static void OpenScene(MMDApp*app,bool visible,const std::string&cameraChannel){
         BindSelection(source,app,[app,kind,slot,alive](const std::string&,const std::vector<int>* frames)->std::vector<int>{
             if(!alive())return {};
             switch(kind){
-            case Kind::Camera:return NativeSelection(app->CameraKeys(),mdl::kTimelineKeyCapacity,0,frames);
-            case Kind::Light:return NativeSelection(app->LightKeys(),mdl::kTimelineKeyCapacity,0,frames);
-            case Kind::Shadow:return NativeSelection(app->ShadowKeys(),mdl::kTimelineKeyCapacity,0,frames);
-            case Kind::Gravity:return NativeSelection(app->GravityKeys(),mdl::kTimelineKeyCapacity,0,frames);
-            default:return NativeSelection(app->AccessoryKeys(slot),mdl::kTimelineKeyCapacity,0,frames);
+            case Kind::Camera:return NativeSelection(app->CameraKeys(), mdl::KeyPoolCapacity(app->CameraKeys()),0,frames);
+            case Kind::Light:return NativeSelection(app->LightKeys(), mdl::KeyPoolCapacity(app->LightKeys()),0,frames);
+            case Kind::Shadow:return NativeSelection(app->ShadowKeys(), mdl::KeyPoolCapacity(app->ShadowKeys()),0,frames);
+            case Kind::Gravity:return NativeSelection(app->GravityKeys(), mdl::KeyPoolCapacity(app->GravityKeys()),0,frames);
+            default:return NativeSelection(app->AccessoryKeys(slot), mdl::KeyPoolCapacity(app->AccessoryKeys(slot)),0,frames);
             }
         });
         source.localizedLabel=[app,kind,slot,alive](unsigned language){
@@ -766,8 +769,8 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
                     if(target>=0&&std::uint32_t(target)<modelRecord.boneCount)channel.label=L"IK · "+text_encoding::BoneLabel(modelRecord.boneTable[target],UiUsesEnglishNames(app->EnglishUI()));}
                 channel.minimum=0;channel.maximum=1;channel.track.discrete=true;
                 std::uint32_t slot=0;bool complete=false;
-                for(std::size_t visited=0;visited<mdl::kDisplayKeyCapacity;++visited){
-                    if(slot>=mdl::kDisplayKeyCapacity||(visited&&std::int64_t(display[slot].frame)<=std::int64_t(channel.track.keys.back().frame))){error=L"IK 关键帧链表无效。";return false;}
+                for(std::size_t visited=0;visited<mdl::KeyPoolCapacity(display);++visited){
+                    if(slot>=mdl::KeyPoolCapacity(display)||(visited&&std::int64_t(display[slot].frame)<=std::int64_t(channel.track.keys.back().frame))){error=L"IK 关键帧链表无效。";return false;}
                     const auto&key=display[slot];if(c>0&&!key.ikStates){error=L"IK 关键帧状态不可用。";return false;}
                     animation_curve::Key point;point.frame=key.frame;point.value=c==0?(key.visible?1:0):(key.ikStates[c-1]?1:0);point.interpolation=animation_curve::Interpolation::Step;
                     channel.track.keys.push_back(point);if(key.next==0){complete=true;break;}slot=key.next;
@@ -788,7 +791,7 @@ static curve_editor::Source BoneSource(MMDApp*app,const MorphModelIdentity&ident
             if(next.id!=baseline.id||!next.track.discrete||next.track.keys.size()!=baseline.track.keys.size()){error=L"IK 通道不匹配。";return false;}
             std::uint32_t index=0;
             for(std::size_t k=0;k<next.track.keys.size();++k){const auto&key=next.track.keys[k];
-                if(!display||index>=mdl::kDisplayKeyCapacity||key.frame!=display[index].frame||(key.value!=0&&key.value!=1)||(c>0&&!display[index].ikStates)){
+                if(!display||index>=mdl::KeyPoolCapacity(display)||key.frame!=display[index].frame||(key.value!=0&&key.value!=1)||(c>0&&!display[index].ikStates)){
                     error=L"IK 关键帧应保持原有帧号，状态只能为 0 或 1。";return false;}
                 index=display[index].next;
                 if((k+1<next.track.keys.size())==(index==0)){
@@ -851,12 +854,12 @@ static std::vector<curve_editor::Collection> BoneDisplayCollections(MMDApp*app,u
     if(rows&&groups){
         for(std::uint32_t i=0;i<record.rigidBodyCount;++i){
             const auto&row=rows[i];
-            if(row.targetIndex<record.boneCount&&row.groupIndex<record.groupCount&&
-               membership[row.targetIndex]<0)
-                membership[row.targetIndex]=row.groupIndex;
+            if(mikudancestudio::mdl::FrameTargetIndex(row)<record.boneCount&&mikudancestudio::mdl::FrameGroupIndex(row)<mikudancestudio::mdl::DisplayGroupCount(record)&&
+               membership[mikudancestudio::mdl::FrameTargetIndex(row)]<0)
+                membership[mikudancestudio::mdl::FrameTargetIndex(row)]=mikudancestudio::mdl::FrameGroupIndex(row);
         }
     }
-    if(groups&&record.groupCount>0&&record.displayRootBone<record.boneCount&&
+    if(groups&&mikudancestudio::mdl::DisplayGroupCount(record)>0&&record.displayRootBone<record.boneCount&&
        membership[record.displayRootBone]<0)
         membership[record.displayRootBone]=0;
     std::vector<curve_editor::Collection> result;
@@ -964,7 +967,7 @@ void OpenInterpolation(MMDApp*app,bool visible){
         if(!end||*end!='/'||bone<0||std::uint32_t(bone)>=record.boneCount)return {};
         const std::string lane=end+1;
         if(lane=="visible"||lane.rfind("ik/",0)==0)
-            return NativeSelection(mdl::DisplayKeys(identity.model),mdl::kDisplayKeyCapacity,0,frames);
+            return NativeSelection(mdl::DisplayKeys(identity.model), mdl::KeyPoolCapacity(mdl::DisplayKeys(identity.model)),0,frames);
         return NativeSelection(mdl::BoneKeys(identity.model),mdl::BoneKeyCapacity(record),std::size_t(bone),frames);
     });
     session.sources.push_back(std::move(source));

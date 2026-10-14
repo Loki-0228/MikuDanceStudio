@@ -1,3 +1,9 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include <set>
+#include <array>
+#include <string>
+#include "mikudancestudio/display_capacity.hpp"
+#include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/ui_translation.hpp"
 // ===========================================================================
 // CommandDispatch family: control notifications 400..449 (0x47E8A0)
@@ -356,7 +362,7 @@ static unsigned char* ActiveModel(MMDApp* app) {
 // functions duplicate this allocator/splice sequence byte for byte for each
 // payload shape.
 template <typename Key, typename Source, typename Fill>
-static int InsertGlobalFrame(MMDApp* app, Key* table,
+static int InsertGlobalFrame(MMDApp* app, Key*& table,
                              std::uint32_t relativeFrame,
                              const Source& source, Fill fill,
                              int advertisedCapacity = 10000) {
@@ -364,8 +370,8 @@ static int InsertGlobalFrame(MMDApp* app, Key* table,
         return 0;
     }
 
-    const std::uint32_t frame =
-        relativeFrame + static_cast<std::uint32_t>(app->CurrentFrame());
+    std::uint32_t frame;
+    if(!frame_limits::Add(app->CurrentFrame(),relativeFrame,frame))return 0;
     std::uint32_t index = 0;
     std::uint32_t next = table[0].next;
     while (next != 0) {
@@ -377,47 +383,22 @@ static int InsertGlobalFrame(MMDApp* app, Key* table,
         next = candidate.next;
     }
 
-    Key& current = table[index];
-    if (current.frame == frame) {
-        fill(current, source);
+    if (table[index].frame == frame) {
+        fill(table[index], source);
         return 1;
     }
 
-    std::uint32_t freeIndex = 1;
-    while (freeIndex < 10000 && table[freeIndex].frame != 0) {
-        ++freeIndex;
-    }
-    if (freeIndex >= 10000) {
-        char message[0x100];
-        if (app->state.englishUI != 0) {
-            sprintf_s(message, sizeof(message),
-                      "You cannot regist over %dpoint.\n"
-                      "Please execute 'delete unused frame'",
-                      advertisedCapacity);
-            LegacyUiMessageBoxA(app->MainWindow(), message,
-                        "register frame", 0);
-        } else {
-            // 0x52B918 / 0x52B908, original Shift-JIS resources.
-            static const char kJpOverflow[] =
-                "\x93\x6f\x98\x5e\x83\x7c\x83\x43\x83\x93\x83\x67"
-                "\x90\x94\x82\xaa%d\x8c\xc2\x82\xf0\x89\x7a\x82\xa6"
-                "\x82\xdc\x82\xb5\x82\xbd\n\x82\xb1\x82\xea\x88\xc8"
-                "\x8f\xe3\x82\xcc\x93\x6f\x98\x5e\x82\xcd\x8d\x73"
-                "\x82\xa6\x82\xdc\x82\xb9\x82\xf1\n\x81\x75\xcc\xda"
-                "\xb0\xd1\x95\xd2\x8f\x57\x81\x76\x82\xcc\x81\x75"
-                "\x95\x73\x97\x70\xcc\xda\xb0\xd1\x8d\xed\x8f\x9c"
-                "\x81\x76\x82\xf0\x8e\xc0\x8d\x73\x82\xb5\x82\xc4"
-                "\x89\xba\x82\xb3\x82\xa2";
-            static const char kJpTitle[] =
-                "\xcc\xda\xb0\xd1\x93\x6f\x98\x5e";
-            sprintf_s(message, sizeof(message), kJpOverflow,
-                      advertisedCapacity);
-            LegacyUiMessageBoxA(app->MainWindow(), message,
-                        kJpTitle, 0);
-        }
+    std::uint32_t freeIndex = 0;
+    if (!mdl::KeyPoolFreeSlot(table, freeIndex)) {
+        const wchar_t* messages[] = {
+            L"メモリを確保できないため、キーフレームを登録しませんでした。",
+            L"Unable to allocate keyframe storage. The keyframe was not registered.",
+            L"无法扩展关键帧存储，本次注册已取消。"};
+        MessageBoxW(app->MainWindow(), messages[app->EnglishUI() <= 2 ? app->EnglishUI() : 1],
+                    L"MikuDanceStudio", MB_OK | MB_ICONERROR);
         return 0;
     }
-
+    Key& current = table[index];
     Key& added = table[freeIndex];
     if (current.frame < frame) {
         // Append after the last record reached by the walk.
@@ -667,7 +648,7 @@ void DeleteMarkedKeyframes(MMDApp* app) {
         if (camera[0].selected != 0) {
             ResetCameraRecord(camera[0], true);
         }
-        for (std::uint32_t i = 1; i < 10000; ++i) {
+        for (std::uint32_t i = 1, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(camera)); i < poolCapacity; ++i) {
             if (camera[i].selected != 0) {
                 UnlinkGlobalKey(camera, i);
                 ResetCameraRecord(camera[i], false);
@@ -679,7 +660,7 @@ void DeleteMarkedKeyframes(MMDApp* app) {
             ResetLightRecord(light[0], true);
             light[0].next = 0;
         }
-        for (std::uint32_t i = 1; i < 10000; ++i) {
+        for (std::uint32_t i = 1, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(light)); i < poolCapacity; ++i) {
             if (light[i].selected != 0) {
                 UnlinkGlobalKey(light, i);
                 ResetLightRecord(light[i], false);
@@ -691,7 +672,7 @@ void DeleteMarkedKeyframes(MMDApp* app) {
             ResetShadowRecord(app, shadow[0]);
             shadow[0].next = 0;
         }
-        for (std::uint32_t i = 1; i < 10000; ++i) {
+        for (std::uint32_t i = 1, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(shadow)); i < poolCapacity; ++i) {
             if (shadow[i].selected != 0) {
                 UnlinkGlobalKey(shadow, i);
                 ResetShadowRecord(app, shadow[i]);
@@ -703,7 +684,7 @@ void DeleteMarkedKeyframes(MMDApp* app) {
             ResetGravityRecord(gravity[0]);
             gravity[0].next = 0;
         }
-        for (std::uint32_t i = 1; i < 10000; ++i) {
+        for (std::uint32_t i = 1, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(gravity)); i < poolCapacity; ++i) {
             if (gravity[i].selected != 0) {
                 UnlinkGlobalKey(gravity, i);
                 ResetGravityRecord(gravity[i]);
@@ -718,7 +699,7 @@ void DeleteMarkedKeyframes(MMDApp* app) {
             if (accessory[0].selected != 0) {
                 ResetAccessoryRecord(accessory[0]);
             }
-            for (std::uint32_t i = 1; i < 10000; ++i) {
+            for (std::uint32_t i = 1, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(accessory)); i < poolCapacity; ++i) {
                 if (accessory[i].selected != 0) {
                     UnlinkAccessoryKey(accessory, i);
                     ResetAccessoryRecord(accessory[i]);
@@ -824,9 +805,9 @@ void ResetViewVariant(MMDApp* app, float rot, bool gate30C, bool rotIn310) {
 // The frame/30 conversion of case 408 (0x487446): fild (int -> double),
 // fadd 4294967296.0 when negative (i.e. unsigned re-interpretation), then
 // fdiv by 30.0 - stored as float.
-float FrameToSeconds(std::int32_t v) {
+double FrameToSeconds(std::int32_t v) {
     const double d = static_cast<double>(static_cast<std::uint32_t>(v));
-    return static_cast<float>(d / 30.0);  // dbl_52BA68
+    return d / 30.0;  // dbl_52BA68
 }
 
 // First selected frame in the app+0x374 table (0x54 stride, selection byte
@@ -834,7 +815,7 @@ float FrameToSeconds(std::int32_t v) {
 // 430/431/432, 0x2F8 != 0 branch).
 std::int32_t FirstSelectedFrame374(MMDApp* app) {
     auto* keys = app->CameraKeys();
-    for (std::int32_t i = 0; i < 0x2710; ++i) {
+    for (std::int32_t i = 0; i < mdl::KeyPoolCapacity(keys); ++i) {
         if (keys[i].selected != 0) {
             return i;
         }
@@ -845,7 +826,7 @@ std::int32_t FirstSelectedFrame374(MMDApp* app) {
 template <typename Key>
 void SelectGlobalFrameRange(Key* keys, std::uint32_t from,
                             std::uint32_t to) {
-    for (std::uint32_t i = 0; i < 10000; ++i) {
+    for (std::uint32_t i = 0, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
         Key& key = keys[i];
         key.selected = 0;
         if (from <= key.frame && key.frame <= to &&
@@ -1222,10 +1203,11 @@ static void Cmd400_PlayRangeEdits(MMDApp* app, HWND hwnd) {
         return;  // was: break (switch exit)
     }
     char text[0x100];
-    GetWindowTextA(GetDlgItem(hwnd, panel::kPlayStartFrameEdit), text, 8);
-    const std::int32_t start = atol(text);  // ebx
-    GetWindowTextA(GetDlgItem(hwnd, panel::kPlayStopFrameEdit), text, 8);
-    std::int32_t end = atol(text);  // eax
+    GetWindowTextA(GetDlgItem(hwnd, panel::kPlayStartFrameEdit), text, sizeof text);
+    std::int32_t start = 0, end = 0;
+    if (!frame_limits::Parse(text, start)) { MessageBeep(MB_ICONWARNING); return; }
+    GetWindowTextA(GetDlgItem(hwnd, panel::kPlayStopFrameEdit), text, sizeof text);
+    if (!frame_limits::Parse(text, end)) { MessageBeep(MB_ICONWARNING); return; }
     if (app->PlaybackStartsAtCurrentFrame() != 0) {
         app->PlaybackStartSeconds() = FrameToSeconds(
             app->state.currentFrame);
@@ -1292,10 +1274,11 @@ static void Cmd400_PlayRangeEdits(MMDApp* app, HWND hwnd) {
 // ------------------------------------------------------------------
 static void Cmd400_FrameRangeSelect(MMDApp* app, HWND hwnd) {
     char text[0x100];
-    GetWindowTextA(GetDlgItem(hwnd, panel::kRangeStartEdit), text, 8);
-    const std::int32_t from = atol(text);   // ebx
-    GetWindowTextA(GetDlgItem(hwnd, panel::kRangeStopEdit), text, 8);
-    const std::int32_t to = atol(text);     // var_A40
+    GetWindowTextA(GetDlgItem(hwnd, panel::kRangeStartEdit), text, sizeof text);
+    std::int32_t from = 0, to = 0;
+    if(!frame_limits::Parse(text,from)){MessageBeep(MB_ICONWARNING);return;}
+    GetWindowTextA(GetDlgItem(hwnd, panel::kRangeStopEdit), text, sizeof text);
+    if(!frame_limits::Parse(text,to)){MessageBeep(MB_ICONWARNING);return;}
     GetWindowTextA(GetDlgItem(hwnd, panel::kRegisterScopeCombo), text, 20);
     if (app->state.optflag[0] == 0) {
         // Fixed entries carry semantic IDs; model-owned names retain the
@@ -1340,7 +1323,7 @@ static void Cmd400_FrameRangeSelect(MMDApp* app, HWND hwnd) {
             {
                 unsigned char* model = ActiveModel(app);
                 SelectModelFrameRange(
-                    mdl::DisplayKeys(model), 1000, 1,
+                    mdl::DisplayKeys(model), mdl::KeyPoolCapacity(mdl::DisplayKeys(model)), 1,
                     static_cast<std::uint32_t>(from),
                     static_cast<std::uint32_t>(to));
             }
@@ -1393,10 +1376,10 @@ static void Cmd400_FrameRangeSelect(MMDApp* app, HWND hwnd) {
             // 0x2DAC
             unsigned char* model = ActiveModel(app);
             const mdl::ModelRecord& record = *mdl::Mdl(model);
-            const std::uint8_t morphCount = record.facialFrameCount;
+            const std::uint32_t morphCount = mikudancestudio::mdl::FacialFrameCount(record);
             if (morphCount != 0) {
                 mdl::FrameGroup* groups = record.displayFrames;
-                for (std::uint8_t i = 0; i < morphCount; ++i) {
+                for (std::uint32_t i = 0; i < morphCount; ++i) {
                     mdl::FrameGroup& group = groups[i];
                     if (group.selected != 0) {
                         MarkKeyTrackRangeByName(
@@ -1527,7 +1510,7 @@ static void Cmd400_SelectionMarkSync(MMDApp* app) {
             }
         }
         // loop C: camera marks -> bone/morph only
-        for (std::uint32_t keyIndex = 0; keyIndex < 1000; ++keyIndex) {
+        for (std::uint32_t keyIndex = 0, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(displayKeys)); keyIndex < poolCapacity; ++keyIndex) {
             if (displayKeys[keyIndex].allocated != 0) {
                 const std::uint32_t frame = displayKeys[keyIndex].frame;
                 if (modelRecord->boneCount > 0) {
@@ -1565,29 +1548,33 @@ static void Cmd400_SelectionMarkSync(MMDApp* app) {
                 }
             };
 
-        for (std::int32_t i = 0; i < 0x2710; ++i) {
-            if (cameraKeys[i].selected != 0) {
+        const auto cameraKeysCapacity = mdl::KeyPoolCapacity(cameraKeys);
+        const auto lightKeysCapacity = mdl::KeyPoolCapacity(lightKeys);
+        const auto shadowKeysCapacity = mdl::KeyPoolCapacity(shadowKeys);
+        const auto gravityKeysCapacity = mdl::KeyPoolCapacity(gravityKeys);
+        for (std::int32_t i = 0; i < (std::max)({cameraKeysCapacity,lightKeysCapacity,shadowKeysCapacity,gravityKeysCapacity}); ++i) {
+            if (i < cameraKeysCapacity && cameraKeys[i].selected != 0) {
                 const std::uint32_t frame = cameraKeys[i].frame;
                 MarkFrameSelected(lightKeys, 0, frame);
                 MarkFrameSelected(shadowKeys, 0, frame);
                 MarkFrameSelected(gravityKeys, 0, frame);
                 markAccessories(frame, -1);
             }
-            if (lightKeys[i].selected != 0) {
+            if (i < lightKeysCapacity && lightKeys[i].selected != 0) {
                 const std::uint32_t frame = lightKeys[i].frame;
                 MarkFrameSelected(cameraKeys, 0, frame);
                 MarkFrameSelected(shadowKeys, 0, frame);
                 MarkFrameSelected(gravityKeys, 0, frame);
                 markAccessories(frame, -1);
             }
-            if (shadowKeys[i].selected != 0) {
+            if (i < shadowKeysCapacity && shadowKeys[i].selected != 0) {
                 const std::uint32_t frame = shadowKeys[i].frame;
                 MarkFrameSelected(cameraKeys, 0, frame);
                 MarkFrameSelected(lightKeys, 0, frame);
                 MarkFrameSelected(gravityKeys, 0, frame);
                 markAccessories(frame, -1);
             }
-            if (gravityKeys[i].selected != 0) {
+            if (i < gravityKeysCapacity && gravityKeys[i].selected != 0) {
                 const std::uint32_t frame = gravityKeys[i].frame;
                 MarkFrameSelected(cameraKeys, 0, frame);
                 MarkFrameSelected(lightKeys, 0, frame);
@@ -1602,7 +1589,7 @@ static void Cmd400_SelectionMarkSync(MMDApp* app) {
                 continue;
             }
             auto* keys = app->AccessoryKeys(slot);
-            for (std::int32_t i = 0; i < 0x2710; ++i) {
+            for (std::int32_t i = 0; i < mdl::KeyPoolCapacity(keys); ++i) {
                 if (keys[i].selected == 0) {
                     continue;
                 }
@@ -1663,7 +1650,7 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
             clipboardCounts.morphs = CountMarkedModelKeys(
                 mdl::MorphKeys(model), mdl::MorphKeyCapacity(mdl::MorphKeys(model)), minFrame);
             clipboardCounts.displays = CountMarkedModelKeys(
-                mdl::DisplayKeys(model), 1000, minFrame);
+                mdl::DisplayKeys(model), mdl::KeyPoolCapacity(mdl::DisplayKeys(model)), minFrame);
         }
         const std::uint32_t boneSel = clipboardCounts.bones;
         const std::uint32_t morphSel = clipboardCounts.morphs;
@@ -1818,7 +1805,7 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
             const std::int32_t lightCount =
                 mdl::Mdl(model)->boneOrderCount;
             std::uint32_t cnt = 0;
-            for (std::uint32_t keyIndex = 0; keyIndex < 1000;
+            for (std::uint32_t keyIndex = 0, poolCapacity = static_cast<std::uint32_t>(mdl::KeyPoolCapacity(displayKeys)); keyIndex < poolCapacity;
                  ++keyIndex) {
                 const mdl::DisplayKey& key = displayKeys[keyIndex];
                 if (key.allocated == 0) {
@@ -1885,18 +1872,18 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
         clipboardCounts.gravity = 0;
         clipboardCounts.accessories = 0;
         clipboardCounts.cameras =
-            CountSelectedKeys(app->CameraKeys(), 10000, minFrame);
+            CountSelectedKeys(app->CameraKeys(), mdl::KeyPoolCapacity(app->CameraKeys()), minFrame);
         clipboardCounts.lights =
-            CountSelectedKeys(app->LightKeys(), 10000, minFrame);
+            CountSelectedKeys(app->LightKeys(), mdl::KeyPoolCapacity(app->LightKeys()), minFrame);
         clipboardCounts.shadows =
-            CountSelectedKeys(app->ShadowKeys(), 10000, minFrame);
+            CountSelectedKeys(app->ShadowKeys(), mdl::KeyPoolCapacity(app->ShadowKeys()), minFrame);
         clipboardCounts.gravity =
-            CountSelectedKeys(app->GravityKeys(), 10000, minFrame);
+            CountSelectedKeys(app->GravityKeys(), mdl::KeyPoolCapacity(app->GravityKeys()), minFrame);
         {
             std::uint32_t accessoryCount = 0;
-            for (std::size_t keyIndex = 0; keyIndex < 10000;
-                 ++keyIndex) {
-                for (std::int32_t slot = 0; slot < 0xFF; ++slot) {
+            for (std::int32_t slot = 0; slot < 0xFF; ++slot) {
+                for (std::size_t keyIndex = 0, capacity = mdl::KeyPoolCapacity(app->AccessoryKeys(slot));
+                     keyIndex < capacity; ++keyIndex) {
                     auto* keys = app->AccessoryKeys(slot);
                     const mdl::AccessoryKey& key = keys[keyIndex];
                     if (key.selected != 0) {
@@ -1936,7 +1923,7 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
             auto* keys = app->CameraKeys();
             auto* dst = app->CameraClipboard();
             std::uint32_t cnt = 0;
-            for (std::size_t i = 0; i < 10000; ++i) {
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
                 const mdl::CameraKey& key = keys[i];
                 if (key.selected == 0) {
                     continue;
@@ -1960,7 +1947,7 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
             auto* keys = app->LightKeys();
             auto* dst = app->LightClipboard();
             std::uint32_t cnt = 0;
-            for (std::size_t i = 0; i < 10000; ++i) {
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
                 const mdl::LightKey& key = keys[i];
                 if (key.selected == 0) {
                     continue;
@@ -1978,7 +1965,7 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
             auto* keys = app->ShadowKeys();
             auto* dst = app->ShadowClipboard();
             std::uint32_t cnt = 0;
-            for (std::size_t i = 0; i < 10000; ++i) {
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
                 const mdl::SelfShadowKey& key = keys[i];
                 if (key.selected == 0) {
                     continue;
@@ -1995,7 +1982,7 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
             auto* keys = app->GravityKeys();
             auto* dst = app->GravityClipboard();
             std::uint32_t cnt = 0;
-            for (std::size_t i = 0; i < 10000; ++i) {
+            for (std::size_t i = 0, poolCapacity = static_cast<std::size_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
                 const mdl::GravityKey& key = keys[i];
                 if (key.selected == 0) {
                     continue;
@@ -2015,9 +2002,9 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
         {
             auto* dst = app->AccessoryClipboard();
             std::uint32_t cnt = 0;
-            for (std::size_t keyIndex = 0; keyIndex < 10000;
-                 ++keyIndex) {
-                for (std::int32_t slot = 0; slot < 0xFF; ++slot) {
+            for (std::int32_t slot = 0; slot < 0xFF; ++slot) {
+                for (std::size_t keyIndex = 0, capacity = mdl::KeyPoolCapacity(app->AccessoryKeys(slot));
+                     keyIndex < capacity; ++keyIndex) {
                     auto* keys = app->AccessoryKeys(slot);
                     const mdl::AccessoryKey& key = keys[keyIndex];
                     if (key.selected == 0) {
@@ -2057,7 +2044,60 @@ static void Cmd400_FrameCopy(MMDApp* app, HWND hwnd) {
 // frame, 0xA0CC4), and for camera mode the reload chain (ReloadModels,
 // RefreshLightPanel, RefreshSelfShadowPanel, ApplyGravityTrack, ApplyAccessoryTrack per slot, SyncAccessoryEditPanel).
 // ------------------------------------------------------------------
+// Reserve the whole paste before marks, undo records or keys are changed.
+static bool PrepareFramePaste(MMDApp* app) {
+    const auto& n=app->ClipboardCounts();
+    const auto frames=[&](const auto* records,std::uint32_t count) {
+        if(count&&!records)return false;
+        std::uint32_t frame=0;
+        for(std::uint32_t i=0;i<count;++i)
+            if(!frame_limits::Add(app->CurrentFrame(),records[i].frame,frame))return false;
+        return true;
+    };
+    const auto needed=[](const auto* pool,std::size_t cap,std::size_t dense,std::uint32_t count) {
+        std::uint64_t free=0;
+        for(std::size_t i=dense;pool&&i<cap;++i)if(!pool[i].frame)++free;
+        return std::uint64_t(cap)+(count>free?count-free:0);
+    };
+    try {
+        if(app->state.optflag[0]==0) {
+            auto* raw=ActiveModel(app);if(!raw)return false;auto& m=*mdl::Mdl(raw);
+            if(!frames(app->BoneClipboard(),n.bones)||!frames(app->MorphClipboard(),n.morphs)||!frames(app->DisplayClipboard(),n.displays))return false;
+            // The legacy clipboard identifies tracks by their short names.
+            // Refuse ambiguous destinations before any family can be pasted.
+            const auto unique=[](const auto* records,std::uint32_t count) {
+                std::set<std::string> names;
+                for(std::uint32_t i=0;i<count;++i)
+                    if(!names.emplace(records[i].name,strnlen_s(records[i].name,sizeof records[i].name)).second)return false;
+                return true;
+            };
+            if(((n.bones||n.displays)&&!unique(m.boneTable,m.boneCount)) ||
+                (n.morphs&&!unique(m.morphs,m.morphCount)))return false;
+            return mdl::BoneKeyPoolEnsure(m,needed(m.boneKeys,mdl::BoneKeyCapacity(m),m.boneCount,n.bones)) &&
+                mdl::MorphKeyPoolEnsure(m,needed(m.morphKeys,mdl::MorphKeyCapacity(m),m.morphCount,n.morphs)) &&
+                mdl::DisplayKeyPoolEnsure(m,needed(m.displayKeys,mdl::KeyPoolCapacity(m.displayKeys),1,n.displays));
+        }
+        if(!frames(app->CameraClipboard(),n.cameras)||!frames(app->LightClipboard(),n.lights)||
+           !frames(app->ShadowClipboard(),n.shadows)||!frames(app->GravityClipboard(),n.gravity))return false;
+        std::array<std::uint32_t,255> accessories{};
+        if(n.accessories&&!app->AccessoryClipboard())return false;
+        for(std::uint32_t i=0;i<n.accessories;++i){
+            const auto& key=app->AccessoryClipboard()[i];std::uint32_t frame=0;
+            if(key.slot>=255||!app->AccessorySlot(key.slot)||!frame_limits::Add(app->CurrentFrame(),key.frameOffset,frame))return false;
+            ++accessories[key.slot];
+        }
+        const auto reserve=[&](auto*& pool,std::uint32_t count){return !count||mdl::KeyPoolEnsure(pool,needed(pool,mdl::KeyPoolCapacity(pool),1,count));};
+        if(!reserve(app->CameraKeys(),n.cameras)||!reserve(app->LightKeys(),n.lights)||
+           !reserve(app->ShadowKeys(),n.shadows)||!reserve(app->GravityKeys(),n.gravity))return false;
+        for(int slot=0;slot<255;++slot)if(!reserve(app->AccessoryKeys(slot),accessories[slot]))return false;
+        return true;
+    } catch(const std::exception&) {return false;}
+}
 static void Cmd400_FramePaste(MMDApp* app, HWND hwnd) {
+    if(!PrepareFramePaste(app)){
+        const wchar_t* messages[]={L"メモリ、フレーム範囲または名前の重複により貼り付けできません。元のキーは保持されています。",L"Paste cannot proceed because of storage, frame range or ambiguous names. Existing keys were preserved.",L"存储空间、帧号范围或名称冲突导致无法粘贴，原关键帧已保留。"};
+        MessageBoxW(hwnd,messages[app->EnglishUI()<=2?app->EnglishUI():1],L"MMS",MB_OK|MB_ICONWARNING);return;
+    }
     if (app->state.optflag[0] == 0) {
         const auto& clipboardCounts = app->ClipboardCounts();
         const std::uint32_t boneSel = clipboardCounts.bones;
@@ -2077,7 +2117,7 @@ static void Cmd400_FramePaste(MMDApp* app, HWND hwnd) {
         ClearModelKeyMarks(mdl::BoneKeys(model),
                            mdl::BoneKeyCapacity(*mdl::Mdl(model)));
         ClearModelKeyMarks(mdl::MorphKeys(model), mdl::MorphKeyCapacity(mdl::MorphKeys(model)));
-        ClearModelKeyMarks(mdl::DisplayKeys(model), 1000);
+        ClearModelKeyMarks(mdl::DisplayKeys(model), mdl::KeyPoolCapacity(mdl::DisplayKeys(model)));
         if (boneSel != 0) {
             // undo/redo buttons + undo-table entry (loc_484C84..)
             EnableWindow(GetDlgItem(hwnd, panel::kUndoButton), TRUE);
@@ -2255,15 +2295,15 @@ static void Cmd400_FramePaste(MMDApp* app, HWND hwnd) {
         app->SceneModified() = 1;
         // clear all camera-mode marks (single sweep over the four
         // tables + the blobs)
-        ClearSelectedKeys(app->CameraKeys(), 10000);
-        ClearSelectedKeys(app->LightKeys(), 10000);
-        ClearSelectedKeys(app->ShadowKeys(), 10000);
-        ClearSelectedKeys(app->GravityKeys(), 10000);
+        ClearSelectedKeys(app->CameraKeys(), mdl::KeyPoolCapacity(app->CameraKeys()));
+        ClearSelectedKeys(app->LightKeys(), mdl::KeyPoolCapacity(app->LightKeys()));
+        ClearSelectedKeys(app->ShadowKeys(), mdl::KeyPoolCapacity(app->ShadowKeys()));
+        ClearSelectedKeys(app->GravityKeys(), mdl::KeyPoolCapacity(app->GravityKeys()));
         // (the original dereferences every blob pointer here - the
         // 0x384 table is expected to be fully populated)
         for (std::int32_t slot = 0; slot < 0xFF; ++slot) {
             auto* keys = app->AccessoryKeys(slot);
-            ClearSelectedKeys(keys, 10000);
+            ClearSelectedKeys(keys, mdl::KeyPoolCapacity(keys));
         }
         const std::int32_t frame =
             app->state.currentFrame;
@@ -2370,7 +2410,7 @@ static void Cmd400_FrameReversePaste(MMDApp* app, HWND hwnd) {
     ClearModelKeyMarks(mdl::BoneKeys(model),
                        mdl::BoneKeyCapacity(*mdl::Mdl(model)));
     ClearModelKeyMarks(mdl::MorphKeys(model), mdl::MorphKeyCapacity(mdl::MorphKeys(model)));
-    ClearModelKeyMarks(mdl::DisplayKeys(model), 1000);
+    ClearModelKeyMarks(mdl::DisplayKeys(model), mdl::KeyPoolCapacity(mdl::DisplayKeys(model)));
     // undo-table entry (loc_485D88..) - identical shape to 421
     EnableWindow(GetDlgItem(hwnd, panel::kUndoButton), TRUE);
     EnableWindow(GetDlgItem(hwnd, panel::kRedoButton), FALSE);
@@ -2530,7 +2570,7 @@ static void Cmd400_CurvePasteToFrames(MMDApp* app, HWND hwnd) {
         SendMessageA(GetDlgItem(hwnd, panel::kInterpCurveCombo), CB_GETCURSEL, 0, 0);
     if (app->state.optflag[0] != 0) {
         auto* keys = app->CameraKeys();
-        for (std::int32_t i = 0; i < 10000; ++i) {
+        for (std::int32_t i = 0, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
             mdl::CameraKey& key = keys[i];
             if (key.selected == 0) {
                 continue;
@@ -2587,7 +2627,7 @@ static void Cmd400_CurveResetRows(MMDApp* app, HWND hwnd) {
         SendMessageA(GetDlgItem(hwnd, panel::kInterpCurveCombo), CB_GETCURSEL, 0, 0);
     if (app->state.optflag[0] != 0) {
         auto* keys = app->CameraKeys();
-        for (std::int32_t i = 0; i < 10000; ++i) {
+        for (std::int32_t i = 0, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
             mdl::CameraKey& key = keys[i];
             if (key.selected == 0) {
                 continue;
@@ -2803,7 +2843,7 @@ static void Cmd400_DeleteModel(MMDApp* app, HWND hwnd) {
             }
         }
         mdl::DisplayKey* displayKeys = mdl::DisplayKeys(m);
-        for (std::int32_t keyIndex = 0; keyIndex < 1000; ++keyIndex) {
+        for (std::int32_t keyIndex = 0, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(displayKeys)); keyIndex < poolCapacity; ++keyIndex) {
             auto* states = mdl::SelectorStates(displayKeys[keyIndex]);
             const std::int32_t cnt = record.boneOrderCount;
             for (std::int32_t k = 0; k < cnt; ++k) {
@@ -2824,7 +2864,7 @@ static void Cmd400_DeleteModel(MMDApp* app, HWND hwnd) {
     // Clear camera key attachment references to the deleted model.
     {
         auto* keys = app->CameraKeys();
-        for (std::int32_t i = 0; i < 10000; ++i) {
+        for (std::int32_t i = 0, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(keys)); i < poolCapacity; ++i) {
             if (keys[i].parentModel == found) {
                 keys[i].parentModel = -1;
                 keys[i].parentBone = 0;
@@ -2843,7 +2883,7 @@ static void Cmd400_DeleteModel(MMDApp* app, HWND hwnd) {
         }
         auto* keys = app->AccessoryKeys(i);
         if (keys != nullptr) {
-            for (std::int32_t keyIndex = 0; keyIndex < 10000;
+            for (std::int32_t keyIndex = 0, poolCapacity = static_cast<std::int32_t>(mdl::KeyPoolCapacity(keys)); keyIndex < poolCapacity;
                  ++keyIndex) {
                 mdl::AccessoryKey& key = keys[keyIndex];
                 if (key.parentModel == found) {
@@ -3083,7 +3123,7 @@ void CmdControl400(MMDApp* app, HWND hwnd, std::uint16_t id,
         ClearModelKeyMarks(mdl::BoneKeys(model),
                            mdl::BoneKeyCapacity(*mdl::Mdl(model)));
         ClearModelKeyMarks(mdl::MorphKeys(model), mdl::MorphKeyCapacity(mdl::MorphKeys(model)));
-        ClearModelKeyMarks(mdl::DisplayKeys(model), 1000);
+        ClearModelKeyMarks(mdl::DisplayKeys(model), mdl::KeyPoolCapacity(mdl::DisplayKeys(model)));
         RegisterDisplayKeyCurrent(model, app->state.currentFrame);
         const std::uint32_t v = mdl::Mdl(model)->maxFrame;
         if (app->state.lastRegisteredFrame < v) {

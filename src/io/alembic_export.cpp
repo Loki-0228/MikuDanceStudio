@@ -1,3 +1,4 @@
+#include "mikudancestudio/frame_limits.hpp"
 #define NOMINMAX
 #include "mikudancestudio/alembic_export.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
@@ -69,7 +70,7 @@ bool CanExport(const MMDApp* app) {
 Result Export(MMDApp& app,const std::filesystem::path& path,const Options& options,const Progress& progress) {
     Result result;
     if(!CanExport(&app)||!app.Renderer()||!app.Renderer()->device) {result.error="No scene is available, or playback/export is active";return result;}
-    if((options.writeAbc&&path.empty())||(!options.writeAbc&&!options.bakeIntoProject)||options.firstFrame<0||options.lastFrame<options.firstFrame||options.lastFrame>100000||
+    if((options.writeAbc&&path.empty())||(!options.writeAbc&&!options.bakeIntoProject)||options.firstFrame<0||options.lastFrame<options.firstFrame||options.lastFrame>frame_limits::maximum||
        options.framesPerSecond<1||options.framesPerSecond>120||(options.selectedOnly&&!app.SelectedModel())) {
         result.error="Invalid path, frame range, frame rate, or model selection";return result;
     }

@@ -1,3 +1,4 @@
+#include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // MikuDanceStudio - scene-resident allocation teardown
 // ===========================================================================
@@ -94,19 +95,19 @@ void ReleaseGlobalTimelineTracks(MMDApp& app) {
     // twice.
     // Defect AB-06.
     if (app.CameraKeys() != nullptr) {
-        ::operator delete(app.CameraKeys());
+        mdl::KeyPoolDestroy(app.CameraKeys());
         app.CameraKeys() = nullptr;
     }
     if (app.LightKeys() != nullptr) {
-        ::operator delete(app.LightKeys());
+        mdl::KeyPoolDestroy(app.LightKeys());
         app.LightKeys() = nullptr;
     }
     if (app.ShadowKeys() != nullptr) {
-        ::operator delete(app.ShadowKeys());
+        mdl::KeyPoolDestroy(app.ShadowKeys());
         app.ShadowKeys() = nullptr;
     }
     if (app.GravityKeys() != nullptr) {
-        ::operator delete(app.GravityKeys());
+        mdl::KeyPoolDestroy(app.GravityKeys());
         app.GravityKeys() = nullptr;
     }
 }
@@ -139,7 +140,7 @@ void ReleaseAccessoriesAndTracks(MMDApp& app) {
         mdl::AccessoryKey*& track = app.AccessoryKeys(slot);
         if (track != nullptr) {
             TraceAccessoryRelease(slot, "before-free", track);
-            ::operator delete(track);
+            mdl::KeyPoolDestroy(track);
             TraceAccessoryRelease(slot, "after-free", nullptr);
             track = nullptr;
         }

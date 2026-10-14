@@ -1,3 +1,5 @@
+#include "mikudancestudio/frame_limits.hpp"
+#include <algorithm>
 // ===========================================================================
 // VA 0x00414610 - PanelPaint  (original: sub_414610, ~0x880 bytes)
 // ===========================================================================
@@ -133,7 +135,7 @@ void DrawBandList(MMDApp* app, HDC panel, HDC icons, Key* keys,
     if (keys == nullptr)
         return;
     const std::int32_t scroll = app->state.timelineStartFrame;
-    const std::int32_t limit = scroll + rowCount;
+    const std::int64_t limit = std::int64_t(scroll) + rowCount;
     if (static_cast<std::int32_t>(keys[0].frame) >= limit)
         return;
     int record = 0;
@@ -223,7 +225,9 @@ void PanelPaint(MMDApp* app) {
         char sel[0x100];
         int x = kGridX0;
         for (int idx = 0; idx < rows; ++idx) {
-            const std::int32_t n = scroll + idx;
+            const auto wideFrame=std::int64_t(scroll)+idx;
+            if(wideFrame>frame_limits::maximum)continue;
+            const std::int32_t n = static_cast<std::int32_t>(wideFrame);
             COLORREF color;
             if (n == app->state.currentFrame) {
                 sprintf_s(sel, sizeof(sel), "%-4d", n);
@@ -335,7 +339,7 @@ void PanelPaint(MMDApp* app) {
             static_cast<std::uint32_t>(app->state.currentFrame) +
             static_cast<std::uint32_t>(rows / 2);
         if (nMax < mid) nMax = mid;
-        scrollInfo.nMax = static_cast<int>(nMax) - 1;
+        scrollInfo.nMax = static_cast<int>((std::min)(nMax,std::uint32_t(frame_limits::maximum))) - 1;
         scrollInfo.nPage = static_cast<DWORD>(rows);
         scrollInfo.nPos = static_cast<int>(pos);
         // 别名回写：不回写则 page/thumb 滚动读到 0，SB_PAGEUP/DOWN 不动、
@@ -380,7 +384,7 @@ void PanelPaint(MMDApp* app) {
 
     if (app->state.optflag[0] != 0) {
         // --- 6a. display mode: four fixed bands + accessory bands ----------
-        const std::int32_t limit = scroll + rows;
+        const std::int64_t limit = std::int64_t(scroll) + rows;
         DrawBandList(app, panel, icons,
                      app->CameraKeys(),
                      17, app->state.rowHitBand0, rows);
@@ -446,7 +450,7 @@ void PanelPaint(MMDApp* app) {
     } else {
         // --- 6b. bone-edit mode: bone / morph / IK lists -------------------
         unsigned char* model = CurrentModel(app);
-        const std::int32_t limit = scroll + rows;
+        const std::int64_t limit = std::int64_t(scroll) + rows;
 
         // model display/IK list (model+0x26E8) - 0x414F6F..0x415122
         mdl::DisplayKey* displayKeys = mdl::DisplayKeys(model);
