@@ -621,9 +621,12 @@ LRESULT CALLBACK GuardCameraLoadProbe(int code, WPARAM wp, LPARAM lp) {
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
-void CheckPmmCameraLoad(MMDApp* app, const wchar_t* scene, const wchar_t* output) {
-    wcscpy_s(app->EnvFileName(), 256, scene);
-    LoadSceneFile();
+void CheckPmmCameraLoad(MMDApp* app, const wchar_t* scene, const wchar_t* output,
+                        bool loadedAtStartup = false) {
+    if (!loadedAtStartup) {
+        wcscpy_s(app->EnvFileName(), 256, scene);
+        LoadSceneFile();
+    }
     Check(app->WindowLayoutReady() != 0, "PMM load completes");
     const auto capture = [&](const char* label) {
         std::printf("%s frame=%d mode=%d follow=%d parent=%d/%d suppressed=%d "
@@ -641,6 +644,19 @@ void CheckPmmCameraLoad(MMDApp* app, const wchar_t* scene, const wchar_t* output
         for (auto kind : {D3DTS_WORLD, D3DTS_VIEW, D3DTS_PROJECTION})
             Check(SUCCEEDED(app->Renderer()->device->GetTransform(kind, &result[index++])),
                   "read loaded camera transforms");
+        wchar_t directory[MAX_PATH]{};
+        if (GetEnvironmentVariableW(L"MMS_PMM_CAMERA_CAPTURE_DIR", directory, MAX_PATH)) {
+            app->state.messageSeen = 1;
+            RenderFrameScene(app);
+            IDirect3DSurface9* surface = nullptr;
+            Check(SUCCEEDED(app->Renderer()->device->GetRenderTarget(0, &surface)),
+                  "read camera regression surface");
+            const std::wstring name(label, label + std::strlen(label));
+            const std::wstring path = std::wstring(directory) + L"/" + name + L".png";
+            Check(SUCCEEDED(d3dx::Get().saveSurfaceToFileW(path.c_str(), 3, surface, nullptr, nullptr)),
+                  "save camera regression surface");
+            surface->Release();
+        }
         return result;
     };
     const auto loaded = capture("loaded");
@@ -650,14 +666,38 @@ void CheckPmmCameraLoad(MMDApp* app, const wchar_t* scene, const wchar_t* output
     // would also discard unregistered bone poses stored in the PMM.
     ReloadModels(app);
     const auto refreshed = capture("refreshed");
-    float difference = 0;
-    for (int matrix = 0; matrix < 3; ++matrix)
-        for (int row = 0; row < 4; ++row)
-            for (int column = 0; column < 4; ++column)
-                difference = (std::max)(difference, std::fabs(
-                    loaded[matrix].m[row][column] - refreshed[matrix].m[row][column]));
-    std::printf("camera transform max difference=%.9g\n", difference);
-    Check(difference < 1e-5f, "opening a tracked PMM matches refreshing its current frame");
+    const auto compare = [&](const auto& actual, const char* label) {
+        float difference = 0;
+        for (int matrix = 0; matrix < 3; ++matrix)
+            for (int row = 0; row < 4; ++row)
+                for (int column = 0; column < 4; ++column)
+                    difference = (std::max)(difference, std::fabs(
+                        loaded[matrix].m[row][column] - actual[matrix].m[row][column]));
+        std::printf("%s: camera transform max difference=%.9g\n", label, difference);
+        Check(difference < 1e-5f, label);
+    };
+    compare(refreshed, "opening tracking matches refreshing its current camera key");
+    CmdFileMenu(app, app->MainWindow(), 247, 0);
+    CmdFileMenu(app, app->MainWindow(), 247, 0);
+    const auto tracked = capture("after restoring tracking");
+    compare(tracked, "loading tracking restores the same view as enabling tracking");
+    // The playback initializer clears the free-editor offsets independently
+    // of the loader and tracking toggle. Keep the cursor at the loaded frame.
+    app->PlaybackCursorSeconds() = double(app->CurrentFrame()) / 30.;
+    UpdateBoneFrames(app);
+    ReloadModels(app);
+    compare(capture("after playback initialization"), "loading tracking matches playback initialization");
+    // A parent bone can legitimately move when the first model/physics frame
+    // evaluates saved edits. Compare the loader/toggle above at the same pose;
+    // only an unattached camera must retain its world matrix across previews.
+    if (app->CameraParentModel() < 0) {
+        for (int frame = 0; frame < 3; ++frame) {
+            app->DeltaTime() = 1.f / 30.f;
+            app->state.messageSeen = 1;
+            FrameDriver(app);
+        }
+        compare(capture("after preview frames"), "preview frames preserve the loaded camera");
+    }
     Check(!IsWindowVisible(app->MainWindow()), "camera load regression stays hidden");
     std::puts("PASS PMM tracked camera is correct before the first frame refresh");
 
@@ -712,6 +752,7 @@ void CheckPmmCameraLoad(MMDApp* app, const wchar_t* scene, const wchar_t* output
             app->CurrentFrame() = frame;
             app->CameraAttachmentTransformSuppressed() = 0;
             ReloadModels(app);
+            ApplyCurrentCameraView(app);
             const auto expected = cameraState();
             app->CameraDistance() = 123.f;
             app->CameraPositionX() = 456.f;
@@ -1463,7 +1504,9 @@ int wmain(int argc, wchar_t** argv) {
     const bool allstarMmv=argc>3&&std::wcscmp(argv[3],L"--allstar-mmv")==0;
     if(allstarMmv)SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    const bool cameraLoad = argc > 3 && std::wcscmp(argv[3], L"--pmm-camera-load") == 0;
+    const bool cameraStartup = argc > 3 && std::wcscmp(argv[3], L"--pmm-camera-startup") == 0;
+    const bool cameraLoad = cameraStartup ||
+        (argc > 3 && std::wcscmp(argv[3], L"--pmm-camera-load") == 0);
     HHOOK cameraLoadHook = cameraLoad ? SetWindowsHookExW(WH_CBT,
         GuardCameraLoadProbe, nullptr, GetCurrentThreadId()) : nullptr;
     if (cameraLoad) Check(cameraLoadHook != nullptr, "install hidden camera load guard");
@@ -1488,6 +1531,7 @@ int wmain(int argc, wchar_t** argv) {
     g_Block = app;
     app->state = MMDAppState{};
     app->InitDefaults();
+    if (cameraStartup) wcscpy_s(app->EnvFileName(), 256, scenePath);
     if (!InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE)) return 3;
     ShowWindow(app->MainWindow(), SW_HIDE);
     if (cameraLoad) {
@@ -1496,7 +1540,7 @@ int wmain(int argc, wchar_t** argv) {
               "camera load test requires the real MME plugin");
         std::puts("MME loaded");
 #endif
-        CheckPmmCameraLoad(app, scenePath, cameraOutput);
+        CheckPmmCameraLoad(app, scenePath, cameraOutput, cameraStartup);
         ShutdownCleanup(app); delete app; g_Block = nullptr;
         UnhookWindowsHookEx(cameraLoadHook);
         return 0;

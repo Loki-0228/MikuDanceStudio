@@ -3237,12 +3237,12 @@ static void LoadSceneV2_SuccessTail(PmmV2LoadContext& ctx,
     s->PhysicsResetPending() = 1;                               // 0x458F43
     s->state.windowLayoutReady = 1;                // 0x458F4C
 
-    // The saved model-editor eye can differ from the camera track even with
-    // tracking enabled. Resolve it before the first paint, as a frame refresh
-    // would. Keep free-view state and unregistered camera-panel edits intact.
+    // Resolve the tracked camera and its eye before the first paint, as the
+    // tracking toggle does. ReloadModels alone retains the saved editor pan.
+    // Keep free-view state and unregistered camera-panel edits intact.
     if (s->state.followCameraEnabled != 0 && s->CameraMode() == 0) {
-        s->CameraAttachmentTransformSuppressed() = 0;
         ReloadModels(s);
+        ApplyCurrentCameraView(s);
     }
     s->ApplyTimelineLightState();
     TraceSceneLightState(s, "pmm-load-tail");
