@@ -67,6 +67,17 @@ void UiTests(MMDApp* app) {
     Check(scale::CalculateSize(1920, 1080, 201, size) && scale::Above4K(size), "above 4K warning boundary");
     Check(!scale::CalculateSize(1920, 1080, 1e300, size), "overflow rejected before conversion");
     Check(app->viewportRender.automatic && app->viewportRender.percent == 100, "new instance defaults");
+    for (double percent : {100., 150., 75., 50., 25., 12.5, 1.}) {
+        app->viewportRender = {false, percent};
+        const unsigned expected = percent >= 75 ? 4096 : percent == 50 ? 2048 : percent == 25 ? 1024 : 512;
+        Check(scale::ShadowSize(app,4096)==expected,"preview shadow budget retains power-of-two tiers and minimum");
+        Check(scale::ShadowSize(app,512)==512,"small shadow map never shrinks below supported minimum");
+    }
+    app->viewportRender = {true,25};
+    Check(scale::ShadowSize(app,4096)==4096,"automatic preview keeps shadow quality");
+    app->viewportRender = {false,25};app->RecordingWindow()=app->MainWindow();
+    Check(scale::ShadowSize(app,4096)==4096,"recording ignores preview shadow budget");
+    app->RecordingWindow()=nullptr;app->viewportRender={};
     for (int lang = 0; lang != 3; ++lang) {
         app->EnglishUI() = static_cast<unsigned char>(lang);
         scale::RefreshMenu(app); scale::RefreshMenu(app);
@@ -163,6 +174,12 @@ void GpuTests(MMDApp* app, D3DMULTISAMPLE_TYPE msaa) {
     void* data = nullptr; app->OverlayVertices()->Lock(0,0,&data,0);
     for (int i=0;i<3;++i) static_cast<Vertex*>(data)[i] = vertex;
     app->OverlayVertices()->Unlock();
+    Check(SUCCEEDED(device->CreateVertexBuffer(sizeof(Vertex)*6,0,
+        D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_TEX1,D3DPOOL_MANAGED,
+        &app->PictureOverlayVertices(),nullptr)),"background geometry for scale regression");
+    app->PictureOverlayVertices()->Lock(0,0,&data,0);
+    for(int i=0;i<6;++i)static_cast<Vertex*>(data)[i]=vertex;
+    app->PictureOverlayVertices()->Unlock();
     for (double percent : {25., 50., 100., 12.5, 150.}) {
         std::wstring error;
         Check(scale::Configure(app, false, percent, error), "valid scale can allocate");
@@ -184,6 +201,9 @@ void GpuTests(MMDApp* app, D3DMULTISAMPLE_TYPE msaa) {
             Check(std::memcmp(data, &vertex, sizeof(vertex)) == 0,
                 "HUD vertices stay in display pixels during scene scaling");
             app->OverlayVertices()->Unlock();
+            app->PictureOverlayVertices()->Lock(0,0,&data,D3DLOCK_READONLY);
+            Check(std::memcmp(data,&vertex,sizeof(vertex))==0,"disabled background is not rewritten during scaling");
+            app->PictureOverlayVertices()->Unlock();
             Check(SUCCEEDED(device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER|D3DCLEAR_STENCIL,0xff2468ac,1,0)), "render scaled color and depth");
             Check(scope.Complete(), "composite scene before drawing display HUD");
             Check(!scale::Rendering(app) && EqualRect(&app->ViewportRect(), &display),
@@ -208,6 +228,25 @@ void GpuTests(MMDApp* app, D3DMULTISAMPLE_TYPE msaa) {
         Check((center&0xffffff) == 0x2468ac, "scaled pixels reach the original display area");
     }
     std::wstring error;
+    Check(SUCCEEDED(device->CreateTexture(1,1,1,0,format,D3DPOOL_MANAGED,
+        &app->PictureBackgroundTexture(),nullptr)),"enabled background texture");
+    app->PictureBackgroundEnabled()=1;
+    Check(scale::Configure(app,false,25,error),"scale enabled background");
+    {
+        scale::FrameScope scope(app);Check(scope.Ready(),"background scaling is ready");
+        app->PictureOverlayVertices()->Lock(0,0,&data,D3DLOCK_READONLY);
+        const auto& scaled=*static_cast<Vertex*>(data);
+        Check(scaled.x==(vertex.x-display.left+.5f)*.25f-.5f &&
+              scaled.y==(vertex.y-display.top+.5f)*.25f-.5f,"enabled background follows scene pixels");
+        app->PictureOverlayVertices()->Unlock();
+        // Destructor must also restore geometry when a scene exits early.
+    }
+    app->PictureOverlayVertices()->Lock(0,0,&data,D3DLOCK_READONLY);
+    Check(std::memcmp(data,&vertex,sizeof(vertex))==0,"early frame exit restores background coordinates");
+    app->PictureOverlayVertices()->Unlock();
+    app->PictureBackgroundEnabled()=0;
+    app->PictureBackgroundTexture()->Release();app->PictureBackgroundTexture()=nullptr;
+    app->PictureOverlayVertices()->Release();app->PictureOverlayVertices()=nullptr;
     Check(scale::Configure(app,true,50,error), "restore auto");
     { scale::FrameScope scope(app); ComPtr<IDirect3DSurface9> target; device->GetRenderTarget(0,&target);
       Check(scope.Ready() && target.Get()==original.Get(), "auto has no offscreen override"); }

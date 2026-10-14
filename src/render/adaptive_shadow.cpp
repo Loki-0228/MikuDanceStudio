@@ -1,6 +1,7 @@
 #include "mikudancestudio/adaptive_shadow.hpp"
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/build_profile.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 
 #if MMD_ORIGINAL_PROFILE
 namespace mikudancestudio {
@@ -247,11 +248,14 @@ std::array<float, 16> UpdateAdaptiveShadowMap(MMDApp* app, const float frame[16]
     if (!device || FAILED(device->GetDeviceCaps(&caps))) return lightProjection;
     const float lateralScale = MinimumShadowScale(lightProjection, scene);
     const unsigned hardwareLimit = (std::min)(caps.MaxTextureWidth, caps.MaxTextureHeight);
-    const unsigned limit = (std::max)(
+    // The screen target alone is not the frame's pixel budget: fixed shadows
+    // otherwise keep rasterizing up to 8192 squared even in a 25% preview.
+    // Dynamic demand already uses the scaled viewport; only cap it here.
+    const unsigned limit = viewport_render_scale::ShadowSize(app, (std::max)(
         FittedShadowResolutionLimit(app->ShadowResolutionLimit(), referenceScale, lateralScale, hardwareLimit),
         FittedShadowResolutionLimit(app->ShadowResolutionLimit(),
             NativeShadowLateralScale(app->ShadowDistance(), app->ShadowMode()),
-            MinimumShadowScale(safeProjection, scene), hardwareLimit));
+            MinimumShadowScale(safeProjection, scene), hardwareLimit)));
     if (limit < 512) return lightProjection;
     unsigned size = limit;
     if (app->AdaptiveShadowResolution()) {

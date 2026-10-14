@@ -147,6 +147,15 @@ Size PreviewSize(MMDApp* app, bool automatic, double percent) {
         unsigned(std::max<LONG>(1, rect.bottom - rect.top)), automatic ? 100 : percent, size);
     return size;
 }
+unsigned ShadowSize(MMDApp* app, unsigned fullSize) {
+    if (build_profile::original || !app || app->viewportRender.automatic || app->RecordingWindow()) return fullSize;
+    const double percent = app->viewportRender.percent;
+    if (!std::isfinite(percent) || percent <= 0 || percent >= 100) return fullSize;
+    const double required = std::max(512.0, fullSize * (percent / 100));
+    unsigned size = fullSize;
+    while (size / 2 >= required) size /= 2;
+    return size;
+}
 bool Configure(MMDApp* app, bool automatic, double percent, std::wstring& error) {
     error.clear();
     const auto text = [&](const wchar_t* zh, const wchar_t* en, const wchar_t* ja) {
@@ -223,8 +232,17 @@ FrameScope::FrameScope(MMDApp* app) {
     rendering = app;
     // Screen text, selection lines and HUD controls stay in display pixels.
     // Only geometry composited as part of the scene follows render resolution.
-    ready_ = ready_ && ScaleBuffer(app->AviOverlayVertices(), 6, 28) && ScaleBuffer(app->PictureOverlayVertices(), 6, 28) &&
-        ScaleBuffer(app->LeftViewportVertices(), 6, 28) && ScaleBuffer(app->RightViewportVertices(), 6, 28);
+    // Do not dirty managed buffers for layers that will not be drawn. Locking
+    // and restoring them every frame adds uploads even to an empty preview.
+    if (app->AviBackgroundEnabled() == 1 && app->AviBackgroundTexture())
+        ready_ = ready_ && ScaleBuffer(app->AviOverlayVertices(), 6, 28);
+    if (app->PictureBackgroundEnabled() && app->PictureBackgroundTexture())
+        ready_ = ready_ && ScaleBuffer(app->PictureOverlayVertices(), 6, 28);
+    if (r->effect && app->SelfShadowCompositionEnabled() && app->SelfShadowMode() > 0)
+        ready_ = ready_ && ScaleBuffer(app->LeftViewportVertices(), 6, 28);
+    if (app->DepthTextureCompositionEnabled() && app->DepthDeviceEnabled() &&
+        !app->FrameStepPlayback() && app->DepthTextureCallback())
+        ready_ = ready_ && ScaleBuffer(app->RightViewportVertices(), 6, 28);
 }
 FrameScope::~FrameScope() { Restore(false); }
 bool FrameScope::Complete() { return Restore(true); }

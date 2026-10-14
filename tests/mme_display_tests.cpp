@@ -3,6 +3,7 @@
 #define NOMINMAX
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
+#include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/scene_sampling.hpp"
 #include "mikudancestudio/d3d12_native.hpp"
@@ -479,6 +480,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
     if (tick > 10) { std::puts("FAIL mapping dialog not found"); std::exit(2); }
 }
 #include "viewport_render_scale_scene_checks.hpp"
+#include "viewport_scale_performance_checks.hpp"
 #include "viewport_scale_dialog_checks.hpp"
 #include "antialias_scene_checks.hpp"
 #include "antialias_startup_checks.hpp"
@@ -567,7 +569,8 @@ int wmain(int argc, wchar_t** argv) {
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (argc == 4 && std::wcscmp(argv[2], L"--viewport-scale") == 0) {
-        if(std::getenv("MMS_VIEWPORT_DIALOG")) CheckViewportScaleDialog(app,argv[3]);
+        if(std::getenv("MMS_VIEWPORT_PERF")) CheckViewportScalePerformance(app,argv[3]);
+        else if(std::getenv("MMS_VIEWPORT_DIALOG")) CheckViewportScaleDialog(app,argv[3]);
         else CheckViewportRenderScale(app, argv[3]);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }

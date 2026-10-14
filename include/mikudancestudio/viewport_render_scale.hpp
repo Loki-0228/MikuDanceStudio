@@ -22,6 +22,9 @@ bool ParsePercent(const wchar_t* text, double& percent);
 bool CalculateSize(unsigned width, unsigned height, double percent, Size& size);
 bool Above4K(Size size);
 Size PreviewSize(MMDApp* app, bool automatic, double percent);
+// Keep secondary shadow passes within the preview budget, retaining the
+// existing power-of-two tiers and 512-pixel floor. Exports keep full quality.
+unsigned ShadowSize(MMDApp* app, unsigned fullSize);
 bool Configure(MMDApp* app, bool automatic, double percent, std::wstring& error);
 void RefreshMenu(MMDApp* app);
 bool HandleCommand(MMDApp* app, unsigned command);

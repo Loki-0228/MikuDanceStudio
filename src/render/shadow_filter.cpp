@@ -1,5 +1,6 @@
 #include "mikudancestudio/shadow_filter.hpp"
 #include "mikudancestudio/build_profile.hpp"
+#include "mikudancestudio/viewport_render_scale.hpp"
 #include "mikudancestudio/d3d_wrapper.hpp"
 #include "mikudancestudio/d3dx_effect.hpp"
 #include "mikudancestudio/mmd_app.hpp"
@@ -314,10 +315,14 @@ FineDepthTarget* Prepare(MMDApp* app, bool nativeSucceeded) {
     state.filtered.Release();
         return nullptr;
     }
-    const UINT cap = (std::min)({8192u, static_cast<UINT>(caps.MaxTextureWidth),
-                                static_cast<UINT>(caps.MaxTextureHeight)});
+    const UINT cap = viewport_render_scale::ShadowSize(app,
+        (std::min)({8192u, static_cast<UINT>(caps.MaxTextureWidth),
+                   static_cast<UINT>(caps.MaxTextureHeight)}));
     if (!cap) { state.fine.Release(); return nullptr; }
-    const UINT requested = (std::min)(cap, (std::max)(4096u,
+    // coarse.Width is already scaled by UpdateAdaptiveShadowMap. Scale only
+    // the quality floor/cap so neither the extra depth pass nor its two filter
+    // passes silently restore full-resolution work in a reduced preview.
+    const UINT requested = (std::min)(cap, (std::max)(viewport_render_scale::ShadowSize(app, 4096u),
         (std::min)(coarse.Width, 8192u) * 2u));
     const AttemptKey key{renderer->device, renderer->hdrTexture, coarse.Width,
         coarse.Height, requested, caps.MaxTextureWidth, caps.MaxTextureHeight,
