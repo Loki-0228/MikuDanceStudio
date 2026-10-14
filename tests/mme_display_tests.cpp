@@ -47,6 +47,7 @@ struct ShaderMacro { const char* name; const char* definition; };
 using CreateEffectFile = HRESULT(WINAPI*)(IDirect3DDevice9*, LPCWSTR,
     const ShaderMacro*, void*, DWORD, void*, void**, void**);
 CreateEffectFile originalCompile = nullptr;
+unsigned fileEffectCompiles = 0;
 HRESULT WINAPI ObserveCompile(IDirect3DDevice9* device, LPCWSTR path,
     const ShaderMacro* macros, void* include, DWORD flags, void* pool,
     void** effect, void** errors) {
@@ -54,6 +55,7 @@ HRESULT WINAPI ObserveCompile(IDirect3DDevice9* device, LPCWSTR path,
     std::string utf8; text_encoding::EncodeExact(path, CP_UTF8, utf8);
     std::printf("COMPILE path=%s result=%08lx\n", utf8.c_str(), static_cast<unsigned long>(result));
     if (std::filesystem::path(path).filename() == L"assigned.fx" && SUCCEEDED(result)) ++emdEffectCompiles;
+    if (SUCCEEDED(result)) ++fileEffectCompiles;
     return result;
 }
 decltype(&ShowWindow) originalShow;
@@ -479,6 +481,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
 #include "viewport_scale_dialog_checks.hpp"
 #include "antialias_scene_checks.hpp"
 #include "antialias_startup_checks.hpp"
+#include "mme_ground_shadow_checks.hpp"
 ULONGLONG startupClock = 0;
 void StartupLog(const char* format, ...) noexcept {
     std::printf("STARTUP %llu ", GetTickCount64() - startupClock);
@@ -535,7 +538,8 @@ int wmain(int argc, wchar_t** argv) {
     const bool emdAutoload = argc == 3 && std::wcscmp(argv[2], L"--emd-autoload") == 0;
     const bool emmLoad = argc == 4 && std::wcscmp(argv[2], L"--emm-load") == 0;
     const bool aaScene = argc == 4 && std::wcscmp(argv[2], L"--antialias-scene") == 0;
-    if (emdAutoload || emmLoad || aaScene || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
+    const bool groundShadow = argc == 4 && std::wcscmp(argv[2], L"--ground-shadow") == 0;
+    if (emdAutoload || emmLoad || aaScene || groundShadow || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
         auto* compile = reinterpret_cast<void*>(GetProcAddress(d3dx::Get().module, "D3DXCreateEffectFromFileW"));
         Check(compile && MH_CreateHook(compile, &ObserveCompile, reinterpret_cast<void**>(&originalCompile)) == MH_OK &&
               MH_EnableHook(compile) == MH_OK, "observe actual MME effect compilation");
@@ -593,6 +597,12 @@ int wmain(int argc, wchar_t** argv) {
         std::puts("");
         Check(emdEffectCompiles > 0, "same-name EMD automatically loads and compiles its assigned effect");
         Check(!IsWindowVisible(app->MainWindow()), "host stays hidden");
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (groundShadow) {
+        if (!nativeOrder) Check(fileEffectCompiles > 0, "ground-shadow MME effects compiled");
+        captureDirectory = argv[3];
+        CheckGroundShadow(app);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
     }
     if (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0) {

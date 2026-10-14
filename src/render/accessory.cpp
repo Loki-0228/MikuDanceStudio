@@ -416,6 +416,12 @@ void RenderAccessoryFixedOne(MMDApp* app, void* accessory,
         shadow.Ambient.b = gray;
         shadow.Ambient.a = gray;
         shadow.Specular.a = 1.0f;
+        // MME derives a fixed-function shadow's EgColor from Diffuse, while
+        // the native pass uses Ambient (its directional diffuse light is 0).
+        // Supply the same brightness in both channels for mixed materials.
+        shadow.Diffuse.r = gray;
+        shadow.Diffuse.g = gray;
+        shadow.Diffuse.b = gray;
         device->SetMaterial(&shadow);
         device->SetTexture(0, nullptr);
         for (DWORD i = 0; i < count; ++i) {
@@ -1087,7 +1093,12 @@ void RenderAccessoriesProjectedGroundShadowGeometry(MMDApp* app) {
         RenderAccessoryFixedOne(app, accessory, true);
         app->ActiveRenderObject() = nullptr;
     }
-    const D3DMATERIAL9 shadowMaterial = app->ProjectedShadowMaterial();
+    D3DMATERIAL9 shadowMaterial = app->ProjectedShadowMaterial();
+    // Keep MME's Diffuse-derived EgColor consistent with the native ambient
+    // shadow. The scene's directional diffuse light is zero for this pass.
+    shadowMaterial.Diffuse.r = shadowMaterial.Ambient.r;
+    shadowMaterial.Diffuse.g = shadowMaterial.Ambient.g;
+    shadowMaterial.Diffuse.b = shadowMaterial.Ambient.b;
     device->SetMaterial(&shadowMaterial);
     device->SetTexture(0, app->ProjectedShadowRestoreTexture());
     // x64 0x7FF7CB4C06FF：配件投射循环结束、SetMaterial/SetTexture 复位
