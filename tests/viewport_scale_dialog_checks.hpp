@@ -161,6 +161,12 @@ int WINAPI ConfirmScaleDanceImport(HWND owner,LPCWSTR text,LPCWSTR caption,UINT 
     return Unexpected(owner,text,caption,flags);
 }
 void CheckScaleDance(MMDApp* app,const wchar_t* motion) {
+#if MMD_ORIGINAL_PROFILE
+    // The minimal profile has no scene-sampling module or scale dialog.
+    // Keep the shared hidden host usable for its native/MME regressions.
+    (void)app;(void)motion;
+    Check(false,"dance scale benchmark requires the full profile");
+#else
     const auto imported=captureDirectory/L"CH4NGE-import.vmd";
     std::filesystem::copy_file(motion,imported,std::filesystem::copy_options::overwrite_existing);
     {
@@ -232,6 +238,7 @@ void CheckScaleDance(MMDApp* app,const wchar_t* motion) {
         Check(app->frameRate.presentedFrames-presentedBefore==480,"animated scene FPS counts exactly its 480 successful display frames");
     }
     app->PlaybackPhysicsMode()=0;app->FramesPerSecond()=777;
+#endif
 }
 
 void CheckScaleActualFrameCounting(MMDApp* app) {
