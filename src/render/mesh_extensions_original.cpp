@@ -121,9 +121,10 @@ const std::string& Session::Error() const {
     static const std::string error = kUnavailable;
     return error;
 }
-MaterialScope::MaterialScope(const void*, unsigned, bool)
-    : oldObject_(nullptr), oldMaterial_(0) {}
+MaterialScope::MaterialScope(const void*, unsigned, bool, bool)
+    : oldObject_(nullptr), oldMaterial_(0), oldOpaqueCoverage_(false) {}
 MaterialScope::~MaterialScope() = default;
+bool OpaqueCoverage() { return false; }
 bool Active() { return false; }
 void SetCamera(IDirect3DDevice9*, const float[16]) {}
 }

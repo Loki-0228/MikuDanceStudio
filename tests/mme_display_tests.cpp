@@ -18,6 +18,7 @@
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/graphics_runtime.hpp"
 #include "mikudancestudio/antialias_motion.hpp"
+#include "mikudancestudio/deformed_mesh_capture.hpp"
 #include "../src/render/antialias_shader.hpp"
 #include <atomic>
 #include <MinHook.h>

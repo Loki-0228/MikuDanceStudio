@@ -92,9 +92,10 @@ void CheckAntialiasStability(MMDApp* app, const wchar_t* directory) {
                 app->CameraYaw()=frame<48?0:(frame-48)*.003f;
                 app->DeltaTime()=0;app->state.messageSeen=10;captureRequested=true;FrameDriver(app);
                 const auto motion=antialias::motion::GetStats(app);
-                maximumMotion=std::max(maximumMotion,motion.maxMotionPixels);
+                const float actualMotion=mode==antialias::Algorithm::Smaa?0:ReadAntialiasMotionField(app).MaximumPixels();
+                maximumMotion=std::max(maximumMotion,actualMotion);
                 playing<<unsigned(mode)<<'\t'<<app->CurrentFrame()<<'\t'<<antialias::AccumulatedSamples(app)<<'\t'
-                    <<motion.draws<<'\t'<<motion.matchedDraws<<'\t'<<motion.maxMotionPixels<<'\n';
+                    <<motion.draws<<'\t'<<motion.matchedDraws<<'\t'<<actualMotion<<'\n';
                 Check(!captureRequested && !capturedPixels.empty(),"capture real VMD dancing frame");
                 if(frame==0)first=capturedPixels;
                 const auto name="dance-aa"+std::to_string(unsigned(mode))+"-"+std::to_string(frame);

@@ -1,12 +1,16 @@
 // Kept in the real-MME host so every capture uses the production scene path.
 #include "antialias_temporal_checks.hpp"
+#include "antialias_motion_probe.hpp"
 #include "antialias_stability_checks.hpp"
 using AntialiasCheckFormat=HRESULT(WINAPI*)(IDirect3D9*,UINT,D3DDEVTYPE,D3DFORMAT,DWORD,D3DRESOURCETYPE,D3DFORMAT);
 AntialiasCheckFormat originalAntialiasCheckFormat=nullptr;
 unsigned rejectedAntialiasFloatQueries=0;
+bool rejectAntialiasVertexTexture=false;
+bool RequireOriginalCoverageForTest(){return false;}
 HRESULT WINAPI RejectAntialiasFloatTarget(IDirect3D9* d3d,UINT adapter,D3DDEVTYPE type,D3DFORMAT adapterFormat,
     DWORD usage,D3DRESOURCETYPE resource,D3DFORMAT format) {
-    if(format==D3DFMT_A32B32G32R32F && (usage&D3DUSAGE_RENDERTARGET)) {
+    if(format==D3DFMT_A32B32G32R32F &&
+       (usage&(rejectAntialiasVertexTexture?D3DUSAGE_QUERY_VERTEXTEXTURE:D3DUSAGE_RENDERTARGET))) {
         ++rejectedAntialiasFloatQueries;return D3DERR_NOTAVAILABLE;
     }
     return originalAntialiasCheckFormat(d3d,adapter,type,adapterFormat,usage,resource,format);
@@ -87,9 +91,10 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
     }
     Check(antialias::AccumulatedSamples(app)>=movingStart+12,"continuous camera motion retains temporal samples");
     const auto cameraMotion=antialias::motion::GetStats(app);
+    const auto cameraPixels=ReadAntialiasMotionField(app).MaximumPixels();
     std::printf("TAA camera draws=%u matched=%u motion_px=%g captures=%u cache_hits=%u\n",cameraMotion.draws,cameraMotion.matchedDraws,
-        cameraMotion.maxMotionPixels,cameraMotion.vertexCaptures,cameraMotion.vertexCacheHits);
-    Check(cameraMotion.matchedDraws>0 && cameraMotion.maxMotionPixels>.01f,
+        cameraPixels,cameraMotion.vertexCaptures,cameraMotion.vertexCacheHits);
+    Check(cameraMotion.matchedDraws>0 && cameraPixels>.01f,
         "camera motion produces real geometry velocity for history reprojection");
     app->CameraYaw()-=.068f;
     const auto* record=mdl::Mdl(app->SelectedModel());
@@ -117,14 +122,61 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
     Check(antialias::AccumulatedSamples(app)>=playbackStart+12,
         "playback with changing skinned positions keeps temporal accumulation active");
     const auto boneMotion=antialias::motion::GetStats(app);
+    const auto bonePixels=ReadAntialiasMotionField(app).MaximumPixels();
     std::printf("TAA deformed draws=%u matched=%u motion_px=%g captures=%u cache_hits=%u\n",boneMotion.draws,boneMotion.matchedDraws,
-        boneMotion.maxMotionPixels,boneMotion.vertexCaptures,boneMotion.vertexCacheHits);
-    Check(boneMotion.matchedDraws>0 && boneMotion.maxMotionPixels>.01f,
+        bonePixels,boneMotion.vertexCaptures,boneMotion.vertexCacheHits);
+    Check(boneMotion.matchedDraws>0 && bonePixels>.01f,
         "deformed skinned vertices produce real motion vectors during playback");
     Check(capturedPixels!=beforePlayback,"animated TAA test changes actual rendered pixels");
     for(unsigned bone=0;bone<record->boneCount;++bone)
         std::memcpy(bones[bone].matInit,savedBones.data()+std::size_t(bone)*16,16*sizeof(float));
     app->CurrentFrame()=savedFrame;app->PlaybackActive()=savedPlayback;
+    // Compare both implementations on the same geometry and camera delta.
+    // The capability hook also exercises old AMD/Intel devices without VTF.
+    select(antialias::Algorithm::Fxaa);capture("gpu-parity-reset",1);
+    select(antialias::Algorithm::Taa);capture("gpu-parity-warm",3);
+    app->CameraYaw()+=.02f;capture("gpu-parity-motion",1);
+    const auto gpuField=ReadAntialiasMotionField(app);
+    const auto gpuStats=antialias::motion::GetStats(app);
+    std::printf("GPU MOTION captures=%u cache_hits=%u cpu_readbacks=%u coverage=%u skipped=%u\n",
+        gpuStats.gpuVertexCaptures,gpuStats.vertexCacheHits,gpuStats.cpuVertexReadbacks,gpuStats.coverageReplays,gpuStats.opaqueCoverageSkips);
+    Check(gpuStats.gpuVertexCaptures==0||gpuStats.cpuVertexReadbacks==0,
+        "GPU temporal path never calls CPU vertex readback");
+    app->CameraYaw()-=.02f;
+    select(antialias::Algorithm::Fxaa);capture("cpu-parity-reset",1);
+    rejectAntialiasVertexTexture=true;
+    Check(MH_CreateHook(formatQuery,&RejectAntialiasFloatTarget,reinterpret_cast<void**>(&originalAntialiasCheckFormat))==MH_OK&&
+        MH_EnableHook(formatQuery)==MH_OK,"simulate unavailable vertex texture sampling without rejecting temporal targets");
+    const auto coverageQuery=reinterpret_cast<void*>(&deformed_mesh_capture::OpaqueCoverage);
+    Check(MH_CreateHook(coverageQuery,&RequireOriginalCoverageForTest,nullptr)==MH_OK&&MH_EnableHook(coverageQuery)==MH_OK,
+        "reference path replays coverage for every native material");
+    select(antialias::Algorithm::Taa);capture("cpu-parity-warm",3);
+    app->CameraYaw()+=.02f;capture("cpu-parity-motion",1);
+    const auto cpuField=ReadAntialiasMotionField(app);
+    const auto cpuStats=antialias::motion::GetStats(app);
+    Check(cpuStats.gpuVertexCaptures==0&&cpuStats.matchedDraws>0&&antialias::AccumulatedSamples(app)>=4,
+        "no-VTF adapter preserves correct temporal accumulation through compatible capture");
+    Check(cpuStats.opaqueCoverageSkips==0&&cpuStats.coverageReplays==cpuStats.draws,
+        "CPU reference keeps all original coverage draws");
+    unsigned compared=0,different=0,coverageUnion=0,coverageDifference=0;float largest=0;
+    Check(cpuField.width==gpuField.width&&cpuField.height==gpuField.height,"GPU and CPU motion fields have matching dimensions");
+    if(cpuField.pixels.size()==gpuField.pixels.size())for(std::size_t i=0;i<cpuField.pixels.size();++i) {
+        const auto& a=gpuField.pixels[i];const auto& b=cpuField.pixels[i];
+        const bool validA=a[2]>0&&a[3]>0,validB=b[2]>0&&b[3]>0;
+        coverageUnion+=validA||validB;coverageDifference+=validA!=validB;
+        if(validA&&validB) {
+            ++compared;float difference=0;
+            for(unsigned k=0;k<4;++k)difference=std::max(difference,std::abs(a[k]-b[k])/std::max(1.f,std::abs(b[k])));
+            largest=std::max(largest,difference);different+=difference>1e-4f;
+        }
+    }
+    std::printf("GPU PARITY compared=%u different=%u max_relative_error=%g\n",compared,different,largest);
+    std::printf("GPU COVERAGE union=%u mismatches=%u\n",coverageUnion,coverageDifference);
+    Check(coverageUnion>100&&coverageDifference*1000u<=coverageUnion,
+        "optimized motion coverage matches complete reference coverage at 99.9 percent of valid pixels");
+    Check(compared>100&&different*1000u<=compared,"GPU history velocities and depths agree with CPU reference at 99.9 percent of valid pixels");
+    app->CameraYaw()-=.02f;MH_DisableHook(formatQuery);MH_RemoveHook(formatQuery);rejectAntialiasVertexTexture=false;
+    MH_DisableHook(coverageQuery);MH_RemoveHook(coverageQuery);
     select(antialias::Algorithm::Msaa2);capture("msaa2");
     Check(r->presentParameters.MultiSampleType==D3DMULTISAMPLE_2_SAMPLES,"MSAA 2 uses 2 samples");
     select(antialias::Algorithm::Msaa4);capture("msaa4");
@@ -145,9 +197,10 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
             "SMAA T2x accumulates both actual submissions in a static frame-zero scene");
         app->CameraYaw()+=.004f;capture("smaa-t2x-camera",1);
         const auto moving=antialias::motion::GetStats(app);
+        const auto movingPixels=ReadAntialiasMotionField(app).MaximumPixels();
         std::printf("SMAA T2x mode=%u draws=%u matched=%u motion_px=%g captures=%u cache_hits=%u\n",
-            unsigned(mode),moving.draws,moving.matchedDraws,moving.maxMotionPixels,moving.vertexCaptures,moving.vertexCacheHits);
-        Check(moving.matchedDraws>0 && moving.maxMotionPixels>.01f && antialias::AccumulatedSamples(app)>=3,
+            unsigned(mode),moving.draws,moving.matchedDraws,movingPixels,moving.vertexCaptures,moving.vertexCacheHits);
+        Check(moving.matchedDraws>0 && movingPixels>.01f && antialias::AccumulatedSamples(app)>=3,
             "SMAA T2x retains both phases while reprojecting real camera motion");
         app->CameraYaw()-=.004f;app->CurrentFrame()=before;
     }

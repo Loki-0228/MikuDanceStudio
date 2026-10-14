@@ -64,6 +64,9 @@
 #include <cstring>
 #include <utility>
 #include <vector>
+#include <cstdint>
+#include <climits>
+#include <iterator>
 
 namespace mikudancestudio {
 namespace vertex_capture {
@@ -1174,21 +1177,8 @@ bool RunCapture(IDirect3DDevice9* device, const CapturePlan& plan,
 
 }  // namespace
 
-bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCount,
-             std::vector<std::array<float, 4>>& clipPositions,
-             std::string& error) {
-    error.clear();
-    clipPositions.clear();
-    if (device == nullptr) {
-        error = "device is null";
-        return false;
-    }
-    if (vertexCount == 0) return true;
-    if (firstVertex > 0xFFFFFFFFu - vertexCount) {
-        error = "vertex range overflows the 32-bit vertex index space";
-        return false;
-    }
-
+static bool PrepareCapture(IDirect3DDevice9* device, CapturePlan& plan,
+    std::vector<D3DVERTEXELEMENT9>& elements, unsigned& streamCount, std::string& error) {
     // ---- bound vertex shader ---------------------------------------------
     ComPtr<IDirect3DVertexShader9> boundShader;
     HRESULT result = device->GetVertexShader(boundShader.Out());
@@ -1257,8 +1247,7 @@ bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCoun
                 std::to_string(elementCount) + " elements";
         return false;
     }
-    std::vector<D3DVERTEXELEMENT9> elements(rawElements,
-                                           rawElements + elementCount);
+    elements.assign(rawElements, rawElements + elementCount);
     while (!elements.empty() &&
            (elements.back().Stream == 0xFF ||
             elements.back().Type == D3DDECLTYPE_UNUSED)) {
@@ -1301,7 +1290,7 @@ bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCoun
                 "), so the capture positions cannot be fed";
         return false;
     }
-    const unsigned streamCount = std::max(highestStream + 1, extraStream + 1);
+    streamCount = std::max(highestStream + 1, extraStream + 1);
 
     // Instanced streams would make the capture draw consume instance data the
     // real draw does not, so they are rejected instead of guessed at.
@@ -1325,7 +1314,6 @@ bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCoun
     }
 
     // ---- patch the shader ------------------------------------------------
-    CapturePlan plan;
     plan.vs3 = scan.isVs3;
     plan.extraStream = extraStream;
     u32 captureInputReg = 0;
@@ -1360,9 +1348,34 @@ bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCoun
         plan.extraSemantic = captureSemantic;
     }
 
+    return true;
+}
+
+bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCount,
+             std::vector<std::array<float, 4>>& clipPositions,
+             std::string& error) {
+    error.clear();
+    clipPositions.clear();
+    if (device == nullptr) {
+        error = "device is null";
+        return false;
+    }
+    if (vertexCount == 0) return true;
+    if (firstVertex > 0xFFFFFFFFu - vertexCount) {
+        error = "vertex range overflows the 32-bit vertex index space";
+        return false;
+    }
+
+    CapturePlan plan;
+    std::vector<D3DVERTEXELEMENT9> elements;
+    unsigned streamCount=0;
+    if(!PrepareCapture(device,plan,elements,streamCount,error))return false;
     return RunCapture(device, plan, firstVertex, vertexCount, elements,
                       streamCount, clipPositions, error);
 }
+
+#include "vertex_capture_gpu.inc"
+
 
 }  // namespace vertex_capture
 }  // namespace mikudancestudio

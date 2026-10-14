@@ -47,6 +47,8 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <memory>
+#include <wrl/client.h>
 
 namespace mikudancestudio {
 namespace vertex_capture {
@@ -56,6 +58,26 @@ namespace vertex_capture {
 // of vertex (firstVertex + i).
 bool Capture(IDirect3DDevice9* device, unsigned firstVertex, unsigned vertexCount,
              std::vector<std::array<float, 4>>& clipPositions, std::string& error);
+
+// Immutable while a caller holds the result. Each vertex occupies one RGBA32F
+// texel; rasterPositions supplies that texel's clip-space centre. No readback.
+struct GpuPositions {
+    Microsoft::WRL::ComPtr<IDirect3DTexture9> texture;
+    Microsoft::WRL::ComPtr<IDirect3DVertexBuffer9> rasterPositions;
+    unsigned firstVertex=0, vertexCount=0, width=0, height=0;
+};
+class GpuCapture {
+public:
+    GpuCapture();
+    ~GpuCapture();
+    GpuCapture(const GpuCapture&)=delete;
+    GpuCapture& operator=(const GpuCapture&)=delete;
+    bool Capture(IDirect3DDevice9*, unsigned firstVertex, unsigned vertexCount,
+                 std::shared_ptr<const GpuPositions>&, std::string& error);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 }  // namespace vertex_capture
 }  // namespace mikudancestudio

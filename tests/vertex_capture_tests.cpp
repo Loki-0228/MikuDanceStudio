@@ -541,6 +541,9 @@ void TestStateRestored(Fixture& fixture) {
                                                    captured, error),
           "state restore: capture failed: " + error);
     Check(captured.size() == 6, "state restore: vertex count");
+    mikudancestudio::vertex_capture::GpuCapture gpuCapture;
+    std::shared_ptr<const mikudancestudio::vertex_capture::GpuPositions> gpuPositions;
+    Check(gpuCapture.Capture(fixture.device,1,6,gpuPositions,error),"GPU capture restores every probed device state: "+error);
 
     IDirect3DVertexShader9* vertexShader = nullptr;
     IDirect3DPixelShader9* pixelShader = nullptr;
@@ -872,9 +875,76 @@ void TestChunkedCapture(Fixture& fixture) {
     Note(text);
     Check(worst < 1.0e-4f, "chunked capture: value mismatch");
 
+    mikudancestudio::vertex_capture::GpuCapture gpuCapture;
+    std::shared_ptr<const mikudancestudio::vertex_capture::GpuPositions> gpu;
+    Check(gpuCapture.Capture(fixture.device,0,vertexCount,gpu,error),"large GPU capture: "+error);
+    Microsoft::WRL::ComPtr<IDirect3DSurface9> surface,system;
+    Check(SUCCEEDED(gpu->texture->GetSurfaceLevel(0,&surface))&&
+        SUCCEEDED(fixture.device->CreateOffscreenPlainSurface(gpu->width,gpu->height,D3DFMT_A32B32G32R32F,
+            D3DPOOL_SYSTEMMEM,&system,nullptr))&&
+        SUCCEEDED(fixture.device->GetRenderTargetData(surface.Get(),system.Get())),"explicitly inspect multi-row GPU capture in test");
+    D3DLOCKED_RECT locked{};Check(SUCCEEDED(system->LockRect(&locked,nullptr,D3DLOCK_READONLY)),"lock large GPU test capture");
+    bool equal=true;
+    for(unsigned i=0;i<vertexCount;++i)equal&=std::memcmp(positions.data()+std::size_t(i)*4,
+        static_cast<const char*>(locked.pBits)+(i/gpu->width)*locked.Pitch+(i%gpu->width)*16,16)==0;
+    system->UnlockRect();
+    Check(equal,"all 300000 GPU positions match across texture rows and the old chunk boundary");
+
     shader->Release();
     declaration->Release();
     buffer->Release();
+}
+
+void TestGpuCapture(Fixture& fixture) {
+    using namespace mikudancestudio::vertex_capture;
+    using Microsoft::WRL::ComPtr;
+    fixture.device->SetVertexDeclaration(fixture.declaration);
+    fixture.device->SetStreamSource(0,fixture.vertexBuffer,0,sizeof(Vertex));
+    GpuCapture capture;std::string error;
+    const auto read=[&](const std::shared_ptr<const GpuPositions>& gpu) {
+        ComPtr<IDirect3DSurface9> surface,system;
+        Check(SUCCEEDED(gpu->texture->GetSurfaceLevel(0,&surface)),"GPU capture texture has a surface");
+        Check(SUCCEEDED(fixture.device->CreateOffscreenPlainSurface(gpu->width,gpu->height,
+            D3DFMT_A32B32G32R32F,D3DPOOL_SYSTEMMEM,&system,nullptr)),"allocate explicit test readback");
+        Check(SUCCEEDED(fixture.device->GetRenderTargetData(surface.Get(),system.Get())),"read GPU positions only in regression test");
+        D3DLOCKED_RECT locked{};Check(SUCCEEDED(system->LockRect(&locked,nullptr,D3DLOCK_READONLY)),"lock test positions");
+        std::vector<std::array<float,4>> result(gpu->vertexCount);
+        for(unsigned i=0;i<gpu->vertexCount;++i)std::memcpy(result[i].data(),
+            static_cast<const char*>(locked.pBits)+(i/gpu->width)*locked.Pitch+(i%gpu->width)*16,16);
+        system->UnlockRect();return result;
+    };
+    for(auto* shader:{fixture.shader2,fixture.shader3}) {
+        fixture.device->SetVertexShader(shader);
+        std::vector<std::array<float,4>> cpu;
+        Check(Capture(fixture.device,1,6,cpu,error),"capture reference positions: "+error);
+        std::shared_ptr<const GpuPositions> first,second,third;
+        Check(capture.Capture(fixture.device,1,6,first,error),"capture GPU positions: "+error);
+        Check(first&&first->firstVertex==1&&read(first)==cpu,"GPU shader 2/3 positions equal export capture byte for byte");
+        float saved[4]{};fixture.device->GetVertexShaderConstantF(0,saved,1);
+        float changed[4];std::memcpy(changed,saved,sizeof(saved));changed[0]+=2;
+        fixture.device->SetVertexShaderConstantF(0,changed,1);
+        Check(capture.Capture(fixture.device,1,6,second,error),"capture changed GPU positions: "+error);
+        Check(first->texture!=second->texture&&read(first)==cpu&&read(second)!=cpu,
+            "a later capture cannot overwrite referenced previous-frame positions");
+        auto* released=first->texture.Get();first.reset();
+        fixture.device->SetVertexShaderConstantF(0,saved,1);
+        Check(capture.Capture(fixture.device,1,6,third,error),"reuse unreferenced GPU capture target: "+error);
+        Check(third->texture.Get()==released&&read(third)==cpu,"GPU capture pool safely reuses released storage");
+        ComPtr<IDirect3DVertexShader9> restored;fixture.device->GetVertexShader(&restored);
+        Check(restored.Get()==shader,"GPU capture restores the original vertex shader");
+    }
+    mikudancestudio::antialias::motion::detail::VertexCache cache;
+    fixture.device->SetVertexShader(fixture.shader3);
+    std::shared_ptr<const GpuPositions> first,second;
+    Check(cache.CaptureGpu(fixture.device,fixture.code3,0,0,8,0,3,first,error),"cache GPU full declared range");
+    Check(cache.CaptureGpu(fixture.device,fixture.code3,0,0,8,3,3,second,error),"reuse GPU range across materials");
+    Check(first==second&&first->vertexCount==8&&cache.gpuCaptures==1&&cache.hits==1&&cache.cpuReadbacks==0,
+        "two material ranges share one GPU capture without CPU readback");
+    cache.Clear();
+    Check(cache.CaptureGpu(fixture.device,fixture.code3,0,0,8,0,3,second,error),"capture next GPU frame");
+    Check(first!=second&&cache.gpuCaptures==1,"new frame preserves referenced history and captures fresh geometry");
+    Check(!capture.Capture(nullptr,0,1,second,error)&&!second&&!error.empty(),"GPU capture failure clears stale output");
+    Check(capture.Capture(fixture.device,0,0,second,error)&&!second,"empty GPU capture succeeds without a resource");
 }
 
 void TestFailures(Fixture& fixture) {
@@ -952,6 +1022,7 @@ int main() {
     TestStateRestored(fixture);
     TestHandAssembledShaders(fixture);
     TestChunkedCapture(fixture);
+    TestGpuCapture(fixture);
     TestFailures(fixture);
 
     Check(SUCCEEDED(fixture.device->EndScene()), "EndScene still succeeds");

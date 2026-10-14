@@ -125,9 +125,14 @@ and SMAA. Click **SMAA** to apply the last SMAA choice. The initial choice is
 **SMAA 1x (diagonal and corner enhancement)**. Hover over SMAA and move right
 to choose 1x or T2x, with standard edges or diagonal and corner enhancement.
 T2x combines two jittered frames using motion vectors.
-TAA and T2x capture deformed geometry for reprojection, which can be costly with
-complex MME effects. SMAA 1x avoids that capture. Unsupported motion passes use
-spatial AA for that frame.
+TAA and T2x keep current and previous deformed positions in GPU textures when
+the adapter supports vertex texture sampling. They share captures across
+matching material inputs and reuse the original index buffers. Verified opaque
+native materials skip the extra coverage draw. MME shaders and alpha textures
+keep their coverage checks. Capability checks apply to NVIDIA, AMD, and Intel;
+devices without vertex texture sampling retain CPU geometry capture.
+Complex MME effects still add work. SMAA 1x avoids motion capture, and unsupported
+motion passes use spatial AA for that frame.
 
 Temporal image export fills missing samples at the same scene time, including
 projects containing only frame zero. A continuous image sequence retains its
@@ -347,8 +352,10 @@ MikuDanceStudio（MMS）是用于制作和编辑 MMD 舞蹈动画的 Windows 桌
 | SMAA T2x（标准） | 标准边缘处理，结合运动矢量对齐两帧采样。 |
 | SMAA T2x（斜线与拐角增强） | 两帧采样，增加斜线和拐角处理。 |
 
-TAA 和 T2x 需要捕获变形后的几何来生成运动矢量，复杂 MME 场景的额外开销较高。
-SMAA 1x 不需要这一步。
+显卡支持顶点纹理读取时，TAA 和 T2x 将当前帧、上一帧的变形后位置留在 GPU，
+共享输入相同的材质捕获结果，并沿用原索引缓冲。已确认不透明的原生材质省去额外覆盖绘制，
+MME 着色器和透明贴图保留覆盖检查。程序按实际能力检测 NVIDIA、AMD 和 Intel，
+不支持顶点纹理读取时保留 CPU 几何捕获。复杂 MME 场景仍有额外开销，SMAA 1x 不需要运动捕获。
 
 只有第 0 帧的工程也能输出时间抗锯齿图片。程序在同一场景时间补足缺少的采样，
 不推进动作或物理，不增加输出图片。连续图片序列保留历史：T2x 首张需要两次场景渲染，

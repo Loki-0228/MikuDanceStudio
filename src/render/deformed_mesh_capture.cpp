@@ -54,6 +54,7 @@ DWORD observerThread=0;
 thread_local bool observing=false;
 thread_local const void* sourceObject=nullptr;
 thread_local unsigned sourceMaterial=0;
+thread_local bool sourceOpaqueCoverage=false;
 void Check(HRESULT hr,const char* operation) {if(FAILED(hr))throw std::runtime_error(operation);}
 std::array<float,4> Transform(const std::array<float,4>& p,const d3dx::D3DXMATRIXF& matrix) {
     const auto* m=reinterpret_cast<const float*>(&matrix);std::array<float,4> out{};
@@ -262,8 +263,12 @@ Session::~Session()=default;
 void Session::BeginFrame(){impl_->meshes.clear();impl_->camera=false;impl_->collecting=true;}
 const std::vector<Mesh>& Session::EndFrame(){impl_->collecting=false;return impl_->meshes;}
 const std::string& Session::Error()const{return impl_->error;}
-MaterialScope::MaterialScope(const void* object,unsigned material,bool enabled):oldObject_(sourceObject),oldMaterial_(sourceMaterial){sourceObject=enabled?object:nullptr;sourceMaterial=material;}
-MaterialScope::~MaterialScope(){sourceObject=oldObject_;sourceMaterial=oldMaterial_;}
+MaterialScope::MaterialScope(const void* object,unsigned material,bool enabled,bool opaqueCoverage)
+    :oldObject_(sourceObject),oldMaterial_(sourceMaterial),oldOpaqueCoverage_(sourceOpaqueCoverage) {
+    sourceObject=enabled?object:nullptr;sourceMaterial=material;sourceOpaqueCoverage=enabled&&opaqueCoverage;
+}
+MaterialScope::~MaterialScope(){sourceObject=oldObject_;sourceMaterial=oldMaterial_;sourceOpaqueCoverage=oldOpaqueCoverage_;}
+bool OpaqueCoverage(){return sourceOpaqueCoverage;}
 bool Active(){return active!=nullptr;}
 void SetCamera(IDirect3DDevice9* device,const float world[16]) {
     if(!active||!active->collecting)return;

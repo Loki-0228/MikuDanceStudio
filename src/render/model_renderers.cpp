@@ -1204,7 +1204,9 @@ void DrawModelMaterials(MMDApp* app, unsigned char* model, bool effectPass,
         }
         if (draw) {
 #if !MMD_ORIGINAL_PROFILE
-            deformed_mesh_capture::MaterialScope exportMaterial(model, i, !shadowOnly && !(selection && selection->probe));
+            const bool opaqueCoverage=!mmeProxy&&!effectPass&&!shadowOnly&&
+                state.displayState==0&&record.diffuse[3]>=1.f&&!ModelMaterialUsesAlpha(sub,state,record);
+            deformed_mesh_capture::MaterialScope exportMaterial(model, i, !shadowOnly && !(selection && selection->probe),opaqueCoverage);
 #endif
             D3DMATERIAL9 d3dMaterial{};
             std::memcpy(&d3dMaterial, material, sizeof(d3dMaterial));

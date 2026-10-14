@@ -78,47 +78,84 @@ struct SavedState {
     }
     ~SavedState() {
         for(unsigned i=0;i<4;++i)device->SetTexture(i,nullptr);
+        for(unsigned i=0;i<2;++i)device->SetTexture(D3DVERTEXTEXTURESAMPLER0+i,nullptr);
         device->SetDepthStencilSurface(nullptr);
         for(unsigned i=0;i<4;++i)device->SetRenderTarget(i,targets[i].Get());
         device->SetDepthStencilSurface(depth.Get());block->Apply();device->SetViewport(&viewport);
     }
 };
 struct Vertex {Float4 current,previous;float depth,previousDepth;};
-struct Snapshot {std::vector<Float4> clip;std::vector<float> depth;};
+struct Snapshot {
+    std::vector<Float4> clip;std::vector<float> depth;
+    std::shared_ptr<const vertex_capture::GpuPositions> gpu;
+    D3DMATRIX inverseProjection{};
+    float jitterX=0,jitterY=0;
+    unsigned first=0,count=0;
+};
 using Key=std::tuple<std::uintptr_t,unsigned,std::uint64_t,unsigned>;
 const char kShader[]=R"hlsl(
 float4 RasterJitter : register(c0);
+row_major float4x4 FixedTransform : register(c0);
+float4 FixedVS(float3 position:POSITION0):POSITION0 {return mul(float4(position,1),FixedTransform);}
 struct VIn {float4 current:POSITION0;float4 previous:TEXCOORD0;float2 depth:TEXCOORD1;};
 struct VOut {float4 position:POSITION0;float4 current:TEXCOORD0;float4 previous:TEXCOORD1;float2 depth:TEXCOORD2;};
 VOut VS(VIn v) {
  VOut o;o.position=v.current;o.position.xy+=RasterJitter.xy*v.current.w;
  o.current=v.current;o.previous=v.previous;o.depth=v.depth;return o;
 }
+sampler2D CurrentPositions : register(s0);
+sampler2D PreviousPositions : register(s1);
+float4 CurrentMetrics : register(c1); // width, height, first source vertex, 0
+float4 PreviousMetrics : register(c2);
+row_major float4x4 CurrentInverseProjection : register(c4);
+row_major float4x4 PreviousInverseProjection : register(c8);
+VOut GpuVS(float4 raster:POSITION0) {
+ float2 uv=raster.xy*float2(0.5,-0.5)+0.5;
+ float index=floor(uv.x*CurrentMetrics.x)+floor(uv.y*CurrentMetrics.y)*CurrentMetrics.x;
+ index+=CurrentMetrics.z-PreviousMetrics.z;
+ float row=floor(index/PreviousMetrics.x);
+ float2 previousUV=(float2(index-row*PreviousMetrics.x,row)+0.5)/PreviousMetrics.xy;
+ float4 current=tex2Dlod(CurrentPositions,float4(uv,0,0));
+ float4 previous=tex2Dlod(PreviousPositions,float4(previousUV,0,0));
+ VOut o;o.position=current;
+ current.xy-=RasterJitter.xy*current.w;previous.xy-=RasterJitter.zw*previous.w;
+ o.current=current;o.previous=previous;
+ float4 currentView=mul(current,CurrentInverseProjection);
+ float4 previousView=mul(previous,PreviousInverseProjection);
+ o.depth=float2(abs(currentView.w)>1e-10?currentView.z/currentView.w:0,
+               abs(previousView.w)>1e-10?previousView.z/previousView.w:0);
+ return o;
+}
 sampler2D Coverage : register(s0);
 float4 ViewportMap : register(c0);
 float4 Controls : register(c1);
-float4 PS(VOut v,float2 pixel:VPOS):COLOR0 {
- float alpha=tex2D(Coverage,(pixel+0.5)*Controls.xy).a;
+float4 Motion(VOut v,float alpha) {
  clip(alpha-0.0001);
  float2 current=v.current.xy/v.current.w*float2(0.5,-0.5)+0.5;
  float2 previous=v.previous.xy/max(v.previous.w,0.000001)*float2(0.5,-0.5)+0.5;
  bool valid=Controls.z>0.5&&alpha>=0.999&&v.previous.w>0.000001&&v.depth.y>0;
  return float4((previous-current)*ViewportMap.xy,max(v.depth.x,0),valid?v.depth.y:0);
 }
+float4 PS(VOut v,float2 pixel:VPOS):COLOR0 {
+ return Motion(v,tex2D(Coverage,(pixel+0.5)*Controls.xy).a);
+}
+float4 OpaquePS(VOut v):COLOR0 {return Motion(v,1);}
 )hlsl";
 struct State final:deformed_mesh_capture::DrawObserver {
     MMDApp* app{};
     ComPtr<IDirect3DSurface9> scene,surface,coverageSurface,depth,coverageDepth;
     ComPtr<IDirect3DTexture9> texture,coverage;
-    ComPtr<IDirect3DVertexShader9> vertexShader;
-    ComPtr<IDirect3DPixelShader9> pixelShader;
-    ComPtr<IDirect3DVertexDeclaration9> declaration;
+    ComPtr<IDirect3DVertexShader9> vertexShader,gpuVertexShader,fixedCaptureShader;
+    ComPtr<IDirect3DPixelShader9> pixelShader,opaquePixelShader;
+    ComPtr<IDirect3DVertexDeclaration9> declaration,gpuDeclaration;
     D3DSURFACE_DESC description{};
     D3DVIEWPORT9 viewport{};
     D3DMATRIX inverseProjection{};
     float jitterX=0,jitterY=0;
     bool collecting=false,pending=false,failed=false,cleared=false;
+    bool gpuAvailable=false;
     unsigned draws=0,validDraws=0;
+    unsigned coverageReplays=0,opaqueCoverageSkips=0;
     float maxMotionPixels=0;
     std::map<Key,Snapshot> previous,current;
     std::map<std::tuple<std::uintptr_t,unsigned,std::uint64_t>,unsigned> ordinals;
@@ -136,7 +173,8 @@ struct State final:deformed_mesh_capture::DrawObserver {
     }
     void Allocate(IDirect3DDevice9* device,IDirect3DSurface9* target) {
         D3DSURFACE_DESC desc{};Check(target->GetDesc(&desc),"Cannot describe TAA motion target");
-        if(texture&&surface&&coverage&&coverageSurface&&depth&&coverageDepth&&vertexShader&&pixelShader&&declaration&&
+        if(texture&&surface&&coverage&&coverageSurface&&depth&&coverageDepth&&vertexShader&&pixelShader&&opaquePixelShader&&declaration&&
+           (!gpuAvailable||(gpuVertexShader&&gpuDeclaration&&fixedCaptureShader))&&
            desc.Width==description.Width&&desc.Height==description.Height)return;
         // These are standard D3D9 capabilities on NVIDIA, AMD and Intel. No
         // vendor depth aliases, resolve commands or driver settings are used.
@@ -154,6 +192,10 @@ struct State final:deformed_mesh_capture::DrawObserver {
             Check(factory->CheckDepthStencilMatch(creation.AdapterOrdinal,creation.DeviceType,mode.Format,
                 format,D3DFMT_D24S8),"Motion render-target/depth pairing is unsupported");
         }
+        // VTF is optional in D3D9. Query the actual adapter, never its vendor;
+        // devices without RGBA32F vertex sampling retain the compatible path.
+        gpuAvailable=!device->GetSoftwareVertexProcessing()&&SUCCEEDED(factory->CheckDeviceFormat(creation.AdapterOrdinal,creation.DeviceType,mode.Format,
+            D3DUSAGE_QUERY_VERTEXTEXTURE,D3DRTYPE_TEXTURE,D3DFMT_A32B32G32R32F));
         texture.Reset();surface.Reset();coverage.Reset();coverageSurface.Reset();depth.Reset();coverageDepth.Reset();
         previous.clear();description=desc;
         Check(device->CreateTexture(desc.Width,desc.Height,1,D3DUSAGE_RENDERTARGET,
@@ -164,8 +206,9 @@ struct State final:deformed_mesh_capture::DrawObserver {
         Check(coverage->GetSurfaceLevel(0,&coverageSurface),"Motion alpha surface unavailable");
         for(auto* z:{depth.GetAddressOf(),coverageDepth.GetAddressOf()})Check(device->CreateDepthStencilSurface(desc.Width,desc.Height,
             D3DFMT_D24S8,D3DMULTISAMPLE_NONE,0,TRUE,z,nullptr),"Motion depth unavailable");
-        if(!vertexShader||!pixelShader||!declaration) {
-            vertexShader.Reset();pixelShader.Reset();declaration.Reset();
+        if(!vertexShader||!pixelShader||!opaquePixelShader||!declaration||(gpuAvailable&&(!gpuVertexShader||!gpuDeclaration||!fixedCaptureShader))) {
+            vertexShader.Reset();pixelShader.Reset();opaquePixelShader.Reset();declaration.Reset();
+            gpuVertexShader.Reset();gpuDeclaration.Reset();fixedCaptureShader.Reset();
             ComPtr<ID3DBlob> vs,ps,error;
             const auto compile=[&](const char* entry,const char* profile,ID3DBlob** out) {
                 error.Reset();
@@ -176,11 +219,22 @@ struct State final:deformed_mesh_capture::DrawObserver {
             compile("VS","vs_3_0",vs.GetAddressOf());compile("PS","ps_3_0",ps.GetAddressOf());
             Check(device->CreateVertexShader(static_cast<const DWORD*>(vs->GetBufferPointer()),&vertexShader),"Motion vertex shader unavailable");
             Check(device->CreatePixelShader(static_cast<const DWORD*>(ps->GetBufferPointer()),&pixelShader),"Motion pixel shader unavailable");
+            ps.Reset();compile("OpaquePS","ps_3_0",ps.GetAddressOf());
+            Check(device->CreatePixelShader(static_cast<const DWORD*>(ps->GetBufferPointer()),&opaquePixelShader),"Opaque motion shader unavailable");
             const D3DVERTEXELEMENT9 elements[]={
                 {0,0,D3DDECLTYPE_FLOAT4,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_POSITION,0},
                 {0,16,D3DDECLTYPE_FLOAT4,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_TEXCOORD,0},
                 {0,32,D3DDECLTYPE_FLOAT2,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_TEXCOORD,1},D3DDECL_END()};
             Check(device->CreateVertexDeclaration(elements,&declaration),"Motion vertex declaration unavailable");
+            if(gpuAvailable) {
+                vs.Reset();compile("GpuVS","vs_3_0",vs.GetAddressOf());
+                Check(device->CreateVertexShader(static_cast<const DWORD*>(vs->GetBufferPointer()),&gpuVertexShader),"GPU motion shader unavailable");
+                const D3DVERTEXELEMENT9 gpuElements[]={
+                    {0,0,D3DDECLTYPE_FLOAT4,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_POSITION,0},D3DDECL_END()};
+                Check(device->CreateVertexDeclaration(gpuElements,&gpuDeclaration),"GPU motion declaration unavailable");
+                vs.Reset();compile("FixedVS","vs_3_0",vs.GetAddressOf());
+                Check(device->CreateVertexShader(static_cast<const DWORD*>(vs->GetBufferPointer()),&fixedCaptureShader),"Fixed-function GPU capture shader unavailable");
+            }
         }
     }
     void Capture(IDirect3DDevice9* device,D3DPRIMITIVETYPE type,INT base,UINT minVertex,UINT vertexCount,
@@ -243,8 +297,13 @@ struct State final:deformed_mesh_capture::DrawObserver {
         const auto identity=reinterpret_cast<std::uintptr_t>(vb.Get());Hash(signature,&identity,sizeof(identity));
         const auto ordinalKey=std::make_tuple(reinterpret_cast<std::uintptr_t>(object),material,signature);
         const Key key=std::tuple_cat(ordinalKey,std::make_tuple(ordinals[ordinalKey]++));
-        Snapshot snapshot;snapshot.clip.resize(count);snapshot.depth.resize(count);
-        if(vs) {
+        Snapshot snapshot;snapshot.first=first;snapshot.count=count;
+        snapshot.inverseProjection=inverseProjection;snapshot.jitterX=jitterX;snapshot.jitterY=jitterY;
+        if(vs&&gpuAvailable) {
+            std::string error;
+            if(!vertexCache.CaptureGpu(device,vsCode,base,minVertex,vertexCount,first,count,snapshot.gpu,error))
+                throw std::runtime_error("GPU vertex shader capture: "+error);
+        } else if(vs) {
             std::string error;
             if(!vertexCache.Capture(device,vsCode,base,minVertex,vertexCount,first,count,snapshot.clip,error))
                 throw std::runtime_error("Final vertex shader capture: "+error);
@@ -264,22 +323,34 @@ struct State final:deformed_mesh_capture::DrawObserver {
             D3DMATRIX world{},view{},projection{};
             device->GetTransform(D3DTS_WORLD,&world);device->GetTransform(D3DTS_VIEW,&view);device->GetTransform(D3DTS_PROJECTION,&projection);
             const auto transform=Multiply(Multiply(world,view),projection);
-            Check(vb->Lock(0,0,&bytes,D3DLOCK_READONLY),"Cannot lock deformed motion vertices");
-            for(unsigned i=0;i<count;++i) {
-                Float4 point{0,0,0,1};std::memcpy(point.data(),static_cast<const char*>(bytes)+offset+std::size_t(first+i)*stride+position->Offset,12);
-                snapshot.clip[i]=Transform(point,transform);
+            if(gpuAvailable) {
+                SavedState preserve(device);
+                Check(device->SetVertexShader(fixedCaptureShader.Get()),"Bind fixed-function GPU capture");
+                Check(device->SetVertexShaderConstantF(0,&transform.m[0][0],4),"Bind fixed-function GPU transform");
+                std::string error;
+                if(!vertexCache.CaptureGpu(device,Code(fixedCaptureShader.Get()),base,minVertex,vertexCount,first,count,snapshot.gpu,error))
+                    throw std::runtime_error("Fixed-function GPU capture: "+error);
+            } else {
+                snapshot.clip.resize(count);
+                Check(vb->Lock(0,0,&bytes,D3DLOCK_READONLY),"Cannot lock deformed motion vertices");
+                for(unsigned i=0;i<count;++i) {
+                    Float4 point{0,0,0,1};std::memcpy(point.data(),static_cast<const char*>(bytes)+offset+std::size_t(first+i)*stride+position->Offset,12);
+                    snapshot.clip[i]=Transform(point,transform);
+                }
+                vb->Unlock();
             }
-            vb->Unlock();
         }
-        for(unsigned i=0;i<count;++i) {
+        if(!snapshot.gpu)snapshot.depth.resize(count);
+        for(unsigned i=0;i<snapshot.clip.size();++i) {
             auto& clip=snapshot.clip[i];clip[0]-=jitterX*clip[3];clip[1]-=jitterY*clip[3];
             const auto view=Transform(clip,inverseProjection);
             snapshot.depth[i]=std::abs(view[3])>1e-10f?view[2]/view[3]:0;
             for(float x:clip)if(!std::isfinite(x))throw std::runtime_error("Non-finite final vertex position");
         }
         const auto old=previous.find(key);
-        const bool matching=object&&old!=previous.end()&&old->second.clip.size()==count;
-        if(matching)for(unsigned i=0;i<count;++i) {
+        const bool matching=object&&old!=previous.end()&&old->second.count==count&&old->second.first==first&&
+            bool(old->second.gpu)==bool(snapshot.gpu);
+        if(matching&&!snapshot.gpu)for(unsigned i=0;i<count;++i) {
             const auto& now=snapshot.clip[i];const auto& before=old->second.clip[i];
             if(now[3]>1e-6f&&before[3]>1e-6f) {
                 const float dx=(before[0]/before[3]-now[0]/now[3])*.5f*viewport.Width;
@@ -287,9 +358,12 @@ struct State final:deformed_mesh_capture::DrawObserver {
                 maxMotionPixels=std::max(maxMotionPixels,std::sqrt(dx*dx+dy*dy));
             }
         }
-        std::vector<Vertex> vertices(count);
-        for(unsigned i=0;i<count;++i)vertices[i]={snapshot.clip[i],matching?old->second.clip[i]:snapshot.clip[i],
-            snapshot.depth[i],matching?old->second.depth[i]:0};
+        std::vector<Vertex> vertices;
+        if(!snapshot.gpu) {
+            vertices.resize(count);
+            for(unsigned i=0;i<count;++i)vertices[i]={snapshot.clip[i],matching?old->second.clip[i]:snapshot.clip[i],
+                snapshot.depth[i],matching?old->second.depth[i]:0};
+        }
         DWORD blend=0,sourceBlend=0,destinationBlend=0,stencil=0,stencilFunc=0,zfunc=0,zEnabled=0,zWrite=0;
         device->GetRenderState(D3DRS_ALPHABLENDENABLE,&blend);device->GetRenderState(D3DRS_SRCBLEND,&sourceBlend);
         device->GetRenderState(D3DRS_DESTBLEND,&destinationBlend);device->GetRenderState(D3DRS_STENCILENABLE,&stencil);
@@ -300,6 +374,10 @@ struct State final:deformed_mesh_capture::DrawObserver {
             (sourceBlend==D3DBLEND_ONE&&destinationBlend==D3DBLEND_ZERO);
         const bool historyAllowed=matching&&opaqueBlend&&zEnabled&&zWrite&&(!stencil||stencilFunc==D3DCMP_ALWAYS)&&
             (zfunc==D3DCMP_LESS||zfunc==D3DCMP_LESSEQUAL);
+        DWORD clipPlanes=0,scissor=0,fill=0;device->GetRenderState(D3DRS_CLIPPLANEENABLE,&clipPlanes);
+        device->GetRenderState(D3DRS_SCISSORTESTENABLE,&scissor);
+        device->GetRenderState(D3DRS_FILLMODE,&fill);
+        const bool opaqueCoverage=!ps&&!clipPlanes&&!scissor&&fill==D3DFILL_SOLID&&deformed_mesh_capture::OpaqueCoverage();
         SavedState saved(device);
         device->SetDepthStencilSurface(nullptr);
         for(unsigned i=1;i<4;++i)device->SetRenderTarget(i,nullptr);
@@ -309,19 +387,21 @@ struct State final:deformed_mesh_capture::DrawObserver {
             device->SetViewport(&viewport);
             Check(device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0,1,0),"Cannot clear motion target");cleared=true;
         }
-        // Replay the ORIGINAL pixel shader to retain its texture alpha and
-        // clip/discard coverage. Replacing it with a diffuse-only mask would
-        // incorrectly accept history for arbitrary MME transparent fragments.
-        device->SetDepthStencilSurface(nullptr);
-        Check(device->SetRenderTarget(0,coverageSurface.Get()),"Cannot bind coverage target");
-        Check(device->SetDepthStencilSurface(coverageDepth.Get()),"Cannot bind coverage depth");
-        device->SetViewport(&viewport);
-        Check(device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0,1,0),"Cannot clear coverage target");
         device->SetRenderState(D3DRS_ALPHABLENDENABLE,FALSE);device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE,FALSE);
         device->SetRenderState(D3DRS_COLORWRITEENABLE,15);device->SetRenderState(D3DRS_STENCILENABLE,FALSE);
         device->SetRenderState(D3DRS_ZENABLE,TRUE);device->SetRenderState(D3DRS_ZWRITEENABLE,TRUE);
         device->SetRenderState(D3DRS_ZFUNC,D3DCMP_LESSEQUAL);device->SetRenderState(D3DRS_SRGBWRITEENABLE,FALSE);
-        Check(device->DrawIndexedPrimitive(type,base,minVertex,vertexCount,firstIndex,primitives),"Coverage replay failed");
+        // A verified opaque native material needs no mask. MME and alpha
+        // textures still replay the original shader, including clip/discard.
+        if(!opaqueCoverage) {
+            device->SetDepthStencilSurface(nullptr);
+            Check(device->SetRenderTarget(0,coverageSurface.Get()),"Cannot bind coverage target");
+            Check(device->SetDepthStencilSurface(coverageDepth.Get()),"Cannot bind coverage depth");
+            device->SetViewport(&viewport);
+            Check(device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0,1,0),"Cannot clear coverage target");
+            Check(device->DrawIndexedPrimitive(type,base,minVertex,vertexCount,firstIndex,primitives),"Coverage replay failed");
+            ++coverageReplays;
+        } else ++opaqueCoverageSkips;
         device->SetDepthStencilSurface(nullptr);
         Check(device->SetRenderTarget(0,surface.Get()),"Cannot bind motion field");
         Check(device->SetDepthStencilSurface(depth.Get()),"Cannot bind motion field depth");
@@ -329,16 +409,44 @@ struct State final:deformed_mesh_capture::DrawObserver {
         device->SetRenderState(D3DRS_ALPHATESTENABLE,FALSE);device->SetRenderState(D3DRS_SCISSORTESTENABLE,FALSE);
         device->SetRenderState(D3DRS_CLIPPLANEENABLE,0);device->SetRenderState(D3DRS_MULTISAMPLEANTIALIAS,FALSE);
         device->SetRenderState(D3DRS_FILLMODE,D3DFILL_SOLID);device->SetRenderState(D3DRS_FOGENABLE,FALSE);
-        device->SetVertexDeclaration(declaration.Get());device->SetVertexShader(vertexShader.Get());device->SetPixelShader(pixelShader.Get());
-        const float jitter[]={jitterX,jitterY,0,0};device->SetVertexShaderConstantF(0,jitter,1);
+        device->SetVertexDeclaration(snapshot.gpu?gpuDeclaration.Get():declaration.Get());
+        device->SetVertexShader(snapshot.gpu?gpuVertexShader.Get():vertexShader.Get());
+        device->SetPixelShader(opaqueCoverage?opaquePixelShader.Get():pixelShader.Get());
+        const auto& prior=matching?old->second:snapshot;
+        const float jitter[]={jitterX,jitterY,prior.jitterX,prior.jitterY};device->SetVertexShaderConstantF(0,jitter,1);
         const float controls[]={float(viewport.Width)/description.Width,float(viewport.Height)/description.Height,
             float(viewport.X)/description.Width,float(viewport.Y)/description.Height,
-            1.f/description.Width,1.f/description.Height,historyAllowed?1.f:0.f,0};
+            1.f/description.Width,1.f/description.Height,historyAllowed?1.f:0.f,opaqueCoverage?1.f:0.f};
         device->SetPixelShaderConstantF(0,controls,2);device->SetTexture(0,coverage.Get());
         for(auto sampler:{D3DSAMP_MINFILTER,D3DSAMP_MAGFILTER})device->SetSamplerState(0,sampler,D3DTEXF_POINT);
         device->SetSamplerState(0,D3DSAMP_MIPFILTER,D3DTEXF_NONE);device->SetSamplerState(0,D3DSAMP_SRGBTEXTURE,FALSE);
         device->SetSamplerState(0,D3DSAMP_ADDRESSU,D3DTADDRESS_CLAMP);device->SetSamplerState(0,D3DSAMP_ADDRESSV,D3DTADDRESS_CLAMP);
-        Check(device->DrawIndexedPrimitiveUP(type,0,count,primitives,meshIndices.data(),D3DFMT_INDEX32,
+        if(snapshot.gpu) {
+            const auto& now=*snapshot.gpu;const auto& before=*prior.gpu;
+            const float metrics[]={float(now.width),float(now.height),float(now.firstVertex),0,
+                float(before.width),float(before.height),float(before.firstVertex),0};
+            device->SetVertexShaderConstantF(1,metrics,2);
+            device->SetVertexShaderConstantF(4,&snapshot.inverseProjection.m[0][0],4);
+            device->SetVertexShaderConstantF(8,&prior.inverseProjection.m[0][0],4);
+            device->SetTexture(D3DVERTEXTEXTURESAMPLER0,now.texture.Get());
+            device->SetTexture(D3DVERTEXTEXTURESAMPLER1,before.texture.Get());
+            for(unsigned i=0;i<2;++i) {
+                const DWORD sampler=D3DVERTEXTEXTURESAMPLER0+i;
+                device->SetSamplerState(sampler,D3DSAMP_MINFILTER,D3DTEXF_POINT);
+                device->SetSamplerState(sampler,D3DSAMP_MAGFILTER,D3DTEXF_POINT);
+                device->SetSamplerState(sampler,D3DSAMP_MIPFILTER,D3DTEXF_NONE);
+                device->SetSamplerState(sampler,D3DSAMP_ADDRESSU,D3DTADDRESS_CLAMP);
+                device->SetSamplerState(sampler,D3DSAMP_ADDRESSV,D3DTADDRESS_CLAMP);
+                device->SetSamplerState(sampler,D3DSAMP_SRGBTEXTURE,FALSE);
+            }
+            Check(device->SetStreamSource(0,now.rasterPositions.Get(),0,16),"Bind GPU motion lookup");
+            // Retain the original index buffer. No expanded CPU vertex/index
+            // upload is needed to read either frame's captured positions.
+            const std::int64_t replayBase=std::int64_t(base)-now.firstVertex;
+            if(replayBase<INT_MIN||replayBase>INT_MAX)throw std::runtime_error("GPU motion index base is out of bounds");
+            Check(device->DrawIndexedPrimitive(type,INT(replayBase),UINT(std::int64_t(first)-base),
+                count,firstIndex,primitives),"GPU motion geometry replay failed");
+        } else Check(device->DrawIndexedPrimitiveUP(type,0,count,primitives,meshIndices.data(),D3DFMT_INDEX32,
             vertices.data(),sizeof(Vertex)),"Motion geometry replay failed");
         ++draws;if(historyAllowed)++validDraws;
         if(object)current.emplace(key,std::move(snapshot));
@@ -376,6 +484,7 @@ bool Begin(MMDApp* app,IDirect3DDevice9* device,IDirect3DSurface9* sceneTarget,
     s.app=app;s.collecting=false;s.pending=false;s.current.clear();s.ordinals.clear();
     s.vertexCache.Clear();
     s.failed=false;s.cleared=false;s.draws=s.validDraws=0;s.maxMotionPixels=0;s.viewport=viewport;s.jitterX=jitterX;s.jitterY=jitterY;
+    s.coverageReplays=s.opaqueCoverageSkips=0;
     try {
         s.Allocate(device,sceneTarget);s.scene=sceneTarget;
         if(!d3dx::Get().Load()||!d3dx::Get().inverse(reinterpret_cast<d3dx::D3DXMATRIXF*>(&s.inverseProjection),nullptr,
@@ -431,7 +540,16 @@ Stats GetStats(MMDApp* app) {
     return {};
 #else
     const auto found=states.find(app);if(found==states.end())return {};
-    const auto& s=*found->second;return {s.draws,s.validDraws,s.maxMotionPixels,s.vertexCache.captures,s.vertexCache.hits};
+    const auto& s=*found->second;return {s.draws,s.validDraws,s.maxMotionPixels,s.vertexCache.captures,s.vertexCache.hits,
+        s.vertexCache.gpuCaptures,s.vertexCache.cpuReadbacks,s.coverageReplays,s.opaqueCoverageSkips};
+#endif
+}
+IDirect3DTexture9* GetTexture(MMDApp* app) {
+#if MMD_ORIGINAL_PROFILE
+    return nullptr;
+#else
+    const auto found=states.find(app);
+    return found==states.end()||found->second->failed?nullptr:found->second->texture.Get();
 #endif
 }
 }

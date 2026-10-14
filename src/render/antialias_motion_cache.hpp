@@ -42,9 +42,11 @@ class VertexCache {
         std::vector<unsigned char> state;
         std::vector<std::vector<unsigned char>> input;
         std::vector<Position> clip;
+        std::shared_ptr<const vertex_capture::GpuPositions> gpu;
     };
     std::map<std::uint64_t,std::vector<Entry>> entries_;
     std::size_t bytes_=0;
+    vertex_capture::GpuCapture gpuCapture_;
     static constexpr std::size_t kBudget=64*1024*1024;
     static bool Read(IDirect3DDevice9* device,const std::vector<DWORD>& shader,
                      UINT first,UINT count,Input& input) {
@@ -93,10 +95,26 @@ class VertexCache {
         return input.count!=0;
     }
 public:
-    unsigned captures=0,hits=0;
-    void Clear(){entries_.clear();bytes_=0;captures=hits=0;}
+    unsigned captures=0,hits=0,gpuCaptures=0,cpuReadbacks=0;
+    void Clear(){entries_.clear();bytes_=0;captures=hits=gpuCaptures=cpuReadbacks=0;}
+    bool CaptureGpu(IDirect3DDevice9* device,const std::vector<DWORD>& shader,INT base,UINT minVertex,
+                    UINT vertexCount,UINT first,UINT count,
+                    std::shared_ptr<const vertex_capture::GpuPositions>& output,std::string& error) {
+        std::vector<Position> unused;
+        return Capture(device,shader,base,minVertex,vertexCount,first,count,unused,error,&output);
+    }
     bool Capture(IDirect3DDevice9* device,const std::vector<DWORD>& shader,INT base,UINT minVertex,
-                 UINT vertexCount,UINT first,UINT count,std::vector<Position>& output,std::string& error) {
+                 UINT vertexCount,UINT first,UINT count,std::vector<Position>& output,std::string& error,
+                 std::shared_ptr<const vertex_capture::GpuPositions>* gpu=nullptr) {
+        output.clear();if(gpu)gpu->reset();
+        const auto capture=[&](UINT start,UINT size,std::vector<Position>& positions,
+                               std::shared_ptr<const vertex_capture::GpuPositions>& texture) {
+            ++captures;
+            if(gpu){++gpuCaptures;return gpuCapture_.Capture(device,start,size,texture,error);}
+            ++cpuReadbacks;return vertex_capture::Capture(device,start,size,positions,error);
+        };
+        std::shared_ptr<const vertex_capture::GpuPositions> unused;
+        const auto direct=[&](){return capture(first,count,output,gpu?*gpu:unused);};
         const std::int64_t declaredFirst=std::int64_t(base)+minVertex;
         Input input;
         const bool cacheable=vertexCount&&vertexCount<=2000000&&declaredFirst>=0&&
@@ -104,41 +122,41 @@ public:
             first>=std::uint64_t(declaredFirst)&&std::uint64_t(first)+count<=std::uint64_t(declaredFirst)+vertexCount&&
             Read(device,shader,UINT(declaredFirst),vertexCount,input);
         if(!cacheable) {
-            input.Unlock();++captures;
-            return vertex_capture::Capture(device,first,count,output,error);
+            input.Unlock();return direct();
         }
         std::uint64_t key=14695981039346656037ull;
         for(auto byte:input.state)key=(key^byte)*1099511628211ull;
         auto& candidates=entries_[key];
-        for(const auto& entry:candidates)if(entry.state==input.state&&entry.input.size()==input.count) {
+        for(const auto& entry:candidates)if(entry.state==input.state&&entry.input.size()==input.count&&
+            (gpu?bool(entry.gpu):!entry.clip.empty())) {
             bool equal=true;
             for(unsigned i=0;i<input.count;++i)if(entry.input[i].size()!=input.streams[i].bytes||
                 std::memcmp(entry.input[i].data(),input.streams[i].data,input.streams[i].bytes)!=0){equal=false;break;}
             if(equal) {
                 const auto offset=first-UINT(declaredFirst);
-                output.assign(entry.clip.begin()+offset,entry.clip.begin()+offset+count);
+                if(gpu)*gpu=entry.gpu;
+                else output.assign(entry.clip.begin()+offset,entry.clip.begin()+offset+count);
                 ++hits;return true;
             }
         }
-        std::size_t entryBytes=input.state.size()+std::size_t(vertexCount)*sizeof(Position);
+        std::size_t entryBytes=input.state.size()+std::size_t(vertexCount)*(gpu?32:sizeof(Position));
         for(unsigned i=0;i<input.count;++i)entryBytes+=input.streams[i].bytes;
         if(entryBytes>kBudget-bytes_) {
-            input.Unlock();++captures;
-            return vertex_capture::Capture(device,first,count,output,error);
+            input.Unlock();return direct();
         }
         Entry entry;entry.state=std::move(input.state);
         for(unsigned i=0;i<input.count;++i)
             entry.input.emplace_back(input.streams[i].data,input.streams[i].data+input.streams[i].bytes);
-        input.Unlock();++captures;
-        if(!vertex_capture::Capture(device,UINT(declaredFirst),vertexCount,entry.clip,error)) {
+        input.Unlock();
+        if(!capture(UINT(declaredFirst),vertexCount,entry.clip,entry.gpu)) {
             // Some effects declare a wider range than the one actually used.
             // A cache miss must not make a previously supported draw fail.
             if(first==UINT(declaredFirst)&&count==vertexCount)return false;
-            ++captures;
-            return vertex_capture::Capture(device,first,count,output,error);
+            return direct();
         }
         const auto offset=first-UINT(declaredFirst);
-        output.assign(entry.clip.begin()+offset,entry.clip.begin()+offset+count);
+        if(gpu)*gpu=entry.gpu;
+        else output.assign(entry.clip.begin()+offset,entry.clip.begin()+offset+count);
         bytes_+=entryBytes;candidates.push_back(std::move(entry));return true;
     }
 };

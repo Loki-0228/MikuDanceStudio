@@ -19,10 +19,17 @@ void Release(MMDApp*);
 struct Stats {
     unsigned draws = 0;
     unsigned matchedDraws = 0;
-    float maxMotionPixels = 0;
+    float maxMotionPixels = 0; // CPU geometry only; GPU fields are never read back for statistics.
     unsigned vertexCaptures = 0;
     unsigned vertexCacheHits = 0;
+    unsigned gpuVertexCaptures = 0;
+    unsigned cpuVertexReadbacks = 0;
+    unsigned coverageReplays = 0;
+    unsigned opaqueCoverageSkips = 0;
 };
 Stats GetStats(MMDApp*);
+// Borrow the latest field for GPU consumers or explicit diagnostic capture.
+// Does not finish a frame, change history, or read anything back to the CPU.
+IDirect3DTexture9* GetTexture(MMDApp*);
 }
 }

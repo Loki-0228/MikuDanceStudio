@@ -40,12 +40,16 @@ private:
 // are excluded. The system-device hook sees the shader selected inside MME.
 class MaterialScope {
 public:
-    MaterialScope(const void* object, unsigned material, bool enabled);
+    MaterialScope(const void* object, unsigned material, bool enabled, bool opaqueCoverage=false);
     ~MaterialScope();
 private:
     const void* oldObject_;
     unsigned oldMaterial_;
+    bool oldOpaqueCoverage_;
 };
+// Only the native renderer may assert this after inspecting material/textures.
+// Arbitrary MME shaders must retain their real alpha/discard coverage pass.
+bool OpaqueCoverage();
 bool Active();
 void SetCamera(IDirect3DDevice9* device, const float world[16]);
 // Shared native draw observer. Callbacks run after MME has selected its final
