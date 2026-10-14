@@ -3,7 +3,7 @@ import ctypes as ct
 from functools import lru_cache
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=3)
 def compile_effect(source):
     # Use the same compiler and flags as runtime effect creation. Bytecode is
     # architecture independent; never load a project-local DLL during a build.

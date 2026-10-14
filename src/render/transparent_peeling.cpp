@@ -39,12 +39,23 @@ struct Program {
  ~Program(){if(effect)static_cast<IUnknown*>(effect)->Release();}
  bool Load(IDirect3DDevice9* d){
   device=d;D3DCAPS9 caps{};if(FAILED(d->GetDeviceCaps(&caps)) || caps.PixelShaderVersion<D3DPS_VERSION(3,0) || caps.NumSimultaneousRTs<2)return false;
-  const auto resource=FindResourceW(nullptr,MAKEINTRESOURCEW(118),MAKEINTRESOURCEW(10));
-  const auto memory=LoadResource(nullptr,resource);
-  const auto* data=static_cast<const char*>(LockResource(memory));
-  if(!data)return false;
-  std::string source(data,SizeofResource(nullptr,resource));
-  while(!source.empty() && source.back()==0)source.pop_back();source+=kShader;
+  // Full builds embed the complete peeling effect separately. Resource 118
+  // may be D3DX bytecode: trimming its zeros and appending HLSL corrupts it.
+  auto resource=FindResourceW(nullptr,MAKEINTRESOURCEW(120),MAKEINTRESOURCEW(10));
+  const bool legacySource=resource==nullptr;
+  if(legacySource)resource=FindResourceW(nullptr,MAKEINTRESOURCEW(118),MAKEINTRESOURCEW(10));
+  const DWORD size=resource?SizeofResource(nullptr,resource):0;
+  const auto memory=resource?LoadResource(nullptr,resource):nullptr;
+  const auto* data=memory?static_cast<const char*>(LockResource(memory)):nullptr;
+  if(!data || !size)return false;
+  std::string source(data,size);
+  if(legacySource){
+   const unsigned char compiledHeader[]={0x01,0x09,0xff,0xfe};
+   if(size>=sizeof compiledHeader && !std::memcmp(data,compiledHeader,sizeof compiledHeader)){
+    runtime_log::Trace("alpha-peel unavailable: compiled default effect has no peeling resource");return false;
+   }
+   while(!source.empty() && source.back()==0)source.pop_back();source+=kShader;
+  }
   using Create=HRESULT(WINAPI*)(IDirect3DDevice9*,LPCVOID,UINT,const void*,void*,DWORD,void*,void**,void**);
   const auto create=reinterpret_cast<Create>(GetProcAddress(d3dx::Get().module,"D3DXCreateEffect"));
   if(!create)return false;
@@ -52,6 +63,10 @@ struct Program {
   const HRESULT hr=create(d,source.data(),UINT(source.size()),nullptr,nullptr,0,nullptr,&effect,&errors);
   if(errors){using Text=void*(WINAPI*)(void*);auto get=EffectMethod<Text,3>(errors);runtime_log::Trace("alpha-peel compile: %s",static_cast<const char*>(get(errors)));static_cast<IUnknown*>(errors)->Release();}
   if(FAILED(hr)){runtime_log::Trace("alpha-peel compile failed 0x%08x",unsigned(hr));return false;}
+  for(const auto* technique:kTechniques){
+   const std::string name=std::string("Mds_")+technique;
+   if(FAILED(FxSetTechnique(effect,name.c_str())))return false;
+  }
   for(unsigned i=0;i<6;++i){
    FxSetTechnique(effect,kTechniques[i]);UINT count=0;
    if(FAILED(FxBegin(effect,&count)))return false;

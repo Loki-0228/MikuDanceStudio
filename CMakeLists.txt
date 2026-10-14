@@ -816,6 +816,7 @@ if(Python3_Interpreter_FOUND)
                 "${MIKUDANCESTUDIO_RESOURCE_DIR}/gen_resources_x64.res"
         DEPENDS ${MIKUDANCESTUDIO_RESOURCE_INPUTS}
                 scripts/gen_resources.py scripts/dialog_rc.py scripts/compile_effect.py
+                src/render/transparent_peeling_shader.inc
                 res/mmd_manifest.xml res/mmd_manifest_x64.xml
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         COMMENT "Regenerate embedded dialog and menu resources"
@@ -932,6 +933,7 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
 endif()
 # Exercise the actual embedded model effects in the occlusion regression.
 if(TARGET model_alpha_occlusion_tests)
+    target_sources(model_alpha_occlusion_tests PRIVATE "${MIKUDANCESTUDIO_GEN_RES}")
     target_link_options(model_alpha_occlusion_tests PRIVATE "/MANIFEST:NO"
         "${MIKUDANCESTUDIO_GEN_RES}")
 endif()

@@ -121,6 +121,9 @@ def record_specs(manifest, profile="full"):
     shaders = "assets/original" if profile == "mmd932" else "assets"
     yield (RT_RCDATA, 117, LANG_JP, f"{shaders}/skin_effect_sm2.fx")
     yield (RT_RCDATA, 118, LANG_JP, f"{shaders}/skin_effect_sm3.fx")
+    if profile == "full":
+        # The peeling effect extends HLSL, never compiled effect bytecode.
+        yield (RT_RCDATA, 120, LANG_JP, f"{shaders}/skin_effect_sm3.fx")
     yield (RT_GROUP_ICON, 100, LANG_JP, APP_ICON)
     yield (RT_MANIFEST, 1, LANG_EN, manifest)
 
@@ -209,7 +212,14 @@ def build_records(manifest, profile="full", compile_effects=False):
                 blob = ico_group
             else:
                 blob = open(path, "rb").read()
-        if compile_effects and t == RT_RCDATA and n in (117, 118):
+        if t == RT_RCDATA and n == 120:
+            extension_path = os.path.join(ROOT, "src/render/transparent_peeling_shader.inc")
+            extension = open(extension_path, "rb").read().strip()
+            opening, closing = b'R"MDSPEEL(', b')MDSPEEL"'
+            if not extension.startswith(opening) or not extension.endswith(closing):
+                raise ValueError(f"{extension_path}: invalid peeling shader literal")
+            blob = blob.rstrip(b"\0") + extension[len(opening):-len(closing)]
+        if compile_effects and t == RT_RCDATA and n in (117, 118, 120):
             from compile_effect import compile_effect
             blob = compile_effect(blob)
         records.append((t, n, lang, blob))
