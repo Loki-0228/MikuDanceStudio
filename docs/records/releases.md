@@ -17,74 +17,90 @@
 <!-- prerelease-notes:v2026.10.15.1-pre.1:begin -->
 ## MikuMikuStudio v2026.10.15.1-pre.1
 
-Windows x64 预发布候选，变更范围为 `v2026.10.14.6` 之后的提交。完整包与最小包来自同一源码提交，具体提交号与文件校验值见包内 `RELEASE_BUILD.json`。本记录用于准备发布，不表示已经上传 GitHub。
+Windows x64
+
+[中文](#release-v2026-10-15-1-pre-1-zh) | [English](#release-v2026-10-15-1-pre-1-en) | [日本語](#release-v2026-10-15-1-pre-1-ja)
+
+<a id="release-v2026-10-15-1-pre-1-zh"></a>
 
 ### 中文
 
-本次增加以下功能，并修复编辑与播放问题。
+本预发布版包含自 `v2026.10.14.6` 以来的更新。
 
-- 完整包修复常见 8-bit H.264 MP4 导入失败。视频在后台解码，连续拖动只追赶最新目标，主界面可以继续操作。预览长边最多 1024 像素，背景可能短暂滞后；录制和图片序列输出仍等待准确帧。
+#### 更新内容
+
+- 完整包支持导入常见的 8-bit H.264 MP4。视频在后台解码，拖动时间轴时可以继续操作，背景画面可能稍后跟上。
 - 按住 Ctrl 拖动视口右上角的十字箭头或放大镜，可以移动或缩放背景。图片和视频共用此操作，位置与缩放比例随工程保存。
-- 完整包的「编辑」菜单增加「选中帧序列散布」。选中的表情片段可按间隔和速度的均值、方差插入指定帧范围，保留原片段，跳过已有关键帧冲突，一次散布可整体撤销。窗口采用紧凑布局。
-- 完整包在原有骨骼位置与角度调整窗口下方增加 XYZ 缩放乘数和偏移量，并与位置、角度一起撤销。非法输入拒绝整次操作。
-- 修复播放范围为空时「播放」按钮和 P 键无效。修复新建工程时坐标显示状态、Track 镜头偏移、切换模型后方向键误切模型，以及保存后重开丢失显示分组折叠状态。
-- 修复删除时间轴关键帧时连带删除此前选中的骨骼记录，以及框选残留旧选择。补全表情、显示、IK 和外部亲删除的撤销记录，撤销后一次删除不会恢复前一次删除的关键帧。
-- 完整包减少密集骨骼缩放轨道播放和曲线选区同步的重复扫描。两种构建档保留本轮已有的模型缓存、MME 文件变更通知与重载优化；完整包中受支持的特效阴影目标随预览尺寸调整。本次没有给出通用帧率提升比例。
-- 完整包按需扩展编辑容量，保存 PMM 时优先使用原版 `0002` 格式。超出原版容量或路径编码限制的工程才使用 MMS 扩展格式，具体边界见文件兼容文档。
+- 完整包的「编辑」菜单新增「选中帧序列散布」。选定一段表情关键帧后，可设置插入范围，以及间隔和播放速度的均值、方差。散布保留原片段、跳过已有关键帧冲突，并支持一次撤销。
+- 完整包在原有骨骼位置与角度调整窗口下方增加 XYZ 缩放乘数和偏移量，支持与位置、角度一起撤销。
+- 修复播放范围为空时「播放」按钮和 P 键无效、新建工程时坐标显示不一致、Track 镜头偏移、切换模型后方向键误切模型，以及重开工程后显示分组意外展开。
+- 修复框选残留旧选择、删除时连带删除此前选中的骨骼关键帧，以及表情、显示、IK 和外部亲关键帧的撤销问题。撤销最近一次删除时，不再恢复更早删除的关键帧。
+- 优化大量缩放关键帧的播放、曲线选区同步、模型缓存和 MME 重载。完整版的部分特效阴影随预览分辨率调整，以减少预览开销。
+- 完整包按需扩展编辑容量，保存 PMM 时优先使用原版格式。超出原版容量或路径编码限制时使用 MMS 扩展格式。
 
-完整包与最小包均包含 `MikuMikuDance.exe`、说明和许可证。NVIDIA 修复 DLL 作为独立可选附件，不随主程序捆绑。最小包保留 `mmd932` 功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码。两个包均不捆绑模型、个人设置、MME、MMV 或 FFmpeg。
+#### 下载与使用
 
-Windows 无法解码的格式（如部分 10-bit H.264）需要另行提供 FFmpeg。查找位置依次为程序旁的 `tools/ffmpeg.exe`、`ffmpeg.exe` 和 `PATH`。高位深视频转换为 8-bit RGB 预览。最小包保持原版 AVI 背景路径。
+通常选择完整包。最小包保留原版 MMD 的功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码，背景视频仅支持 AVI。分别解压到独立目录后运行 `MikuMikuDance.exe`。模型、个人设置、MME、MMV 和 FFmpeg 需自行准备。
 
-本轮验证覆盖两种构建档编译、最小版界面、连续删除与撤销、框选、镜头与焦点、坐标状态、PMM 保存重开、散布、缩放编辑、H.264 与 4K 定位、视频播放中动作和物理推进，以及实际录制输出。曲线数值、同步和密集播放回归通过。三个既有界面测试目标仍失败：`animation_curve_host_tests` 的标签重绘、`animation_curve_editor_tests` 的左箭头平移，以及 `morph_curve_host_ui_tests` 的拖帧和按钮位置。这些断言在修改前基线日志中同样失败，预发布未宣称全部测试通过。外部 MMD 9.32 往返及所有 MME 特效组合未在本轮复测。
+完整版视频预览的长边最多为 1024 像素，高位深视频转换为 8-bit RGB。录制和图片序列输出会等待准确帧。Windows 无法解码的格式（如部分 10-bit H.264）需要另行提供 FFmpeg，可将 `ffmpeg.exe` 放在程序旁的 `tools` 文件夹、程序同目录，或加入 `PATH`。
 
 #### NVIDIA 修复安装（可选）
 
-将独立下载的 `MMSNvidiaAAFix.dll` 放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作；删除 DLL 不会撤销已安装的设置。
+两个主程序包均不附带 NVIDIA 修复插件。需要时单独下载 `MMSNvidiaAAFix.dll`，放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作，删除 DLL 不会撤销已安装的设置。
+
+<a id="release-v2026-10-15-1-pre-1-en"></a>
 
 ### English
 
-This prerelease candidate includes the following changes since `v2026.10.14.6`.
+This prerelease includes the changes since `v2026.10.14.6`.
 
-- The full build fixes common 8-bit H.264 MP4 imports. Background decoding follows the latest requested frame without blocking timeline edits. Preview frames are limited to 1024 pixels on the longer edge and may lag briefly. Recording and image-sequence export wait for the exact frame.
+#### What's new
+
+- The full build supports common 8-bit H.264 MP4 imports. Videos decode in the background, so you can continue editing while dragging the timeline. The background image may catch up shortly afterward.
 - Ctrl-drag the viewport's pan or zoom button to move or resize background images and videos. PMM saves their placement.
-- The full build adds **Scatter selected frame sequence** to Edit. It copies selected morph keyframes into a target range with configurable interval and speed means and variances. It preserves the source, skips conflicting placements, and supports one-step undo in a compact dialog.
-- XYZ scale multipliers and offsets appear below the existing position and angle controls in the full build. Invalid values reject the entire edit.
-- Fixed empty playback bounds disabling Play and P, coordinate visibility after scene reset, Track camera drift, arrow-key focus after model selection, and display-group expansion after reopening PMM.
-- Fixed stale marquee selections and deletion affecting previously selected bones. Morph, display, IK, and external-parent deletions now have their own undo records, so undoing the latest deletion does not restore the preceding one.
-- Reduced repeated scans during dense scale-track playback and curve selection synchronization. The candidate also includes model-cache, MME notification and reload, preview-shadow, and automatic-capacity changes already committed since the previous release. No general FPS gain is claimed.
+- The full build adds **Scatter selected frame sequence** to **Edit**. Copy selected morph keyframes into a target range with configurable means and variances for insertion intervals and playback speeds. The operation preserves the source, skips conflicting placements, and supports one-step undo.
+- XYZ scale multipliers and offsets appear below the existing position and angle controls in the full build. Undo restores all three together.
+- Fixed empty playback bounds disabling **Play** and **P**, coordinate visibility in new projects, **Track** camera drift, arrow keys switching models after model selection, and display groups expanding after reopening a project.
+- Fixed stale box selections, deletion affecting previously selected bones, and undo for morph, display, IK, and external-parent keys. Undoing the latest deletion no longer restores keys from an earlier deletion.
+- Optimized playback with many scale keys, curve selection synchronization, model caching, and MME reloads. Some effect shadows in the full build follow the preview resolution to reduce preview overhead.
+- The full build expands editing capacity as needed and prefers the original PMM format when saving. Projects beyond the original capacity or path-encoding limits use the MMS extended format.
 
-Both packages use the source revision recorded in `RELEASE_BUILD.json`. The NVIDIA helper is a separate optional download, excluded from both application ZIPs. The minimal package retains the `mmd932` feature set and excludes scatter, bone scaling, free curves, and modern video decoding. Neither package includes models, personal settings, MME, MMV, or FFmpeg.
+#### Download and use
 
-Formats unsupported by Windows, including some 10-bit H.264 files, require a separately installed FFmpeg. Lookup order is `tools/ffmpeg.exe` beside the application, `ffmpeg.exe` beside it, then `PATH`. Preview output is 8-bit RGB. Minimal retains AVI backgrounds.
+Choose the full package for the features above. The minimal package retains the original MMD feature set, without scatter, bone scaling, free curves, or modern video decoding. Its background videos are limited to AVI. Extract each package into a separate folder and run `MikuMikuDance.exe`. Models, personal settings, MME, MMV, and FFmpeg are not included.
 
-Builds and the targeted editing, media, playback, undo, and persistence checks passed. Three existing UI test targets still fail on label repaint, left-arrow panning, and morph-panel drag/layout assertions. The same failures occur in the recorded baseline. This candidate does not claim a fully passing test suite. Original MMD round trips and every MME effect combination were not retested.
+Full-build video previews are limited to 1024 pixels on the longer edge and converted to 8-bit RGB. Recording and image-sequence export wait for the exact frame. Formats unsupported by Windows, including some 10-bit H.264 files, require FFmpeg. Place `ffmpeg.exe` in the application's `tools` folder, beside the EXE, or on `PATH`.
 
 #### Optional NVIDIA fix
 
-Place the separately downloaded `MMSNvidiaAAFix.dll` beside the full build's EXE. Install it from **Help**, then restart MMS. Use Help to uninstall; deleting the DLL does not remove an installed setting.
+Neither application package includes the NVIDIA fix. If needed, download `MMSNvidiaAAFix.dll` separately and place it beside the full build's EXE. Install it from **Help**, then restart MMS. Use **Help** to uninstall. Deleting the DLL does not remove an installed setting.
+
+<a id="release-v2026-10-15-1-pre-1-ja"></a>
 
 ### 日本語
 
-`v2026.10.14.6` 以降の変更を含む Windows x64 向けプレリリース候補です。
+`v2026.10.14.6` 以降の変更を含むプレリリース版です。
 
-- 完全版で一般的な 8-bit H.264 MP4 の読み込みを修正しました。動画を別スレッドでデコードし、最新の要求フレームを追跡します。プレビューは長辺 1024 ピクセルまでで、一時的に遅れる場合があります。録画と連番画像出力では正しいフレームを待ちます。
+#### 更新内容
+
+- 完全版で一般的な 8-bit H.264 MP4 を読み込めるようになりました。動画をバックグラウンドで処理するため、タイムラインをドラッグしながら編集を続けられます。背景の表示が一時的に遅れる場合があります。
 - Ctrl を押しながらビューポートの移動・拡大縮小ボタンをドラッグすると、背景画像や動画の位置と大きさを変更できます。設定は PMM に保存されます。
 - 完全版の編集メニューに選択フレーム列の散布を追加しました。選択した表情キーフレームを、間隔と速度の平均・分散に従って指定範囲に挿入します。元の列を残し、既存キーとの衝突を避け、操作全体を一度で元に戻せます。
-- 完全版の既存の位置・角度調整ダイアログ下部に XYZ スケールの乗数と加算値を追加しました。
-- 再生範囲が空の場合の再生ボタンと P キー、座標表示の初期化、Track のカメラずれ、モデル選択後の矢印キー、PMM 再読込時の表示グループ開閉状態を修正しました。
-- 範囲選択の残りや、以前選択したボーンのキーまで削除される問題を修正しました。表情・表示・IK・外部親の削除も独立して元に戻せます。
-- 密なスケールキーの再生と曲線の選択同期で重複走査を減らしました。既存のモデルキャッシュ、MME 再読込、プレビューの影、容量拡張の変更も含みます。一般的な FPS 向上率は示していません。
+- 完全版の既存の位置・角度調整ダイアログ下部に XYZ スケールの乗数と加算値を追加しました。位置・角度とまとめて元に戻せます。
+- 再生範囲が空の場合に再生ボタンと P キーが反応しない問題、新規プロジェクトの座標表示、Track のカメラずれ、モデル選択後に矢印キーで別のモデルに切り替わる問題、再読込時に表示グループが展開される問題を修正しました。
+- 範囲選択に以前の選択が残る問題や、以前選択したボーンのキーまで削除される問題を修正しました。表情・表示・IK・外部親の削除の取り消しも修正し、直前の削除を取り消したときに、それより前に削除したキーまで復元されないようにしました。
+- 多数のスケールキーの再生、曲線の選択同期、モデルキャッシュ、MME 再読込を最適化しました。完全版では一部のエフェクトの影をプレビュー解像度に合わせ、プレビューの負荷を抑えます。
+- 完全版では必要に応じて編集容量を拡張し、PMM 保存時は原版の形式を優先します。原版の容量やパスの文字コード制限を超える場合は MMS 拡張形式を使います。
 
-完全版と最小版のソースコミットは同一で、`RELEASE_BUILD.json` に記録されます。NVIDIA 修正 DLL は任意の独立ダウンロードで、両方の ZIP に含まれません。最小版は `mmd932` の範囲を維持し、散布、ボーンスケール、自由曲線、現代的な動画デコードを含みません。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
+#### ダウンロードと使い方
 
-Windows が対応しない一部の 10-bit H.264 などには、別途 FFmpeg が必要です。検索順は実行ファイル横の `tools/ffmpeg.exe`、`ffmpeg.exe`、`PATH` です。プレビューは 8-bit RGB に変換します。最小版の背景動画は AVI のままです。
+通常は完全版を選んでください。最小版は原版 MMD の機能範囲を維持し、散布、ボーンスケール、自由曲線、新しい動画形式の読み込みを含みません。背景動画は AVI のみです。各パッケージを別のフォルダーに展開し、`MikuMikuDance.exe` を実行します。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
 
-両構成のビルドと、対象の編集・メディア・再生・取り消し・保存の検証は通過しました。ラベル再描画、左矢印の移動、表情パネルのドラッグと配置に関する既存の UI テスト 3 件は、変更前の基準ログと同様に失敗しています。全テスト通過は主張しません。原版 MMD との往復保存や、すべての MME エフェクトの組み合わせは今回再検証していません。
+完全版の動画プレビューは長辺 1024 ピクセルまでで、8-bit RGB に変換します。録画と連番画像出力では正しいフレームを待ちます。Windows が対応しない一部の 10-bit H.264 などには FFmpeg が必要です。`ffmpeg.exe` をアプリの `tools` フォルダーか EXE と同じフォルダーに置くか、`PATH` に追加してください。
 
 #### NVIDIA 修正の導入（任意）
 
-別途ダウンロードした `MMSNvidiaAAFix.dll` を完全版の EXE と同じフォルダーに置き、ヘルプからインストールして MMS を再起動します。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
+NVIDIA 修正プラグインは両方のパッケージに含まれません。必要な場合のみ `MMSNvidiaAAFix.dll` を別途ダウンロードし、完全版の EXE と同じフォルダーに置きます。ヘルプからインストールして MMS を再起動してください。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
 <!-- prerelease-notes:v2026.10.15.1-pre.1:end -->
 
 <a id="release-v2026-10-14-6"></a>
