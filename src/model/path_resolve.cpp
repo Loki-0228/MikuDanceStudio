@@ -152,6 +152,14 @@ bool ResolveAnsiUserFile(unsigned char* sub, const char* mbName,
         return true;
     };
     (void)sub;
+#if MMD_ORIGINAL_PROFILE
+    std::wstring decoded;
+    if (text_encoding::HasUtf8Bom(mbName) ||
+        !text_encoding::Decode(mbName, 932, decoded) ||
+        decoded.size() >= 256 || decoded.size() >= sizeWords) return false;
+    wcscpy_s(candidate, decoded.c_str());
+    return resolve();
+#else
     const bool utf8 = text_encoding::HasUtf8Bom(mbName);
     for (UINT cp : {GetACP(), 932u, 936u, 950u, 949u, 65001u}) {
         std::wstring decoded;
@@ -166,6 +174,7 @@ bool ResolveAnsiUserFile(unsigned char* sub, const char* mbName,
         if (utf8) break;
     }
     return false;
+#endif
 }
 
 errno_t ConvertMaterialName(unsigned char* sub, const char* mbName,
@@ -175,6 +184,14 @@ errno_t ConvertMaterialName(unsigned char* sub, const char* mbName,
     errno_t result = wcscpy_s(wideOut, sizeWords, L"");
     if (mbName[0] == '\0')
         return result;
+
+#if MMD_ORIGINAL_PROFILE
+    std::wstring decoded;
+    if (text_encoding::HasUtf8Bom(mbName) ||
+        !text_encoding::Decode(mbName, 932, decoded) || decoded.size() >= sizeWords)
+        return ERROR_NO_UNICODE_TRANSLATION;
+    return wcscpy_s(wideOut, sizeWords, decoded.c_str());
+#else
 
     int cw = MultiByteToWideChar(0, 0, mbName, -1, nullptr, 0);
     wchar_t* tmp = static_cast<wchar_t*>(malloc(2 * cw));
@@ -193,6 +210,7 @@ errno_t ConvertMaterialName(unsigned char* sub, const char* mbName,
                 reinterpret_cast<D3DRenderer*>(sub)->localeTable[li]);
     }
     return result;
+#endif
 }
 
 int LoadTextureShared(unsigned char* sub, wchar_t* path) {     // 0x407490

@@ -73,6 +73,7 @@
 #include "mikudancestudio/runtime_log.hpp"
 #include "mikudancestudio/vpd_scale_io.hpp"
 #include "mikudancestudio/original_file_encoding.hpp"
+#include "mikudancestudio/original_import.hpp"
 
 namespace mikudancestudio {
 namespace {
@@ -233,6 +234,38 @@ void LoadVpdFile(const wchar_t* path) {
 
     FILE* fp = nullptr;
     if (_wfopen_s(&fp, path, kModeRead) != 0 || fp == nullptr) return;
+
+#if MMD_ORIGINAL_PROFILE
+    // Validate all standard names before advancing the undo ring or applying
+    // the first bone. Optional extension tails retain their ignore policy.
+    char checkedLine[1024]{};
+    bool namesFit = std::fgets(checkedLine, sizeof checkedLine, fp) != nullptr &&
+        std::fgets(checkedLine, sizeof checkedLine, fp) != nullptr &&
+        std::fgets(checkedLine, sizeof checkedLine, fp) != nullptr;
+    char* suffix = namesFit ? std::strstr(checkedLine, ".osm;") : nullptr;
+    if (suffix) *suffix = '\0';
+    namesFit = namesFit && suffix && original_import::Legacy(checkedLine, sizeof checkedLine, 20);
+    int expectedBones = -1;
+    if (!std::fgets(checkedLine, sizeof checkedLine, fp) ||
+        std::sscanf(checkedLine, "%d;", &expectedBones) != 1 || expectedBones < 0)
+        namesFit = false;
+    int foundBones = 0;
+    while (namesFit && foundBones < expectedBones && std::fgets(checkedLine, sizeof checkedLine, fp)) {
+        if (std::strncmp(checkedLine, "Bone", 4) != 0) continue;
+        char* brace = std::strchr(checkedLine, '{');
+        if (!brace) { namesFit = false; break; }
+        char* end = std::strpbrk(brace + 1, "\r\n");
+        if (end) *end = '\0';
+        namesFit = end && original_import::Legacy(brace + 1, std::strlen(brace + 1), 20);
+        ++foundBones;
+    }
+    if (!namesFit || foundBones != expectedBones) {
+        std::fclose(fp);
+        original_import::Refuse(app->Hwnd(), app->EnglishUI());
+        return;
+    }
+    std::rewind(fp);
+#endif
 
     char line[256], name[256], tail[256];
     std::fgets(line, 0x100, fp);   // "Vocaloid Pose Data file"

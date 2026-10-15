@@ -38,6 +38,7 @@
 #include "mikudancestudio/frame_limits.hpp"
 #include "mikudancestudio/bone_pose_safety.hpp"
 #include "mikudancestudio/unicode_window.hpp"
+#include "mikudancestudio/original_import.hpp"
 
 namespace mikudancestudio::pmm_io {
 
@@ -65,6 +66,18 @@ inline int Rd(int fd, void* buf, unsigned int count) {
     const int received = _read(fd, buf, count);
     if(checkedDescriptor == fd && received != static_cast<int>(count))
         throw ShortRead(offset,count,received);
+    return received;
+}
+
+struct UnsupportedText : std::runtime_error {
+    UnsupportedText() : std::runtime_error("PMM text exceeds the original CP932 fields") {}
+};
+inline int ReadText(int fd, char* buf, unsigned count, unsigned maximum) {
+    const int received = Rd(fd, buf, count);
+#if MMD_ORIGINAL_PROFILE
+    if (received != static_cast<int>(count) || !original_import::Legacy(buf, count, maximum))
+        throw UnsupportedText();
+#endif
     return received;
 }
 

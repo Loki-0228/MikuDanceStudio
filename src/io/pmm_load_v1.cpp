@@ -457,7 +457,7 @@ static unsigned char LoadSceneV1_ModelPrePass(PmmV1LoadContext& ctx,
 
     // per-model 20-byte name pre-pass (0x4597C6..0x459841)
     for (unsigned char i = 0; i < modelCount; ++i) {
-        Rd(fd, text, 0x14);                                      // 0x4597C6
+        pmm_io::ReadText(fd, text, 0x14, 20);                                      // 0x4597C6
         SendMessageA(GetDlgItem(main, panel::kMainComboModel), CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(text));
         SendMessageA(GetDlgItem(main, panel::kMainComboGround), CB_ADDSTRING, 0,
@@ -506,8 +506,8 @@ static bool LoadSceneV1_ModelBlock(PmmV1LoadContext& ctx, int fd) {
             ModelInitDefaults(model);                            // 0x4598D0
 
             char name20[0x14];
-            Rd(fd, name20, 0x14);                                // 0x4598E4
-            Rd(fd, mbPath, 0x100);                               // 0x4598FB
+            pmm_io::ReadText(fd, name20, 0x14, 20);                                // 0x4598E4
+            pmm_io::ReadText(fd, mbPath, 0x100, 255);                               // 0x4598FB
             ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                                 mbPath, widePath, 0x100,
                                 paths);                           // 0x459925
@@ -1111,7 +1111,7 @@ static bool LoadSceneV1_AccessoryBlock(PmmV1LoadContext& ctx, int fd) {
     EnableMenuItem(GetMenu(main), 0xF9, accCount == 0 ? 1 : 0);  // 0x45B7EA
     // shadow name list (0x45B814..0x45B837)
     for (unsigned char i = 0; i < accCount; ++i) {
-        Rd(fd, text, 100);
+        pmm_io::ReadText(fd, text, 100, 99);
         SendMessageA(GetDlgItem(main, panel::kAccessoryCombo), CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(text));
     }
@@ -1132,8 +1132,8 @@ static bool LoadSceneV1_AccessoryBlock(PmmV1LoadContext& ctx, int fd) {
             unsigned char discardedByte = 0;
             std::int32_t discardedWord = 0;
             mdl::AccessoryKey discardedKey{};
-            Rd(fd, accName, 100);
-            Rd(fd, mbPath, 0x100);
+            pmm_io::ReadText(fd, accName, 100, 99);
+            pmm_io::ReadText(fd, mbPath, 0x100, 255);
             Rd(fd, &discardedByte, 1);                  // accessory.order
             ReadPmmAccessoryKey(fd, discardedKey);
             std::int32_t discardedCount = 0;
@@ -1161,8 +1161,8 @@ static bool LoadSceneV1_AccessoryBlock(PmmV1LoadContext& ctx, int fd) {
         accs[accSlot] = acc;
         std::memset(accs[accSlot], 0, sizeof(mdl::AccessoryRecord));
         Sub04B0Init(accs[accSlot]);                              // 0x45B8D6
-        Rd(fd, accName, 100);                                    // 0x45B8EA
-        Rd(fd, mbPath, 0x100);                                   // 0x45B901
+        pmm_io::ReadText(fd, accName, 100, 99);                                    // 0x45B8EA
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                   // 0x45B901
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath, wideTmp, 0x100,
                             paths);                               // 0x45B92B
@@ -1394,7 +1394,7 @@ static void LoadSceneV1_ConfigBlock(PmmV1LoadContext& ctx, int fd) {
         ClearTimelineAndCurveDCs(s);                                            // 0x45CA2F
         Rd(fd, &b, 1);                                           // 0x45CA40
         s->state.waveEnabled = b ? 1 : 0;
-        Rd(fd, mbPath, 0x100);                                   // 0x45CA71
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                   // 0x45CA71
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath,
                             reinterpret_cast<wchar_t*>(s->state.wavPath),
@@ -1405,7 +1405,7 @@ static void LoadSceneV1_ConfigBlock(PmmV1LoadContext& ctx, int fd) {
         Rd(fd, &w1, 4);                                          // 0x45CABE
         Rd(fd, &w2, 4);                                          // 0x45CACF
         Rd(fd, &w3, 4);                                          // 0x45CAE3
-        Rd(fd, mbPath, 0x100);                                   // 0x45CAFA
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                   // 0x45CAFA
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath,
                             s->AviBackgroundPath(),
@@ -1451,7 +1451,7 @@ static void LoadSceneV1_ConfigBlock(PmmV1LoadContext& ctx, int fd) {
         Rd(fd, &p1, 4);                                          // 0x45CC5F
         Rd(fd, &p2, 4);                                          // 0x45CC70
         Rd(fd, &p3, 4);                                          // 0x45CC84
-        Rd(fd, mbPath, 0x100);                                   // 0x45CC9B
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                   // 0x45CC9B
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath,
                             s->PictureBackgroundPath(),

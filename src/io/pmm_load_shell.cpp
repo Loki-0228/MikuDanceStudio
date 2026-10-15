@@ -149,6 +149,11 @@ void LoadSceneFile() {
         // The inline v1 loader body (0x45916D..0x45E7F7) owns the fd and
         // closes it on every path itself (pmm_load_v1.cpp).
         try { LoadSceneV1(app, fd); }
+        catch (const pmm_io::UnsupportedText&) {
+            const auto language = app->EnglishUI();
+            _close(fd); ResetAppState(app); app->EnglishUI() = language;
+            original_import::Refuse(app->MainWindow(), language);
+        }
         catch (const std::bad_alloc&) { KeyPoolLoadFailed(app, fd); }
         catch (const std::runtime_error&) { _close(fd); ResetAppState(app); ShowUiMessage(app, app->MainWindow(), UiMessage::InvalidProjectFile, MB_OK | MB_ICONERROR); }
         LocalizeUI(app);
@@ -162,6 +167,10 @@ void LoadSceneFile() {
         try {
             pmm_io::CheckedReads checked(fd);
             LoadSceneV2(app, fd);
+        } catch (const pmm_io::UnsupportedText&) {
+            const auto language = app->EnglishUI();
+            _close(fd); ResetAppState(app); app->EnglishUI() = language;
+            original_import::Refuse(app->MainWindow(), language);
         } catch (const std::bad_alloc&) {
             KeyPoolLoadFailed(app, fd);
         } catch(const pmm_io::ShortRead& error) {

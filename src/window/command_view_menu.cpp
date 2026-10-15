@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 #include "mikudancestudio/key_pool.hpp"
 // ===========================================================================
 // CommandDispatch family: View/Edit option-menu cases 251..303 (0x47E8A0)
@@ -1822,6 +1823,16 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
                    // match any id of this family
     HINSTANCE hInst = static_cast<HINSTANCE>(app->HInstance());
     const bool english = app->state.englishUI != 0;
+
+#if MMD_ORIGINAL_PROFILE
+    if (id == 259 || id == 261 || id == 262 || id == 263) {
+        if (!app->SelectedModel()) return;
+        if (!original_import::CanEdit(*mdl::Mdl(app->SelectedModel()))) {
+            original_import::Refuse(hwnd, app->EnglishUI(), true);
+            return;
+        }
+    }
+#endif
 
     switch (id) {
     // ------------------------------------------------------------------

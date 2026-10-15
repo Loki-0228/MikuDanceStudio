@@ -467,6 +467,11 @@ if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
     add_test(NAME original_pmd_save COMMAND original_pmd_save_tests)
 endif()
 
+add_executable(original_import_tests EXCLUDE_FROM_ALL tests/original_import_tests.cpp)
+target_link_libraries(original_import_tests PRIVATE mikudancestudio_core winmm dsound)
+set_target_properties(original_import_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+add_test(NAME original_import COMMAND original_import_tests)
+
 add_executable(pmd_index_save_tests EXCLUDE_FROM_ALL tests/pmd_index_save_tests.cpp)
 target_link_libraries(pmd_index_save_tests PRIVATE mikudancestudio_core winmm dsound)
 set_target_properties(pmd_index_save_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")

@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 // ===========================================================================
 // VA 0x00418500 - LoadWaveFile       (original: sub_418500, 0x241 bytes)
 // VA 0x004C2660 - WaveCtxReset       (original: sub_4C2660)
@@ -286,11 +287,19 @@ bool WaveLoadFile(void* obj, const wchar_t* path,
     HWND hwnd = audio->mainWindow;
     const unsigned char english = audio->englishUI;
 
+#if MMD_ORIGINAL_PROFILE
+    if (!original_import::Reference(path, hwnd, english)) return false;
+    ResolveUserFilePath(paths, path);
+    if (!original_import::Reference(paths.resolvedPath, hwnd, english)) return false;
+#endif
+
     if (audio->parseStream != nullptr)                              // 0x4C2F8B
         CloseDataFile(audio);                                      // 0x4C2680
     std::memset(&audio->format, 0, sizeof audio->format);           // 0x4C2FA0
 
+#if !MMD_ORIGINAL_PROFILE
     ResolveUserFilePath(paths, path);                                  // 0x4089F0
+#endif
     std::wstring playable, error;
     if (!media::PrepareAudio(audio, paths.resolvedPath, playable, error)) {
         MessageBoxW(hwnd, error.c_str(), L"Audio import", MB_OK | MB_ICONERROR);

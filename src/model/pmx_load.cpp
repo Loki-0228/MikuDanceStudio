@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 #include <memory>
 #include "mikudancestudio/display_capacity.hpp"
 #include "mikudancestudio/model_vertex_cache.hpp"
@@ -437,6 +438,12 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
             else
                 swprintf_s(buf, 0x14, L"Null_%02d", nullIdx++);
         }
+#if MMD_ORIGINAL_PROFILE
+        if (i < 2 && !original_import::Text(buf, 20)) {
+            original_import::Refuse(hwnd, englishUI);
+            return AbortPmxLoad(reader, m);
+        }
+#endif
         WideToSjis(sjisMirrors[i], buf, kSjisSizes[i]);
     }
     if (showInfo) {                                         // 0x4B7A56
@@ -750,6 +757,14 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
                 return false;
             }
         }
+#if MMD_ORIGINAL_PROFILE
+        if (texPaths[t] && !original_import::Text(texPaths[t])) {
+            releaseTexturePaths(texPaths, texCount);
+            reader.Close();
+            original_import::Refuse(hwnd, englishUI);
+            return false;
+        }
+#endif
     }
     static const char* kToonNames[10] = {
         "toon01.bmp", "toon02.bmp", "toon03.bmp", "toon04.bmp", "toon05.bmp",
@@ -1958,8 +1973,14 @@ bool LoadPMX(unsigned char* m, D3DRenderer* sub, std::uint8_t showInfo,
         }
         key.rotation[3] = 1.0f;
     }
-    model.loadComplete = 1;
     text_encoding::SetMaterialNames(model,std::move(materialNames));
+#if MMD_ORIGINAL_PROFILE
+    if (!original_import::Model(model)) {
+        original_import::Refuse(hwnd, englishUI);
+        return false;
+    }
+#endif
+    model.loadComplete = 1;
     PostLoadInit(m);                                        // 0x49C850
     model_vertex_cache::RegisterLoaded(m);
     // Report once per model, including PMM loads whose showInfo flag is off.

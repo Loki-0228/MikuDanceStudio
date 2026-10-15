@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 // ===========================================================================
 // VA 0x0042AE20 - CopyDirPathW         (original: sub_42AE20, 16 bytes)
 // VA 0x0042AE40 - CopyPathW         (original: sub_42AE40, 23 bytes)
@@ -164,6 +165,18 @@ void CopyPathW(wchar_t* dest, const wchar_t* src) {
 // app+0x9E3FC (PAVIFILE), +0x9E400 (PAVISTREAM), +0x9E404 (GETFRAME).
 // ---------------------------------------------------------------------------
 void LoadAviFile(MMDApp* app) {
+#if MMD_ORIGINAL_PROFILE
+    if (!original_import::Reference(app->AviBackgroundPath(), app->Hwnd(), app->EnglishUI())) {
+        AviFailTail(app);
+        return;
+    }
+    ResolveUserFilePath(app->PathWorkspace(), app->AviBackgroundPath());
+    if (!original_import::Reference(app->PathWorkspace().resolvedPath,
+            app->Hwnd(), app->EnglishUI())) {
+        AviFailTail(app);
+        return;
+    }
+#endif
     media::ReleaseVideo(app);
     auto& s = *app;
     HWND hwnd = static_cast<HWND>(s.Hwnd());
@@ -409,12 +422,22 @@ void LoadBackgroundPicture(MMDApp* app) {
     auto& s = *app;
     HWND hwnd = static_cast<HWND>(s.Hwnd());
     wchar_t* stored = s.PictureBackgroundPath();
+    if (!original_import::Reference(stored, hwnd, s.EnglishUI())) {
+        stored[0] = L'\0';
+        s.PictureBackgroundEnabled() = 0;
+        return;
+    }
 
     PathResolutionWorkspace& paths = app->PathWorkspace();
     ResolveUserFilePath(paths, stored);                             // 0x4089F0
     wchar_t path[0x100];
     wcscpy_s(path, 0x100,
              paths.resolvedPath);                                  // 0x506292
+    if (!original_import::Reference(path, hwnd, s.EnglishUI())) {
+        stored[0] = L'\0';
+        s.PictureBackgroundEnabled() = 0;
+        return;
+    }
     if (!WsOpenOk(path)) {                                          // 0x50747B
         MessageBoxA(hwnd,
                     s.EnglishUI() != 0 ? "Cannot open BMP file"

@@ -6,6 +6,7 @@
 #include <io.h>
 #include <limits>
 #include <vector>
+#include "mikudancestudio/original_import.hpp"
 
 namespace mikudancestudio::vmd_read {
 
@@ -48,6 +49,31 @@ public:
     bool Seek(std::size_t position) {
         if (position > bytes_.size()) return false;
         position_ = position;
+        return true;
+    }
+    // Called only after Validate established all record boundaries. Inspect
+    // every name before any key or undo record is applied to the scene.
+    bool OriginalNamesFit() const {
+        const auto name = [&](std::size_t offset, std::size_t size) {
+            return original_import::Legacy(reinterpret_cast<const char*>(Data(offset)), size, size);
+        };
+        std::size_t at = 30, size = version == 1 ? 10 : 20;
+        if (!name(at, size)) return false;
+        at += size + 4;
+        for (std::uint32_t i = 0; i < boneCount; ++i, at += 111)
+            if (!name(at, 15)) return false;
+        at += 4;
+        for (std::uint32_t i = 0; i < morphCount; ++i, at += 23)
+            if (!name(at, 15)) return false;
+        if (displayOffset == absent) return true;
+        at = displayOffset + 4;
+        for (std::uint32_t i = 0; i < displayCount; ++i) {
+            std::uint32_t count = 0;
+            std::memcpy(&count, Data(at + 5), 4);
+            at += 9;
+            for (std::uint32_t j = 0; j < count; ++j, at += 21)
+                if (!name(at, 20)) return false;
+        }
         return true;
     }
     static bool AllocationSize(std::size_t count, std::size_t stride, std::size_t& bytes) {

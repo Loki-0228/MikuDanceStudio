@@ -30,7 +30,7 @@
 
 Both application ZIPs contain `MikuMikuDance.exe` and licenses. Neither includes models, user settings, MME, or the NVIDIA fix DLL. Starting with `v2026.10.15.1`, `MMSNvidiaAAFix.dll` is a separate optional release asset with [installation instructions in the release notes](docs/records/releases.md#optional-nvidia-fix).
 
-The minimal build checks CP932 encoding and field lengths for names and references stored in files, and rejects values it cannot represent. Model editing saves PMD only and rejects lossy PMX-to-PMD conversion. Save extended full-build projects as separate copies when using the minimal build, because scale, curve, and mesh-cache extensions are discarded. Round-trip loading and saving with the actual MMD 9.32 executable has not yet been validated. See [minimal build limits](docs/reference/minimal-build.md).
+The minimal build checks names and file references during import and rejects text that cannot fit the standard CP932 fields. Compatible PMX models remain available for scenes and animation. Model editing supports PMD only and rejects PMX before opening an editor. Save-time checks remain as a safeguard for later edits. Save extended full-build projects as separate copies when using the minimal build, because scale, curve, and mesh-cache extensions are discarded. Round-trip loading and saving with the actual MMD 9.32 executable has not yet been validated. See [minimal build limits](docs/reference/minimal-build.md).
 
 Extract the two builds into separate directories and run the executable in each directory. Keep your existing installation if it contains settings or plugins.
 
@@ -73,7 +73,7 @@ startup. They are not stored in project files.
 
 完整包和最小包 ZIP 均包含 `MikuMikuDance.exe` 与许可文件，不附带用户配置、模型、MME 或 NVIDIA 修复 DLL。从 `v2026.10.15.1` 起，`MMSNvidiaAAFix.dll` 作为独立附件按需下载，见[Release Notes 中的安装说明](docs/records/releases.md#nvidia-修复安装可选)。
 
-最小包仍保留三语界面等便利修复，并非原版 MMD 的逐字节复刻。它按原版格式的名称编码和字段长度检查保存内容：名称与文件内引用须能完整表示为 CP932，超出范围时拒绝保存。模型编辑只提供 PMD 保存；最小包拒绝 PMX 到 PMD 的有损转换。
+最小包仍保留三语界面等便利修复，并非原版 MMD 的逐字节复刻。它在导入时检查名称和文件内引用：须能完整表示为 CP932，并符合标准字段的字节上限，超出范围时拒绝导入。合规 PMX 仍可用于场景和动画；模型编辑仅支持 PMD，PMX 在进入模型编辑时即被拦截。保存端保留校验，防止后续编辑产生无法表示的内容。
 
 含缩放、曲线或 mesh 缓存等扩展的完整包工程，经最小包保存后会丢失这些扩展，请另存为副本。真实 MMD 9.32 程序的双向载入及再保存尚未完成验证，不能据此保证任意工程无损互导。选择下载前可查看[最小包范围与格式限制](docs/reference/minimal-build.md)及[透明排序验收记录](docs/records/rendering/transparency.md#record-transparent-sort-validation)。
 
@@ -115,7 +115,7 @@ PMM `0002` 在保留标准文件头的前提下，通过扩展保存骨骼曲线
 
 両方のアプリ ZIP に `MikuMikuDance.exe` とライセンスを含みます。モデル、ユーザー設定、MME、NVIDIA 修正 DLL は同梱しません。`v2026.10.15.1` 以降、`MMSNvidiaAAFix.dll` は任意の独立ダウンロードです。[リリースノートの導入手順](docs/records/releases.md#nvidia-修正の導入任意)を参照してください。
 
-最小版は、ファイル内に保存する名前と参照先の CP932 表現およびフィールド長を確認し、表現できない内容の保存を拒否します。モデル編集の保存形式は PMD のみで、情報が失われる PMX から PMD への変換も拒否します。完全版の拡張を含むプロジェクトを最小版で保存すると、スケール、曲線、メッシュキャッシュの拡張が失われるため、別名で保存してください。実際の MMD 9.32 を使った双方向の読み込みと再保存は、まだ検証できていません。[最小版の制限](docs/reference/minimal-build.md)も参照してください。
+最小版は読み込み時に名前と参照先の CP932 表現およびフィールド長を確認し、表現できない内容の読み込みを拒否します。条件を満たす PMX はシーンやアニメーションで利用できます。モデル編集は PMD のみ対応し、PMX は編集画面を開く前に拒否します。読み込み後の編集に備え、保存時の確認も残しています。完全版の拡張を含むプロジェクトを最小版で保存すると、スケール、曲線、メッシュキャッシュの拡張が失われるため、別名で保存してください。実際の MMD 9.32 を使った双方向の読み込みと再保存は、まだ検証できていません。[最小版の制限](docs/reference/minimal-build.md)も参照してください。
 
 両方を使う場合は別々のフォルダーに展開し、それぞれの実行ファイルを起動してください。設定やプラグインが入った既存のフォルダーは残してください。
 

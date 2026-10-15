@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 #include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/deformed_mesh_capture.hpp"
@@ -649,9 +650,14 @@ void DisposeAccessory(void* accessory) {
 }
 
 bool LoadAccessoryObject(MMDApp* app, void* accessory, const wchar_t* path) {    auto* sub = app->Renderer();
+    if (!original_import::Reference(path, app->Hwnd(), app->EnglishUI())) return false;
     TraceAccessoryLoadStage("entry", accessory);
     PathResolutionWorkspace& paths = app->PathWorkspace();
     const wchar_t* resolved = ResolveUserFilePath(paths, path);
+    if (!original_import::Reference(resolved, app->Hwnd(), app->EnglishUI())) return false;
+    const wchar_t* importedName = wcsrchr(resolved, L'\\');
+    if (!original_import::Reference(importedName ? importedName + 1 : resolved,
+            app->Hwnd(), app->EnglishUI(), 99)) return false;
     if (resolved[0] == L'\0') {
         ShowCannotFindXfile(app);  // x64 sub_7FF7CB4FC5CC path
         return false;
@@ -691,6 +697,13 @@ bool LoadAccessoryObject(MMDApp* app, void* accessory, const wchar_t* path) {   
         fgets(line, sizeof(line), vac);
         if (char* lf = strchr(line, '\n'))
             *lf = '\0';
+#if MMD_ORIGINAL_PROFILE
+        if (!original_import::Legacy(line, sizeof line, 255)) {
+            fclose(vac);
+            original_import::Refuse(app->Hwnd(), app->EnglishUI());
+            return false;
+        }
+#endif
         if (!ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(sub),
                                  line, meshPath, 0x100,
                                  paths)) {
@@ -698,6 +711,12 @@ bool LoadAccessoryObject(MMDApp* app, void* accessory, const wchar_t* path) {   
             return false;
         }
         const wchar_t* meshName = wcsrchr(meshPath, L'\\');
+        if (!original_import::Reference(meshPath, app->Hwnd(), app->EnglishUI()) ||
+            !original_import::Reference(meshName ? meshName + 1 : meshPath,
+                app->Hwnd(), app->EnglishUI(), 99)) {
+            fclose(vac);
+            return false;
+        }
         WideToAnsi(meshName != nullptr ? meshName + 1 : meshPath,
                    record.name, static_cast<unsigned>(sizeof record.name));
         fscanf_s(vac, "%f", &record.scale);
@@ -758,6 +777,14 @@ bool LoadAccessoryObject(MMDApp* app, void* accessory, const wchar_t* path) {   
             char* texture = source.textureFileName;
             if (texture == nullptr || texture[0] == '\0')
                 continue;
+#if MMD_ORIGINAL_PROFILE
+            std::string encoded;
+            if (!original_file_encoding::Name(texture, strlen(texture), nullptr, 2047, encoded)) {
+                ReleaseCom(materialBuffer);
+                original_import::Refuse(app->Hwnd(), app->EnglishUI());
+                return false;
+            }
+#endif
             auto* types = mdl::Accessory(accessory)->textureTypes;
             if (char* star = strchr(texture, '*')) {
                 *star = '\0';

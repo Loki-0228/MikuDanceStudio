@@ -510,13 +510,13 @@ static void LoadSceneV2_SkipRecordConsumption(
                 for (std::int32_t i = 0; i < workspace.displayCount; ++i) {
                     unsigned char len = 0;
                     Rd(fd, &len, 1);
-                    Rd(fd, text, len);
+                    pmm_io::ReadText(fd, text, len, 20);
                 }
                 Rd(fd, &workspace.morphCount, 4);                         // 0x4509B1
                 for (std::int32_t i = 0; i < workspace.morphCount; ++i) {
                     unsigned char len = 0;
                     Rd(fd, &len, 1);
-                    Rd(fd, text, len);
+                    pmm_io::ReadText(fd, text, len, 20);
                 }
                 Rd(fd, &workspace.ikCount, 4);                         // 0x450A11
                 for (std::int32_t i = 0; i < workspace.ikCount; ++i) {
@@ -1170,10 +1170,10 @@ static bool LoadSceneV2_ModelBlock(PmmV2LoadContext& ctx, int fd,
                 skippedWorkspace.skipped = 1;
                 unsigned char skippedLen = 0;
                 Rd(fd, &skippedLen, 1);
-                Rd(fd, text, skippedLen);
+                pmm_io::ReadText(fd, text, skippedLen, 20);
                 Rd(fd, &skippedLen, 1);
-                Rd(fd, text, skippedLen);
-                Rd(fd, text, 0x100);
+                pmm_io::ReadText(fd, text, skippedLen, 20);
+                pmm_io::ReadText(fd, text, 0x100, 255);
                 Rd(fd, &skippedWorkspace.boneGroupCount, 1);
                 LoadSceneV2_SkipRecordConsumption(fd, skippedWorkspace, text,
                                                   false);
@@ -1191,18 +1191,18 @@ static bool LoadSceneV2_ModelBlock(PmmV2LoadContext& ctx, int fd,
             {  // stored model name (0x45054D..0x450592)
                 unsigned char len = 0;
                 Rd(fd, &len, 1);
-                Rd(fd, text, len);
+                pmm_io::ReadText(fd, text, len, 20);
                 text[len] = 0;
                 strcpy_s(workspace.modelName, 0x100, text);
             }
             {  // source model name (0x450597..0x4505D9)
                 unsigned char len = 0;
                 Rd(fd, &len, 1);
-                Rd(fd, text, len);
+                pmm_io::ReadText(fd, text, len, 20);
                 text[len] = 0;
                 strcpy_s(workspace.sourceName, 0x100, text);
             }
-            Rd(fd, text, 0x100);                                // 0x4505EF
+            pmm_io::ReadText(fd, text, 0x100, 255);                                // 0x4505EF
             ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                                 text, widePath, 0x100,
                                 paths);
@@ -1343,7 +1343,7 @@ static bool LoadSceneV2_ModelBlock(PmmV2LoadContext& ctx, int fd,
                         unsigned char len = 0;
                         Rd(fd, &len, 1);
                         NameMapping& mapping = boneMappings[i];
-                        Rd(fd, mapping.name, len);
+                        pmm_io::ReadText(fd, mapping.name, len, 15);
                         mapping.name[len] = 0;
                         mapping.mappedIndex = i;
                         if (workspace.displayCount == loadedModel->boneCount) {
@@ -1403,7 +1403,7 @@ static bool LoadSceneV2_ModelBlock(PmmV2LoadContext& ctx, int fd,
                         unsigned char len = 0;
                         Rd(fd, &len, 1);
                         NameMapping& mapping = morphMappings[i];
-                        Rd(fd, mapping.name, len);
+                        pmm_io::ReadText(fd, mapping.name, len, 15);
                         mapping.name[len] = 0;
                         mapping.mappedIndex = i;
                         if (workspace.morphCount == loadedModel->morphCount) {
@@ -2116,7 +2116,7 @@ static bool LoadSceneV2_AccessoryBlock(PmmV2LoadContext& ctx, int fd) {
     LogPmmModelStage(fd, "accessory-count", accCount, 0,
                      s->OverlayVertices());
     for (unsigned char i = 0; i < accCount; ++i) {
-        Rd(fd, text, 0x64);                                     // 0x4559EB
+        pmm_io::ReadText(fd, text, 0x64, 99);                                     // 0x4559EB
         SendMessageA(GetDlgItem(main, panel::kAccessoryCombo), CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(text));
     }
@@ -2160,7 +2160,7 @@ static bool LoadSceneV2_AccessoryBlock(PmmV2LoadContext& ctx, int fd) {
         accs[accSlot] = acc;
         std::memset(accs[accSlot], 0, sizeof(mdl::AccessoryRecord));
         Sub04B0Init(accs[accSlot]);                             // 0x4C4760
-        Rd(fd, accName, 0x64);                                  // 0x455ABE
+        pmm_io::ReadText(fd, accName, 0x64, 99);                                  // 0x455ABE
         // The fixed-length name field above is read in full, all 0x64 bytes, and
         // is then used as a C string by the %s conversions of the open-file
         // dialog below; a name that fills the field has no terminator, so %s
@@ -2170,7 +2170,7 @@ static bool LoadSceneV2_AccessoryBlock(PmmV2LoadContext& ctx, int fd) {
         // position, is unchanged.
         // Defect B3-22.
         accName[sizeof accName - 1] = '\0';
-        Rd(fd, mbPath, 0x100);                                  // 0x455AD1
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                  // 0x455AD1
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath, wideTmp, 0x100,
                             paths);
@@ -2410,7 +2410,7 @@ static void LoadSceneV2_ConfigBlock(PmmV2LoadContext& ctx, int fd) {
         ClearTimelineAndCurveDCs(s);                                           // 0x456C09
         Rd(fd, &b, 1);                                          // 0x456C16
         s->state.waveEnabled = b ? 1 : 0;
-        Rd(fd, mbPath, 0x100);                                  // 0x456C43
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                  // 0x456C43
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath,
                             reinterpret_cast<wchar_t*>(s->state.wavPath),
@@ -2421,7 +2421,7 @@ static void LoadSceneV2_ConfigBlock(PmmV2LoadContext& ctx, int fd) {
         Rd(fd, &w1, 4);                                         // 0x456C8C
         Rd(fd, &w2, 4);
         Rd(fd, &w3, 4);
-        Rd(fd, mbPath, 0x100);                                  // 0x456CBF
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                  // 0x456CBF
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath,
                             s->AviBackgroundPath(),
@@ -2461,7 +2461,7 @@ static void LoadSceneV2_ConfigBlock(PmmV2LoadContext& ctx, int fd) {
         Rd(fd, &p1, 4);                                         // 0x456E25
         Rd(fd, &p2, 4);
         Rd(fd, &p3, 4);
-        Rd(fd, mbPath, 0x100);                                  // 0x456E58
+        pmm_io::ReadText(fd, mbPath, 0x100, 255);                                  // 0x456E58
         ResolveAnsiUserFile(reinterpret_cast<unsigned char*>(wrap),
                             mbPath,
                             s->PictureBackgroundPath(),

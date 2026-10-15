@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 #include "mikudancestudio/display_capacity.hpp"
 #include "mikudancestudio/save_compatibility.hpp"
 #include "mikudancestudio/autosave.hpp"
@@ -239,6 +240,40 @@ bool PrepareOriginalPmd(mdl::ModelRecord& model,
 #endif
 
 }  // namespace
+
+bool original_import::CanEdit(mdl::ModelRecord& model) {
+#if MMD_ORIGINAL_PROFILE
+    std::vector<std::array<char, 20>> textures;
+    return mdl::DisplayGroupCount(model) <= 255 && mdl::FacialFrameCount(model) <= 255 &&
+        PrepareOriginalPmd(model, textures);
+#else
+    return true;
+#endif
+}
+
+bool original_import::Model(mdl::ModelRecord& model) {
+#if MMD_ORIGINAL_PROFILE
+    if (!ModelNames(model)) return false;
+    if (model.physicsMode != 2) return CanEdit(model);
+    // PMX remains available for scenes, but its full names must fit the
+    // standard PMM/VMD identities. It is never converted by the PMD editor.
+    for (unsigned i = 0; i < model.materialCount; ++i) {
+        const auto& material = mdl::Materials(reinterpret_cast<unsigned char*>(&model))[i];
+        if (!Text(material.texturePath) || !Text(material.spherePath) ||
+            !Text(text_encoding::MaterialName(model, i, false).c_str()) ||
+            !Text(text_encoding::MaterialName(model, i, true).c_str())) return false;
+    }
+    const auto* groups = static_cast<const mdl::DisplayGroup*>(model.groupNames);
+    for (unsigned i = 0; groups && i < mdl::DisplayGroupCount(model); ++i)
+        if (!Text(text_encoding::DisplayGroupName(groups[i], false).c_str(), 49) ||
+            !Text(text_encoding::DisplayGroupName(groups[i], true).c_str(), 49)) return false;
+    for (unsigned i = 0; i < model.rigidCount; ++i)
+        if (!Text(model.rigidTable[i].jpText, 19) || !Text(model.rigidTable[i].enText)) return false;
+    for (unsigned i = 0; i < model.jointCount; ++i)
+        if (!Text(model.jointTable[i].jpText, 19) || !Text(model.jointTable[i].enText)) return false;
+#endif
+    return true;
+}
 
 // ===========================================================================
 // 0x41EA20 (x64 sub_7FF7CB4AD5D0) - OK collector of the enhance-model toon

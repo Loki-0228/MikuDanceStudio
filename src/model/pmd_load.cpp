@@ -1,3 +1,4 @@
+#include "mikudancestudio/original_import.hpp"
 #include "mikudancestudio/display_capacity.hpp"
 #include "mikudancestudio/model_vertex_cache.hpp"
 #include "mikudancestudio/key_pool.hpp"
@@ -121,6 +122,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
     //   m+60 - the physics scene wrapper: gizmos +4..44, constraint-id
     //   counter +56, btDiscreteDynamicsWorld* +64), a9 appPathBuf.
     const bool enData = englishUi != 0;
+    if (!original_import::Reference(path, hwnd, englishUi)) return false;
     mdl::ModelRecord& model = *mdl::Mdl(m);
     char text[256];
     wchar_t wide1[256], wide2[384], wide3[384];
@@ -130,6 +132,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
     model.physicsFlags = englishUi;           // 0x4BF431: English-data byte
 
     ResolveUserFilePath(paths, path);                         // 0x4089F0
+    if (!original_import::Reference(paths.resolvedPath, hwnd, englishUi)) return false;
     wcscpy_s(model.path, 0x100, paths.resolvedPath);
 
     // MME records this wide path when associating the index-buffer output
@@ -155,6 +158,16 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
         }
         return false;
     }
+
+    bool textFits = true;
+    const auto readName = [&](char* destination, unsigned capacity, unsigned maximum) {
+        const int count = _read(fh, destination, capacity);
+#if MMD_ORIGINAL_PROFILE
+        textFits = textFits && count == static_cast<int>(capacity) &&
+            original_import::Legacy(destination, capacity, maximum);
+#endif
+        return count;
+    };
 
     // directory of the model file -> current directory
     wcscpy_s(model.modelDirectory, 0x100, model.path);
@@ -187,8 +200,8 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
         return false;
     }
     _read(fh, text, 4);                                   // version
-    _read(fh, model.name, sizeof(model.name));
-    _read(fh, model.comment, sizeof(model.comment));
+    readName(model.name, sizeof(model.name), 19);
+    readName(model.comment, sizeof(model.comment), 255);
     if (!enData && boxGate &&
         MessageBoxA(hwnd, model.comment,
                     kTitleModelInfoJp, 0x40001u) != 1) {
@@ -339,7 +352,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
             mat.doubleSided = sphereFlag ? 1 : 0;
             _read(fh, &mat.faceVertexCount, sizeof(mat.faceVertexCount));
             char texName[24] = {};
-            _read(fh, texName, 0x14);
+            readName(texName, 0x14, 20);
             if (texName[0] != '\0') {
                 const wchar_t* dirW = model.modelDirectory;
                 char* star = strstr(texName, "*");
@@ -395,7 +408,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
     std::uint8_t centerSeen = 0;
     for (std::uint32_t i = 0; i < boneCount; ++i) {
         mikudancestudio::mdl::BoneRecord* bone = &bones[i];
-        _read(fh, bone->name, sizeof(bone->name));
+        readName(bone->name, sizeof(bone->name), 15);
         if (!std::memcmp(bone->name, kNameCenter2Jp, 9)) {
             model.centerBone = static_cast<std::int32_t>(i);
             centerSeen = 1;
@@ -500,7 +513,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
         mdl::Mdl(m)->morphTrackActive = static_cast<unsigned char*>(w2);
         for (std::uint32_t i = 0; i < morphCount; ++i) {
             mdl::MorphRecord& morph = morphs[i];
-            _read(fh, morph.name, sizeof(morph.name));
+            readName(morph.name, sizeof(morph.name), 15);
             _read(fh, &morph.offsetCount, sizeof(morph.offsetCount));
             _read(fh, &morph.panel, sizeof(morph.panel));
             const std::uint32_t n = morph.offsetCount;
@@ -593,10 +606,10 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
         strcpy_s(groups[2].name, sizeof(groups[2].name), kLblFacialJp);
         strcpy_s(groups[2].nameEn, sizeof(groups[2].nameEn), "Facial");
         for (std::uint32_t i = 3; i < grpCount; ++i)
-            _read(fh, groups[i].name, sizeof(groups[i].name));
+            readName(groups[i].name, sizeof(groups[i].name), sizeof(groups[i].name) - 1);
     } else {
         for (std::uint32_t i = 2; i < grpCount; ++i)
-            _read(fh, groups[i].name, sizeof(groups[i].name));
+            readName(groups[i].name, sizeof(groups[i].name), sizeof(groups[i].name) - 1);
     }
 
     // ---- rigid-body group list --------------------------------------------
@@ -647,9 +660,9 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
                 strcpy_s(groups[i].nameEn, sizeof(groups[i].nameEn),
                          groups[i].name);
     } else {
-        _read(fh, model.nameEn, sizeof(model.nameEn));
+        readName(model.nameEn, sizeof(model.nameEn), 19);
         model.nameEn[19] = 0;
-        _read(fh, model.commentEn, sizeof(model.commentEn));
+        readName(model.commentEn, sizeof(model.commentEn), 255);
         model.commentEn[255] = 0;
         if (model.physicsFlags != 0 && boxGate &&
             MessageBoxA(hwnd, model.commentEn,
@@ -658,24 +671,24 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
             return false;
         }
         for (std::uint32_t i = 0; i < boneCount; ++i) {
-            _read(fh, &bones[i].nameEn[0], 0x14);
+            readName(bones[i].nameEn, 0x14, 19);
             bones[i].nameEn[19] = 0;
             if (bones[i].nameEn[0] == 0)
                 strcpy_s(bones[i].nameEn, bones[i].name);
         }
         mdl::MorphRecord* morphs = mdl::Morphs(m);
         for (std::uint32_t i = 1; i < morphCount; ++i) {
-            _read(fh, morphs[i].nameEn, sizeof(morphs[i].nameEn));
+            readName(morphs[i].nameEn, sizeof(morphs[i].nameEn), 19);
             morphs[i].nameEn[sizeof(morphs[i].nameEn) - 1] = 0;
         }
         if (model.facialFrameCount != 0)
             for (std::uint32_t i = 3; i < grpCount; ++i) {
-                _read(fh, groups[i].nameEn, sizeof(groups[i].nameEn));
+                readName(groups[i].nameEn, sizeof(groups[i].nameEn), sizeof(groups[i].nameEn) - 1);
                 groups[i].nameEn[sizeof(groups[i].nameEn) - 1] = 0;
             }
         else
             for (std::uint32_t i = 2; i < grpCount; ++i) {
-                _read(fh, groups[i].nameEn, sizeof(groups[i].nameEn));
+                readName(groups[i].nameEn, sizeof(groups[i].nameEn), sizeof(groups[i].nameEn) - 1);
                 groups[i].nameEn[sizeof(groups[i].nameEn) - 1] = 0;
             }
     }
@@ -697,7 +710,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
     if (enRead != 0) {
         auto* toon = model.pmdToonFileNames;
         for (int i = 0; i < 10; ++i) {
-            _read(fh, toon[i], sizeof(toon[i]));
+            readName(toon[i], sizeof(toon[i]), sizeof(toon[i]) - 1);
             std::uint8_t matched = 0;
             for (int k = 0; k < 10; ++k) {
                 sprintf_s(text, 0x100, "toon%02d.bmp", k + 1);
@@ -739,7 +752,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
                                   (rigidCount ? rigidCount : 1));
         for (std::uint32_t i = 0; i < rigidCount; ++i) {
             mdl::RigidRecord& rigid = rigids[i];
-            _read(fh, rigid.name, sizeof(rigid.name));
+            readName(rigid.name, sizeof(rigid.name), 19);
             std::int16_t boneIndex = -1;
             _read(fh, &boneIndex, sizeof(boneIndex));
             rigid.boneIndex = boneIndex;
@@ -847,7 +860,7 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
                                   (jointCount ? jointCount : 1));
         for (std::uint32_t i = 0; i < jointCount; ++i) {
             mdl::JointRecord& joint = joints[i];
-            _read(fh, joint.name, sizeof(joint.name));
+            readName(joint.name, sizeof(joint.name), 19);
             // 26 four-byte fields in the original's shuffled order
             // (0x4C14FB..0x4C1749).  The leading 0 entry in an earlier
             // port silently replaced this name read, shorting each record
@@ -979,6 +992,12 @@ bool ModelLoadPMD(unsigned char* m, HWND hwnd, const wchar_t* path,
             row.rotation[3] = 1.0f;
         }
     }
+#if MMD_ORIGINAL_PROFILE
+    if (!textFits || !original_import::Model(model)) {
+        original_import::Refuse(hwnd, englishUi);
+        return false;
+    }
+#endif
     model.loadComplete = 1;
     PostLoadInit(m);                                          // 0x49C850
     model_vertex_cache::RegisterLoaded(m);

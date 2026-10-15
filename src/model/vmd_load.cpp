@@ -207,6 +207,13 @@ static int LoadVmdMotionPath(MMDApp* app, const char* fileName, const wchar_t* w
         _close(fileHandle);
         return 0;
     }
+#if MMD_ORIGINAL_PROFILE
+    if (!input.OriginalNamesFit()) {
+        _close(fileHandle);
+        original_import::Refuse(hwnd, language);
+        return 0;
+    }
+#endif
     if (s.state.optflag[0] == 0 && model == nullptr) {
         _close(fileHandle);
         return 0;
