@@ -11,7 +11,7 @@
 	./scripts/package_prerelease.ps1 -Version v2026.10.15.1-pre.1 -FullBuild D:/builds/mms-full -MinimalBuild D:/builds/mms-minimal -OutputDirectory D:/releases/v2026.10.15.1-pre.1
 ```
 
-脚本重新构建两个档位，确认源码未变化，然后只复制程序、许可证和发布说明。两个主程序 ZIP 均不含 NVIDIA 辅助 DLL；`MMSNvidiaAAFix.dll`、三语安装说明与许可证作为独立附件输出。SHA-256 清单包含主程序包和独立附件，构建清单单独列出可选组件。不包含模型、设置、MME、MMV、FFmpeg 或调试符号。
+脚本重新构建两个档位，确认源码未变化，然后只复制程序、许可证和发布说明。两个主程序 ZIP 均不含 NVIDIA 辅助 DLL；`MMSNvidiaAAFix.dll` 与许可证作为独立附件输出，简短的三语安装方法写在 Release Notes 中。SHA-256 清单包含主程序包和独立附件，构建清单单独列出可选组件。不包含模型、设置、MME、MMV、FFmpeg 或调试符号。
 
 5. 检查 ZIP 条目与包内清单，核对源码提交、构建档、程序及许可证的哈希。
 6. 为通过检查的提交创建本地预发布标签。上传 GitHub 前，确认发布说明中的验证范围和已知问题。

@@ -67,17 +67,17 @@ foreach ($build in $builds) {
 
 Windows x64 预发布候选。解压到独立目录后运行 MikuMikuDance.exe。
 完整包与最小包请分别解压。已有设置、模型和插件的安装目录请保留。
-两个主程序包均不含英伟达修复插件。需要时单独下载 MMSNvidiaAAFix.dll，安装说明见 NVIDIA_FIX_README.md。
+两个主程序包均不含英伟达修复插件。需要时单独下载 MMSNvidiaAAFix.dll，安装方法见 RELEASE_NOTES.md。
 功能、已知问题及 FFmpeg 条件见 RELEASE_NOTES.md，源码提交和文件校验值见 RELEASE_BUILD.json。
 
 Windows x64 prerelease candidate. Extract full and minimal into separate directories.
 Run MikuMikuDance.exe. Keep existing installations that contain settings, models, or plugins.
-Neither application package includes the NVIDIA fix. Download MMSNvidiaAAFix.dll separately only if needed; see NVIDIA_FIX_README.md on the release page.
+Neither application package includes the NVIDIA fix. Download MMSNvidiaAAFix.dll separately if needed; see RELEASE_NOTES.md for installation.
 See RELEASE_NOTES.md for features, known test failures, and optional FFmpeg requirements.
 
 Windows x64 プレリリース候補。完全版と最小版は別々のフォルダーに展開してください。
 MikuMikuDance.exe を実行します。設定やモデル、プラグインを含む既存の環境は残してください。
-NVIDIA 修正 DLL は両パッケージに含まれません。必要な場合のみ別途ダウンロードし、リリースページの NVIDIA_FIX_README.md を参照してください。
+NVIDIA 修正 DLL は両パッケージに含まれません。必要な場合のみ別途ダウンロードし、導入方法は RELEASE_NOTES.md を参照してください。
 変更内容と既知の問題は RELEASE_NOTES.md、ソースコミットは RELEASE_BUILD.json を参照してください。
 
 Source: https://github.com/Loki-0228/MikuMikuStudio/tree/$commit
@@ -100,11 +100,8 @@ Copy-Item -LiteralPath (Join-Path $builds[0].Path 'Release/MMSNvidiaAAFix.dll') 
 $helperHash = (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash.ToLowerInvariant()
 $optionalComponents = @([ordered]@{File='MMSNvidiaAAFix.dll'; Bytes=(Get-Item -LiteralPath $helper).Length; SHA256=$helperHash; SourceProfile='full'; Optional=$true})
 $checksums.Add($helperHash + '  MMSNvidiaAAFix.dll')
-Copy-Item -LiteralPath (Join-Path $repo 'docs/guides/nvidia-fix.md') -Destination (Join-Path $output 'NVIDIA_FIX_README.md')
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $output
-foreach ($file in @('NVIDIA_FIX_README.md', 'LICENSE')) {
-    $checksums.Add((Get-FileHash -LiteralPath (Join-Path $output $file) -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $file)
-}
+$checksums.Add((Get-FileHash -LiteralPath (Join-Path $output 'LICENSE') -Algorithm SHA256).Hash.ToLowerInvariant() + '  LICENSE')
 [IO.File]::WriteAllLines((Join-Path $output 'SHA256SUMS.txt'), $checksums)
 [IO.File]::WriteAllText((Join-Path $output 'RELEASE_NOTES.md'), $releaseNotes)
 [IO.File]::WriteAllText((Join-Path $output 'RELEASE_BUILD.json'), ([ordered]@{Version=$Version; Commit=$commit; Uploaded=$false; Packages=$packages; OptionalComponents=$optionalComponents} | ConvertTo-Json -Depth 6) + "`n")

@@ -31,11 +31,16 @@ Windows x64 预发布候选，变更范围为 `v2026.10.14.6` 之后的提交。
 - 完整包减少密集骨骼缩放轨道播放和曲线选区同步的重复扫描。两种构建档保留本轮已有的模型缓存、MME 文件变更通知与重载优化；完整包中受支持的特效阴影目标随预览尺寸调整。本次没有给出通用帧率提升比例。
 - 完整包按需扩展编辑容量，保存 PMM 时优先使用原版 `0002` 格式。超出原版容量或路径编码限制的工程才使用 MMS 扩展格式，具体边界见文件兼容文档。
 
-完整包与最小包均包含 `MikuMikuDance.exe`、说明和许可证。`MMSNvidiaAAFix.dll` 从主程序包中移出，作为独立可选附件提供，安装方法见同页附件 `NVIDIA_FIX_README.md`。不需要 NVIDIA 修复的用户无需下载；下载或放置 DLL 不会自动修改驱动设置，仍需在「帮助」菜单明确安装。最小包保留 `mmd932` 功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码。两个包均不捆绑模型、个人设置、MME、MMV 或 FFmpeg。
+完整包与最小包均包含 `MikuMikuDance.exe`、说明和许可证。NVIDIA 修复 DLL 作为独立可选附件，不随主程序捆绑。最小包保留 `mmd932` 功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码。两个包均不捆绑模型、个人设置、MME、MMV 或 FFmpeg。
 
 Windows 无法解码的格式（如部分 10-bit H.264）需要另行提供 FFmpeg。查找位置依次为程序旁的 `tools/ffmpeg.exe`、`ffmpeg.exe` 和 `PATH`。高位深视频转换为 8-bit RGB 预览。最小包保持原版 AVI 背景路径。
 
 本轮验证覆盖两种构建档编译、最小版界面、连续删除与撤销、框选、镜头与焦点、坐标状态、PMM 保存重开、散布、缩放编辑、H.264 与 4K 定位、视频播放中动作和物理推进，以及实际录制输出。曲线数值、同步和密集播放回归通过。三个既有界面测试目标仍失败：`animation_curve_host_tests` 的标签重绘、`animation_curve_editor_tests` 的左箭头平移，以及 `morph_curve_host_ui_tests` 的拖帧和按钮位置。这些断言在修改前基线日志中同样失败，预发布未宣称全部测试通过。外部 MMD 9.32 往返及所有 MME 特效组合未在本轮复测。
+
+<a id="nvidia-fix-zh"></a>
+#### NVIDIA 修复安装（可选）
+
+将独立下载的 `MMSNvidiaAAFix.dll` 放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作；删除 DLL 不会撤销已安装的设置。
 
 ### English
 
@@ -49,11 +54,16 @@ This prerelease candidate includes the following changes since `v2026.10.14.6`.
 - Fixed stale marquee selections and deletion affecting previously selected bones. Morph, display, IK, and external-parent deletions now have their own undo records, so undoing the latest deletion does not restore the preceding one.
 - Reduced repeated scans during dense scale-track playback and curve selection synchronization. The candidate also includes model-cache, MME notification and reload, preview-shadow, and automatic-capacity changes already committed since the previous release. No general FPS gain is claimed.
 
-Both packages use the source revision recorded in `RELEASE_BUILD.json`. Neither application ZIP includes the NVIDIA helper. Download `MMSNvidiaAAFix.dll` separately only if needed; see the attached `NVIDIA_FIX_README.md`. Copying the DLL does not install a driver setting. Installation requires an explicit command in Help. The minimal package retains the `mmd932` feature set and excludes scatter, bone scaling, free curves, and modern video decoding. Neither package includes models, personal settings, MME, MMV, or FFmpeg.
+Both packages use the source revision recorded in `RELEASE_BUILD.json`. The NVIDIA helper is a separate optional download, excluded from both application ZIPs. The minimal package retains the `mmd932` feature set and excludes scatter, bone scaling, free curves, and modern video decoding. Neither package includes models, personal settings, MME, MMV, or FFmpeg.
 
 Formats unsupported by Windows, including some 10-bit H.264 files, require a separately installed FFmpeg. Lookup order is `tools/ffmpeg.exe` beside the application, `ffmpeg.exe` beside it, then `PATH`. Preview output is 8-bit RGB. Minimal retains AVI backgrounds.
 
 Builds and the targeted editing, media, playback, undo, and persistence checks passed. Three existing UI test targets still fail on label repaint, left-arrow panning, and morph-panel drag/layout assertions. The same failures occur in the recorded baseline. This candidate does not claim a fully passing test suite. Original MMD round trips and every MME effect combination were not retested.
+
+<a id="nvidia-fix-en"></a>
+#### Optional NVIDIA fix
+
+Place the separately downloaded `MMSNvidiaAAFix.dll` beside the full build's EXE. Install it from **Help**, then restart MMS. Use Help to uninstall; deleting the DLL does not remove an installed setting.
 
 ### 日本語
 
@@ -67,11 +77,15 @@ Builds and the targeted editing, media, playback, undo, and persistence checks p
 - 範囲選択の残りや、以前選択したボーンのキーまで削除される問題を修正しました。表情・表示・IK・外部親の削除も独立して元に戻せます。
 - 密なスケールキーの再生と曲線の選択同期で重複走査を減らしました。既存のモデルキャッシュ、MME 再読込、プレビューの影、容量拡張の変更も含みます。一般的な FPS 向上率は示していません。
 
-完全版と最小版のソースコミットは同一で、`RELEASE_BUILD.json` に記録されます。NVIDIA 修正 DLL は両方の ZIP から除外しました。必要な場合のみ独立した `MMSNvidiaAAFix.dll` をダウンロードし、添付の `NVIDIA_FIX_README.md` を参照してください。DLL の配置だけでは設定は変更されず、ヘルプメニューから明示的にインストールする必要があります。最小版は `mmd932` の範囲を維持し、散布、ボーンスケール、自由曲線、現代的な動画デコードを含みません。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
+完全版と最小版のソースコミットは同一で、`RELEASE_BUILD.json` に記録されます。NVIDIA 修正 DLL は任意の独立ダウンロードで、両方の ZIP に含まれません。最小版は `mmd932` の範囲を維持し、散布、ボーンスケール、自由曲線、現代的な動画デコードを含みません。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
 
 Windows が対応しない一部の 10-bit H.264 などには、別途 FFmpeg が必要です。検索順は実行ファイル横の `tools/ffmpeg.exe`、`ffmpeg.exe`、`PATH` です。プレビューは 8-bit RGB に変換します。最小版の背景動画は AVI のままです。
 
 両構成のビルドと、対象の編集・メディア・再生・取り消し・保存の検証は通過しました。ラベル再描画、左矢印の移動、表情パネルのドラッグと配置に関する既存の UI テスト 3 件は、変更前の基準ログと同様に失敗しています。全テスト通過は主張しません。原版 MMD との往復保存や、すべての MME エフェクトの組み合わせは今回再検証していません。
+<a id="nvidia-fix-ja"></a>
+#### NVIDIA 修正の導入（任意）
+
+別途ダウンロードした `MMSNvidiaAAFix.dll` を完全版の EXE と同じフォルダーに置き、ヘルプからインストールして MMS を再起動します。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
 <!-- prerelease-notes:v2026.10.15.1-pre.1:end -->
 
 <a id="release-v2026-10-14-6"></a>

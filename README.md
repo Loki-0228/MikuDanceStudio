@@ -28,7 +28,7 @@
 | Media | Modern imports and MP4/MOV export through Windows media components | WAV audio, AVI backgrounds and AVI export |
 | PMM, VMD, VPD saving | Can include MMS extensions | Standard data only; imported MMS extensions are ignored |
 
-Both application ZIPs contain `MikuMikuDance.exe` and licenses. Neither includes models, user settings, MME, or the NVIDIA fix DLL. Starting with `v2026.10.15.1-pre.1`, `MMSNvidiaAAFix.dll` is a separate optional release asset with [installation instructions](docs/guides/nvidia-fix.md).
+Both application ZIPs contain `MikuMikuDance.exe` and licenses. Neither includes models, user settings, MME, or the NVIDIA fix DLL. Starting with `v2026.10.15.1-pre.1`, `MMSNvidiaAAFix.dll` is a separate optional release asset with [installation instructions in the release notes](docs/records/releases.md#nvidia-fix-en).
 
 The minimal build checks CP932 encoding and field lengths for names and references stored in files, and rejects values it cannot represent. Model editing saves PMD only and rejects lossy PMX-to-PMD conversion. Save extended full-build projects as separate copies when using the minimal build, because scale, curve, and mesh-cache extensions are discarded. Round-trip loading and saving with the actual MMD 9.32 executable has not yet been validated. See [minimal build limits](docs/reference/minimal-build.md).
 
@@ -71,7 +71,7 @@ startup. They are not stored in project files.
 | PMM、VMD、VPD 保存 | 可写 MMS 扩展数据 | 仅写标准内容，忽略读取到的 MMS 扩展 |
 | MME | 保留原生 DX9 接口，插件需另行安装 | 保留原生 DX9 接口，插件需另行安装 |
 
-完整包和最小包 ZIP 均包含 `MikuMikuDance.exe` 与许可文件，不附带用户配置、模型、MME 或 NVIDIA 修复 DLL。从 `v2026.10.15.1-pre.1` 起，`MMSNvidiaAAFix.dll` 作为独立附件按需下载，见[安装说明](docs/guides/nvidia-fix.md)。
+完整包和最小包 ZIP 均包含 `MikuMikuDance.exe` 与许可文件，不附带用户配置、模型、MME 或 NVIDIA 修复 DLL。从 `v2026.10.15.1-pre.1` 起，`MMSNvidiaAAFix.dll` 作为独立附件按需下载，见[Release Notes 中的安装说明](docs/records/releases.md#nvidia-fix-zh)。
 
 最小包仍保留三语界面等便利修复，并非原版 MMD 的逐字节复刻。它按原版格式的名称编码和字段长度检查保存内容：名称与文件内引用须能完整表示为 CP932，超出范围时拒绝保存。模型编辑只提供 PMD 保存；最小包拒绝 PMX 到 PMD 的有损转换。
 
@@ -113,7 +113,7 @@ PMM `0002` 在保留标准文件头的前提下，通过扩展保存骨骼曲线
 | 音声・動画 | Windows メディアコンポーネントによる各種形式の読み込みと MP4・MOV 出力 | WAV 音声、AVI 背景、AVI 出力 |
 | PMM・VMD・VPD 保存 | MMS 拡張を保存可能 | 標準データのみ保存。読み込んだ MMS 拡張は無視 |
 
-両方のアプリ ZIP に `MikuMikuDance.exe` とライセンスを含みます。モデル、ユーザー設定、MME、NVIDIA 修正 DLL は同梱しません。`v2026.10.15.1-pre.1` 以降、`MMSNvidiaAAFix.dll` は任意の独立ダウンロードです。[導入手順](docs/guides/nvidia-fix.md)を参照してください。
+両方のアプリ ZIP に `MikuMikuDance.exe` とライセンスを含みます。モデル、ユーザー設定、MME、NVIDIA 修正 DLL は同梱しません。`v2026.10.15.1-pre.1` 以降、`MMSNvidiaAAFix.dll` は任意の独立ダウンロードです。[リリースノートの導入手順](docs/records/releases.md#nvidia-fix-ja)を参照してください。
 
 最小版は、ファイル内に保存する名前と参照先の CP932 表現およびフィールド長を確認し、表現できない内容の保存を拒否します。モデル編集の保存形式は PMD のみで、情報が失われる PMX から PMD への変換も拒否します。完全版の拡張を含むプロジェクトを最小版で保存すると、スケール、曲線、メッシュキャッシュの拡張が失われるため、別名で保存してください。実際の MMD 9.32 を使った双方向の読み込みと再保存は、まだ検証できていません。[最小版の制限](docs/reference/minimal-build.md)も参照してください。
 

@@ -34,6 +34,6 @@ TAA 与 T2x 的运动捕获会增加工作量，复杂 MME 场景仍可能受影
 
 ## 处理 NVIDIA 双面绘制白线
 
-`MMSNvidiaAAFix.dll` 作为独立附件按需下载，不捆绑进完整包或最小包。需要修复时将 DLL 放到完整版程序旁，再通过「帮助」菜单安装；放置 DLL 不会自动修改驱动设置。步骤见[插件安装说明](nvidia-fix.md)。
+`MMSNvidiaAAFix.dll` 作为独立附件按需下载，不捆绑进完整包或最小包。需要修复时将 DLL 放到完整版程序旁，再通过「帮助」菜单安装；放置 DLL 不会自动修改驱动设置。步骤见[Release Notes 中的安装说明](../records/releases.md#nvidia-fix-zh)。
 
 该驱动设置只用于 NVIDIA。AMD 与 Intel 使用正常渲染和抗锯齿回退路径，不安装 NVIDIA 设置。删除 DLL 只隐藏入口，不撤销已经安装的驱动设置；卸载应使用程序提供的入口。安装行为见[仓库说明](../../README.md#中文)。
