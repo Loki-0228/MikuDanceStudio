@@ -64,6 +64,7 @@ DefaultCurveScope::~DefaultCurveScope() = default;
 void ApplyRegistration(unsigned char*, int, bool) {}
 void Register(unsigned char*, int, int) {}
 void Evaluate(unsigned char*, double) {}
+void EvaluatePlayback(unsigned char*, double) {}
 Snapshot Capture(const unsigned char*) { return {}; }
 std::uint64_t Revision(const unsigned char*) { return 0; }
 bool Restore(unsigned char*, Snapshot value) { return value.pose.empty() && value.keys.empty() && value.curves.empty(); }

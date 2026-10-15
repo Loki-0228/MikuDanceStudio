@@ -1,4 +1,5 @@
 #include "mikudancestudio/frame_limits.hpp"
+#include "curve_editor_selection.hpp"
 #include "mikudancestudio/display_capacity.hpp"
 #include "mikudancestudio/key_pool.hpp"
 #include "mikudancestudio/bone_curve.hpp"
@@ -96,8 +97,11 @@ std::vector<int> NativeSelection(Key* keys,std::size_t capacity,std::size_t root
         slot=keys[slot].next;
         if(visited+1==capacity)return {};
     }
+    if(selected){
+        curve_editor::FrameSelectionCursor wanted(*selected);
+        for(auto index:chain)SelectionFlag(keys[index])=wanted.Contains(int(keys[index].frame));
+    }
     for(auto index:chain){auto& key=keys[index];
-        if(selected)SelectionFlag(key)=std::find(selected->begin(),selected->end(),int(key.frame))!=selected->end();
         if(SelectionFlag(key))frames.push_back(int(key.frame));
     }
     return frames;
@@ -441,16 +445,19 @@ bool ReadMorphChannels(MMDApp&app,std::vector<curve_editor::Channel>&out,std::ws
         error=Text(language,L"モデルが読み込まれていません。",L"No model is loaded.",L"没有加载模型。");
         return false;
     }
-    // Enumerate and Read are the frozen MMDApp overloads: they act on the
-    // selected model, and Read already fills `error` with a localized message.
-    for(const auto&info:morph_curve::Enumerate(app,language)){
+    const auto infos=morph_curve::Enumerate(app,language);
+    std::vector<int> indices;
+    for(const auto&info:infos)if(morph_curve::PanelGroup(info.panel)>=0)indices.push_back(info.index);
+    std::vector<animation_curve::Track> tracks;
+    if(!morph_curve::ReadMany(app,indices,tracks,error))return false;
+    std::size_t next=0;
+    for(const auto&info:infos){
         const int group=morph_curve::PanelGroup(info.panel);
         // A system morph (panel 0) belongs to no comparison group.  The four
         // timeline panels hide it and the editor must not offer it either, so
         // it never becomes a channel.
         if(group<0)continue;
-        animation_curve::Track track;
-        if(!morph_curve::Read(app,info.index,track,error))return false;
+        auto& track=tracks[next++];
         curve_editor::Channel channel;
         channel.id=info.id;
         channel.label=info.label;

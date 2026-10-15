@@ -162,6 +162,11 @@ bool Read(const unsigned char* model, int morph, animation_curve::Track& out, st
 // message on failure.  Both Read() overloads take the morph index from
 // MorphInfo::index.
 bool Read(const MMDApp& app, int morph, animation_curve::Track& out, std::wstring& error);
+// One native synchronization for an entire editor read. Results follow the
+// requested index order; a failure clears out. Native edits are still checked
+// on every call, including writes made without an editor notification.
+bool ReadMany(const MMDApp& app, const std::vector<int>& morphs,
+              std::vector<animation_curve::Track>& out, std::wstring& error);
 
 // Authored-state queries.  They check the model identity but do not derive
 // against the native pool, so they stay cheap enough for a UI refresh.  They

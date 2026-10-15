@@ -395,13 +395,8 @@ void Redo(unsigned char* model,int ring) {
         s.current=s.redo[ring];
     }
 }
-static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::BoneKey* keys,unsigned bone,double frame,std::size_t capacity) {
-    unsigned previous=bone,next=keys[bone].next;
-    unsigned guard=0;
-    while (next && next<capacity && keys[next].frame<=frame && ++guard<capacity) {
-        previous=next; next=keys[next].next;
-    }
-    if (next>=capacity||guard>=capacity) return {};
+static Matrix SampleInterval(const Values& values,const Curves& curves,const mdl::BoneKey* keys,
+                             unsigned previous,unsigned next,double frame) {
     Matrix value=Lookup(values,previous);
     if (next && keys[next].frame>keys[previous].frame) {
         const float raw=float(std::clamp((frame-keys[previous].frame)/double(keys[next].frame-keys[previous].frame),0.0,1.0));
@@ -414,6 +409,31 @@ static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::Bo
     }
     return value;
 }
+static Matrix SampleKeys(const Values& values,const Curves& curves,const mdl::BoneKey* keys,unsigned bone,double frame,std::size_t capacity) {
+    unsigned previous=bone,next=keys[bone].next;
+    unsigned guard=0;
+    while (next && next<capacity && keys[next].frame<=frame && ++guard<capacity) {
+        previous=next; next=keys[next].next;
+    }
+    if (next>=capacity||guard>=capacity) return {};
+    return SampleInterval(values,curves,keys,previous,next,frame);
+}
+// The native playback pass just found this bone's upper key (or terminal key).
+// Check that it brackets this sample before using it. Never cache key values:
+// edits to scale matrices/curves are visible on the very next sample.
+static bool PlaybackInterval(const mdl::BoneKey* keys,std::size_t capacity,unsigned cursor,
+                             double frame,unsigned& previous,unsigned& next) {
+    if(cursor>=capacity)return false;
+    const auto& key=keys[cursor];
+    if(key.frame<=frame) {
+        if(key.next>=capacity || (key.next && keys[key.next].frame<=frame))return false;
+        previous=cursor;next=key.next;return true;
+    }
+    if(key.previous>=capacity)return false;
+    const auto& before=keys[key.previous];
+    if(before.next!=cursor || before.frame>frame || before.frame>=key.frame)return false;
+    previous=key.previous;next=cursor;return true;
+}
 Matrix Sample(const unsigned char* model,int bone,double frame) {
     const auto it=states.find(model);
     if (!model||it==states.end()||!std::isfinite(frame)||bone<0||bone>=int(mdl::Mdl(model)->boneCount)) return {};
@@ -422,17 +442,27 @@ Matrix Sample(const unsigned char* model,int bone,double frame) {
     return SampleKeys(it->second.current.keys,it->second.current.curves,keys,unsigned(bone),frame,
                       mdl::BoneKeyCapacity(*mdl::Mdl(model)));
 }
-void Evaluate(unsigned char* model,double frame) {
+static void EvaluateModel(unsigned char* model,double frame,bool playback) {
     const auto it=states.find(model); if (it==states.end()||!std::isfinite(frame)) return;
     auto& s=it->second;
     RestoreTransforms(model); s.current.pose.clear();
     const auto* keys=mdl::BoneKeys(model); if (!keys||s.current.keys.empty()) return;
     // One capacity lookup for the whole per-bone sweep.
     const std::size_t boneKeyCapacity=mdl::BoneKeyCapacity(*mdl::Mdl(model));
+    const auto& record=*mdl::Mdl(model);
     for (unsigned bone=0;bone<mdl::Mdl(model)->boneCount;++bone) {
-        Store(s.current.pose,int(bone),SampleKeys(s.current.keys,s.current.curves,keys,bone,frame,boneKeyCapacity));
+        unsigned previous=0,next=0;
+        // Native playback does not initialize or advance inert-tip cursors.
+        const bool resolved=playback && record.boneKeyCursors && record.boneTable &&
+            record.boneTable[bone].type!=mdl::BoneType::InertTip &&
+            PlaybackInterval(keys,boneKeyCapacity,record.boneKeyCursors[bone],frame,previous,next);
+        Store(s.current.pose,int(bone),resolved
+            ? SampleInterval(s.current.keys,s.current.curves,keys,previous,next,frame)
+            : SampleKeys(s.current.keys,s.current.curves,keys,bone,frame,boneKeyCapacity));
     }
 }
+void Evaluate(unsigned char* model,double frame) { EvaluateModel(model,frame,false); }
+void EvaluatePlayback(unsigned char* model,double frame) { EvaluateModel(model,frame,true); }
 void RestoreTransforms(unsigned char* model) {
     const auto it=states.find(model); if (it==states.end()||!it->second.applied) return;
     auto& s=it->second; auto* bones=mdl::Bones(model);

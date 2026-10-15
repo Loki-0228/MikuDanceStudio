@@ -146,6 +146,9 @@ private:
 void ApplyRegistration(unsigned char* model, int index, bool fresh);
 void Register(unsigned char* model, int bone, int key);
 void Evaluate(unsigned char* model, double frame);
+// Call immediately after native playback has advanced the model's bone cursors.
+// Reuses those intervals; direct seeks and offline sampling still use Evaluate/Sample.
+void EvaluatePlayback(unsigned char* model, double frame);
 Snapshot Capture(const unsigned char* model);
 // Changes only for edits/import/undo, not frame evaluation or rendering.
 std::uint64_t Revision(const unsigned char* model);

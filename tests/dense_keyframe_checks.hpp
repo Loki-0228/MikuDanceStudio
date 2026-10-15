@@ -52,4 +52,41 @@ void DenseKeyframeChecks() {
         }
         bone_scale::Forget(raw);
     }
+
+    // Compare the playback interval path with independent head-to-tail
+    // sampling, including fractional frames, the bake boundary and restarts.
+    for (unsigned b=0;b<count;++b) {
+        bone_scale::Matrix a; a.v[0]=1.2f;
+        bone_scale::Matrix z; z.v[4]=1.4f;
+        bone_scale::SetKey(raw,int(b),a);
+        bone_scale::SetKey(raw,int(500*count+b),z);
+        bone_scale::SetKeyCurve(raw,int(500*count+b),{12,100,110,30});
+        bone_scale::SetKey(raw,int(last*count+b),a);
+    }
+    bones.back().type=mdl::BoneType::InertTip;
+    for(double frame:{0.,0.5,1.,499.,499.5,500.,500.5,501.,1000.,3845.,4000.,0.,250.5}) {
+        std::fill(active.begin(),active.end(),1);
+        for(unsigned b=0;b<count;++b)cursors[b]=b;
+        // Inert tips must not use a cursor belonging to another track.
+        cursors.back()=0;
+        AdvanceModelKeyframes(raw,frame/30.,0);
+        for(unsigned b:{0u,137u,count-1})
+            Check(bone_scale::Pose(raw,int(b))==bone_scale::Sample(raw,int(b),frame),
+                  "playback scale equals direct sampling at fractional/boundary/restart frames");
+    }
+    // Direct seek must ignore a playback cursor left at a later frame.
+    bone_scale::Evaluate(raw,499.5);
+    Check(bone_scale::Pose(raw,0)==bone_scale::Sample(raw,0,499.5),
+          "random seek uses its own interval");
+    cursors[0]=0xFFFFFFFFu;
+    bone_scale::EvaluatePlayback(raw,499.5);
+    Check(bone_scale::Pose(raw,0)==bone_scale::Sample(raw,0,499.5),
+          "out-of-range playback cursor falls back to direct sampling");
+    bone_scale::Matrix edited; edited.v[4]=1.8f;
+    bone_scale::SetKey(raw,500*count,edited);
+    cursors[0]=500*count;
+    bone_scale::EvaluatePlayback(raw,499.5);
+    Check(bone_scale::Pose(raw,0)==bone_scale::Sample(raw,0,499.5),
+          "scale edit is visible without a cached pose");
+    bone_scale::Forget(raw);
 }

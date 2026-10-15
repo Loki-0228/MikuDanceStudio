@@ -9,6 +9,7 @@
 #include "mikudancestudio/physics_bake.hpp"
 #include "mikudancestudio/d3d12_native.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/bone_scale.hpp"
 #include <MinHook.h>
 #include <wrl/client.h>
 #include <chrono>
@@ -44,7 +45,7 @@ decltype(&AdvanceModelKeyframes) advanceOriginal;
 decltype(&PlaybackCatchup) catchupOriginal;
 decltype(&PhysicsFrame) physicsOriginal;
 decltype(&RenderFrameScene) renderOriginal;
-void Advance(unsigned char* m,float seconds,int physics) { Timed(0,advanceOriginal,m,seconds,physics); }
+void Advance(unsigned char* m,double seconds,int physics) { Timed(0,advanceOriginal,m,seconds,physics); }
 void Catchup(MMDApp* a,unsigned char s) { Timed(1,catchupOriginal,a,s); }
 void Physics(MMDApp* a,unsigned char s) { Timed(2,physicsOriginal,a,s); }
 void Render(MMDApp* a) { Timed(3,renderOriginal,a); }
@@ -61,7 +62,7 @@ void Pump() {
         else { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
 }
-void Profile(MMDApp* app,const char* stage,int start,int mode) {
+void Profile(MMDApp* app,const char* stage,int start,int mode,bool physicsBaked=false) {
     auto* device=app->Renderer()->device;
     Microsoft::WRL::ComPtr<IDirect3DQuery9> visible;
     Check(SUCCEEDED(device->CreateQuery(D3DQUERYTYPE_OCCLUSION,&visible)),"GPU visibility query");
@@ -75,8 +76,15 @@ void Profile(MMDApp* app,const char* stage,int start,int mode) {
     CommandDispatch(GetDlgItem(app->MainWindow(),panel::kPlayButton),MAKEWPARAM(408,BN_CLICKED));
     Check(app->PlaybackActive(),"start through production playback command");
     double total=0,gpu=0,pump=0,boundary=0,boundaryMax=0; unsigned samples=0,boundarySamples=0;
-    int firstPhysicsFlag=-1,lastPhysicsFlag=-1;
+    int firstPhysicsFlag=-1,lastPhysicsFlag=-1,probeBone=-1;
+    const auto& model=*mdl::Mdl(app->SelectedModel());
+    for(unsigned i=0;i<model.rigidCount&&probeBone<0;++i) {
+        const auto& rigid=model.rigidTable[i];
+        if(!rigid.staticFlag&&rigid.body&&rigid.boneIndex>=0&&unsigned(rigid.boneIndex)<model.boneCount)
+            probeBone=rigid.boneIndex;
+    }
     std::vector<double> durations;
+    unsigned long long poseHash=14695981039346656037ull;
     for(int i=0;i<1000;++i) {
         if(i==30) for(auto& c:counters)c={};
         auto begin=Clock::now(); Pump(); auto pumped=Clock::now();
@@ -106,13 +114,19 @@ void Profile(MMDApp* app,const char* stage,int start,int mode) {
             const double elapsed=std::chrono::duration<double,std::milli>(done-begin).count();
             const float frame=app->PlaybackCursorSeconds()*30;
             if(frame>=495&&frame<=505) { boundary+=elapsed; boundaryMax=std::max(boundaryMax,elapsed); ++boundarySamples; }
-            const auto& bone=mdl::Mdl(app->SelectedModel())->boneTable[1];
+            const auto& bone=mdl::Mdl(app->SelectedModel())->boneTable[probeBone>=0?probeBone:0];
             for(float v:bone.trans) Check(std::isfinite(v),"playback pose is finite");
             lastPhysicsFlag=bone.physicsDisabled;
             if(firstPhysicsFlag<0) firstPhysicsFlag=lastPhysicsFlag;
             durations.push_back(elapsed); total+=elapsed;
             gpu+=std::chrono::duration<double,std::milli>(done-submitted).count();
             pump+=std::chrono::duration<double,std::milli>(pumped-begin).count(); ++samples;
+            // Outside the measured interval: detect changed playback poses in
+            // paired builds without including hashing in frame timings.
+            for(unsigned b=0;b<model.boneCount;++b) {
+                const auto* bytes=reinterpret_cast<const unsigned char*>(model.boneTable[b].matInit);
+                for(unsigned j=0;j<sizeof(model.boneTable[b].matInit);++j) {poseHash^=bytes[j];poseHash*=1099511628211ull;}
+            }
         }
         Check(!IsWindowVisible(app->MainWindow()),"host remains hidden");
         if(i<30) Sleep(2);
@@ -120,19 +134,19 @@ void Profile(MMDApp* app,const char* stage,int start,int mode) {
     const float last=app->PlaybackCursorSeconds()*30;
     Check(last>start+499&&last<start+500,"playback advanced across the requested interval");
     std::sort(durations.begin(),durations.end());
-    std::printf("PROFILE stage=%s mode=%d range=%d..%.2f frames=%u total_ms=%.6f p95_ms=%.6f keys_ms=%.6f catchup_ms=%.6f physics_ms=%.6f render_ms=%.6f gpu_wait_ms=%.6f messages_ms=%.6f key_calls=%u gpu_visible_samples=%llu\n",
+    std::printf("PROFILE stage=%s mode=%d range=%d..%.2f frames=%u total_ms=%.6f p95_ms=%.6f keys_ms=%.6f catchup_ms=%.6f physics_ms=%.6f render_ms=%.6f gpu_wait_ms=%.6f messages_ms=%.6f key_calls=%u gpu_visible_samples=%llu pose_hash=%016llx\n",
         stage,mode,start,last,samples,total/samples,durations[durations.size()*95/100],
         counters[0].ms/samples,counters[1].ms/samples,counters[2].ms/samples,counters[3].ms/samples,
-        gpu/samples,pump/samples,counters[0].calls,visibleSamples);
+        gpu/samples,pump/samples,counters[0].calls,visibleSamples,poseHash);
     if(boundarySamples) std::printf("BOUNDARY stage=%s mode=%d frames=495..505 mean_ms=%.6f max_ms=%.6f samples=%u physics_disabled=%d->%d\n",
         stage,mode,boundary/boundarySamples,boundaryMax,boundarySamples,firstPhysicsFlag,lastPhysicsFlag);
-    if(start==250&&app->PlaybackPhysicsMode()==2)
+    if(physicsBaked&&probeBone>=0&&start==250&&app->PlaybackPhysicsMode()==2)
         Check(firstPhysicsFlag==1&&lastPhysicsFlag==0,"physical simulation resumes outside the baked interval");
     Check(SUCCEEDED(device->TestCooperativeLevel()),"render device remained available");
     app->PlaybackActive()=0; StopPlayback(app); Pump();
 }
 int wmain(int argc,wchar_t** argv) {
-    Check(argc==3,"fixture PMX and bake type required"); std::setvbuf(stdout,nullptr,_IONBF,0);
+    Check(argc>=3&&argc<=5,"fixture PMX, bake type, optional playback physics mode and scale required"); std::setvbuf(stdout,nullptr,_IONBF,0);
     const auto source=std::filesystem::absolute(argv[1]);
     const bool physics=std::wcscmp(argv[2],L"physics")==0;
     Check(physics||std::wcscmp(argv[2],L"keyframes")==0,"known bake type");
@@ -156,20 +170,27 @@ int wmain(int argc,wchar_t** argv) {
     m.maxFrame=3845; app->state.lastRegisteredFrame=3845;
     // Mode 1 forces physics even on disabled bone keys. Mode 2 respects the
     // per-key physics flags that a physics bake writes over its frame range.
-    app->PlaybackPhysicsMode()=physics?2:0;
+    app->PlaybackPhysicsMode()=argc>=4?_wtoi(argv[3]):(physics?2:0);
+    Check(app->PlaybackPhysicsMode()>=0&&app->PlaybackPhysicsMode()<=2,"valid playback physics mode");
+    if(argc==5) {
+        Check(std::wcscmp(argv[4],L"scale")==0,"known scale diagnostic");
+        bone_scale::Matrix scale;scale.v[0]=1.1f;
+        bone_scale::SetKey(raw,0,scale);
+    }
     EnableD3D12Native(false);
     app->DeltaTime()=1.f/60; app->state.messageSeen=10; FrameDriver(app.get()); Pump();
     std::printf("SCENE bones=%u rigid=%u joints=%u vertices=%u physics=%d\n",m.boneCount,m.rigidCount,m.jointCount,m.vertexCount,physics);
     Hook(&AdvanceModelKeyframes,&Advance,&advanceOriginal); Hook(&PlaybackCatchup,&Catchup,&catchupOriginal);
     Hook(&PhysicsFrame,&Physics,&physicsOriginal); Hook(&RenderFrameScene,&Render,&renderOriginal);
-    for(int mode:{0,1}) for(int start:{0,501}) Profile(app.get(),"original",start,mode);
+    const int modeCount=std::getenv("MMS_BAKE_PROFILE_ONE_MODE")?1:2;
+    for(int mode=0;mode<modeCount;++mode) for(int start:{0,501}) Profile(app.get(),"original",start,mode);
     bake::Request request; request.firstFrame=0; request.lastFrame=500;
     request.physics=physics; request.keyframes=!physics; request.settings=bake::BulletDefaults();
     auto result=bake::Compute(*app,request);
     std::printf("BAKE error=%d bones=%d keys=%zu steps=%llu scales=%zu\n",int(result.error),result.boneCount,result.changes.size(),result.simulationSteps,result.scales.size());
     Check(result.error==bake::Error::None&&!result.changes.empty(),"compute genuine 0..500 bake");
     Check(bake::Commit(raw,result,0),"commit genuine baked tracks");
-    for(int mode:{0,1}) for(int start:{501,0,250}) Profile(app.get(),"baked",start,mode);
+    for(int mode=0;mode<modeCount;++mode) for(int start:{501,0,250}) Profile(app.get(),"baked",start,mode,physics);
     ShutdownCleanup(app.get()); g_Block=nullptr; UnhookWindowsHookEx(hide);
     std::puts("PASS production bake and dense/sparse playback diagnostics");
 }

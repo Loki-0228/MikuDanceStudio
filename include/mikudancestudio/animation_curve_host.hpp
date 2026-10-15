@@ -53,8 +53,8 @@ void OpenMorph(MMDApp*, int lane, bool visible = true);
 void LayoutMorphControls(MMDApp*);
 
 // The rules above, exposed so a background test can drive them without a window
-// and without a renderer.  All of them go through the frozen morph_curve API:
-// ReadMorphChannels uses its MMDApp Enumerate/Read overloads and PanelGroup.
+// and without a renderer. ReadMorphChannels enumerates visible panels and
+// reads them in one synchronized morph_curve::ReadMany batch.
 bool ReadMorphChannels(MMDApp&, std::vector<curve_editor::Channel>& out,
                        std::wstring& error);
 // Tracks that differ from `baseline`, matched by channel id.  Only these reach

@@ -758,7 +758,7 @@ void AdvanceModelKeyframes(unsigned char* model, double cursor, int physicsMode)
             }
         }
     }
-    bone_scale::Evaluate(model, frame);
+    bone_scale::EvaluatePlayback(model, frame);
     morph_curve::Evaluate(model, frame);
 #if !MMD_ORIGINAL_PROFILE
     bone_curve::Evaluate(model, frame);

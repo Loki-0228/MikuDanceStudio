@@ -163,6 +163,7 @@
 #include <vector>
 
 #include "curve_editor_theme.hpp"
+#include "curve_editor_selection.hpp"
 #include "curve_editor_segments.hpp"
 #include "curve_editor_scrub.hpp"
 #include "curve_editor_axis.hpp"
@@ -2829,10 +2830,20 @@ void PullKeySelection(Editor& editor){
     auto* channel=ActiveChannel(editor);auto& source=CurrentSource(editor);
     if(!channel||!source.readKeySelection)return;
     const auto frames=source.readKeySelection(channel->id);
+    auto& state=CurrentState(editor);
+    // The usual timer tick observes the same selection. Compare its frame
+    // addresses directly, without allocating another set of every baked key.
+    if(frames.size()==state.selection.size()){
+        auto frame=frames.begin();bool same=true;
+        for(auto index:state.selection){
+            if(index>=channel->track.keys.size()||channel->track.keys[index].frame!=*frame++){same=false;break;}
+        }
+        if(same)return;
+    }
+    FrameSelectionCursor wanted(frames);
     std::set<std::size_t> selected;
     for(std::size_t index=0;index<channel->track.keys.size();++index)
-        if(std::find(frames.begin(),frames.end(),channel->track.keys[index].frame)!=frames.end())selected.insert(index);
-    auto& state=CurrentState(editor);
+        if(wanted.Contains(channel->track.keys[index].frame))selected.emplace_hint(selected.end(),index);
     if(selected==state.selection)return;
     state.selection=std::move(selected);
     UpdateKeyFields(editor);UpdateMmdPanel(editor);UpdateEnabledState(editor);InvalidateCanvas(editor);

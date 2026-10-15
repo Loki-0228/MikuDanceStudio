@@ -14,6 +14,8 @@
 
 ## 长期回归：`regression-keep`
 
+`curve_sync_tests` 验证密集曲线的双向选区同步、批量表情读取、无通知的原生改值与恢复、乱序及重复帧、循环链表拒绝，以及连续通知的合并。测试只创建隐藏窗口，不创建 D3D 设备。输出的毫秒数用于比较同机同配置的同步开销，不代表工程播放帧率。性能记录见[曲线同步开销](../docs/records/animation/editing.md#record-curve-sync-performance)。
+
 这些文件覆盖真实行为或已发生的缺陷，应保留；仅在对应功能删除，或验证范围完整迁移到其他测试后再移除。
 
 | 文件 | 用途 |
@@ -53,6 +55,8 @@
 | `bone_scale_io_tests.cpp` | PMM 缩放记录和单文件 VMD 扩展的编解码、校验、未知版本、帧偏移及骨骼匹配。 |
 | `affine_skinning_tests.cpp` | 非均匀缩放和斜切的独立数值参考；BDEF、PMD、SDEF 的位置和法线、极分解及单位缩放旧路径一致性。 |
 | `physics_bake_tests.cpp` | 烧录事务、撤销重做与三语隐藏对话框。另传 PMM 和输出目录时验证离线模拟、取消隔离、参数生效、范围、选择、回放与 PMM/VMD 往返；不修改输入素材。 |
+| `dense_keyframe_checks.hpp` | `physics_bake_tests --dense-playback`，完整档注册为 `dense_keyframe_playback`。验证 0–500 帧密集轨道的半帧姿势、非线性缩放、边界、重播、随机跳帧、末端骨骼及无效游标回退；打印轨道求值耗时，不换算为播放 FPS。 |
+| `bake_playback_tests.cpp` | 隐藏生产宿主加载 PMX，实际烘焙 0–500 帧，比较总长 3845 帧工程的区间内外及边界。参数为 `<模型.pmx> <keyframes\|physics> [播放物理模式 0–2] [scale]`；`scale` 添加一条缩放测试轨道。记录 CPU/GPU 等待耗时和逐帧骨骼矩阵摘要；`MMS_BAKE_PROFILE_ONE_MODE=1` 只测模型编辑面板。原模型不改写。 |
 | `physics_bake_settings_tests.cpp` | Bullet 默认值、严格 UTF-8 JSON、数值边界、Unicode、格式错误、原子保存及失败保护。 |
 | `bone_registration_tests.cpp` | 骨骼选择、重叠骨骼点击轮选、登记、首帧保护、移动、撤销/重做和跳帧。`--pick-cycle` 单独运行 PMD、PMX 在主视口与独立视口中的轮选回归。 |
 | `window_interaction_tests.cpp` | 窗口消息、鼠标/选择行为。 |

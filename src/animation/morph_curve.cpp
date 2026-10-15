@@ -297,6 +297,23 @@ bool SameNative(const std::vector<NativeKey>& left, const std::vector<NativeKey>
     return true;
 }
 
+// Most evaluations see the same ordered native chain. Compare it in place;
+// only a changed or noncanonical chain needs ReadChain's allocation, sorting
+// and duplicate-frame normalization. Selection marks do not affect the shape.
+bool MatchesNative(const mdl::MorphKey* keys, int morph, const std::vector<NativeKey>& observed) {
+    const auto capacity = mdl::MorphKeyCapacity(keys);
+    if (!keys || morph < 0 || std::size_t(morph) >= capacity || observed.empty()) return false;
+    unsigned slot = unsigned(morph);
+    for (std::size_t i=0; i<observed.size(); ++i) {
+        if (slot >= capacity) return false;
+        const auto& key = keys[slot];
+        if (key.frame != std::uint32_t(observed[i].frame) || double(key.value) != observed[i].value) return false;
+        if (!key.next) return i+1 == observed.size();
+        slot = key.next;
+    }
+    return false;
+}
+
 // Walks one morph's chain from its head (index == morph).  Repeated frames are
 // collapsed the way the VMD importer does (the record read last wins) and the
 // result is put into frame order, so a damaged chain can never produce an
@@ -519,6 +536,13 @@ void Sync(const unsigned char* model, State& state) {
     }
     for (auto entry = state.authored.begin(); entry != state.authored.end();) {
         const int morph = entry->first;
+        auto mirror = state.mirror.find(morph);
+        auto observed = state.observed.find(morph);
+        if (mirror != state.mirror.end() && observed != state.observed.end() &&
+            MatchesNative(keys, morph, observed->second)) {
+            ++entry;
+            continue;
+        }
         std::vector<NativeKey> fresh;
         std::string error;
         if (!ReadChain(keys, morph, fresh, error)) {
@@ -528,8 +552,6 @@ void Sync(const unsigned char* model, State& state) {
             entry = state.authored.erase(entry);
             continue;
         }
-        auto mirror = state.mirror.find(morph);
-        auto observed = state.observed.find(morph);
         if (mirror == state.mirror.end() || observed == state.observed.end()) {
             // A state without its reference chain (which cannot be produced by
             // this module) treats the pool it sees now as the installed shape.
@@ -735,8 +757,7 @@ bool ReadNative(const unsigned char* model, int morph, ac::Track& out, std::stri
     return true;
 }
 
-bool Read(const unsigned char* model, int morph, ac::Track& out, std::string& error) {
-    State* state = Current(model);
+static bool ReadSynced(const unsigned char* model, const State* state, int morph, ac::Track& out, std::string& error) {
     if (state != nullptr) {
         const auto found = state->effective.find(morph);
         if (found != state->effective.end()) {
@@ -746,6 +767,10 @@ bool Read(const unsigned char* model, int morph, ac::Track& out, std::string& er
         }
     }
     return ReadNative(model, morph, out, error);
+}
+
+bool Read(const unsigned char* model, int morph, ac::Track& out, std::string& error) {
+    return ReadSynced(model, Current(model), morph, out, error);
 }
 
 bool Read(const MMDApp& app, int morph, ac::Track& out, std::wstring& error) {
@@ -765,6 +790,28 @@ bool Read(const MMDApp& app, int morph, ac::Track& out, std::wstring& error) {
     }
     error.clear();
     return true;
+}
+
+bool ReadMany(const MMDApp& app, const std::vector<int>& morphs,
+              std::vector<ac::Track>& out, std::wstring& error) {
+    out.clear();
+    const auto* model = app.SelectedModel();
+    if (!model) {
+        error = Localized(app, L"モデルが選択されていません。", L"No model is selected.", L"没有选中模型。");
+        return false;
+    }
+    const auto* state = Current(model);
+    std::vector<ac::Track> tracks;tracks.reserve(morphs.size());
+    for (int morph : morphs) {
+        ac::Track track;std::string detail;
+        if (!ReadSynced(model, state, morph, track, detail)) {
+            error = Localized(app, L"表情トラックを読み込めませんでした。",
+                L"The morph track could not be read.", L"无法读取表情轨道。") + L" " + Widened(detail);
+            return false;
+        }
+        tracks.push_back(std::move(track));
+    }
+    out = std::move(tracks);error.clear();return true;
 }
 
 // These answer for the effective curve: a curve whose native keys were all

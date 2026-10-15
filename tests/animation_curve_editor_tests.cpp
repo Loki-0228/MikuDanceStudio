@@ -1243,6 +1243,9 @@ void ReadKeepsSelectionAndHistory() {
     host.data[0].label = L"Position X renamed";
     host.data[0].unit = L"m";
     SendMessageW(window, WM_ACTIVATE, WA_ACTIVE, 0);
+    // Native synchronization is posted and coalesced, like the real UI loop.
+    MSG change{};
+    while(PeekMessageW(&change,window,WM_APP+401,WM_APP+401,PM_REMOVE))DispatchMessageW(&change);
     Check(KeyCount(window) == 3, "a rename-only re-read keeps every key");
     HWND list = GetDlgItem(window, kIdChannelList);
     wchar_t item[256] = {};
@@ -1261,6 +1264,7 @@ void ReadKeepsSelectionAndHistory() {
     // A real value change on activation is still treated as an external edit.
     host.data[0].track.keys[0].value = 42.0;
     SendMessageW(window, WM_ACTIVATE, WA_ACTIVE, 0);
+    while(PeekMessageW(&change,window,WM_APP+401,WM_APP+401,PM_REMOVE))DispatchMessageW(&change);
     Check(GetText(window, kIdFrameEdit) == L"30", "a real external edit clears the local selection");
     const int appliesAfter = host.applyCalls;
     Click(window, kIdUndo);
