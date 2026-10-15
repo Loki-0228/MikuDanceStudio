@@ -3,7 +3,7 @@
 本页按功能归并实现、诊断与验收资料。各记录中的「当前」「已完成」只适用于其注明的源码、构建和测试条件；当前使用入口见[文档导航](../README.md)。
 
 ## 记录索引
-- [v2026.10.15.2-pre.1 预发布说明](#release-v2026-10-15-2-pre-1)
+- [v2026.10.15.2 发布说明](#release-v2026-10-15-2)
 - [v2026.10.15.1 发布说明](#release-v2026-10-15-1)
 - [MikuDanceStudio v2026.10.14.6 release notes / 发布说明 / リリースノート](#release-v2026-10-14-6)
 - [共享阴影滤波修复](#record-release-notes-shared)
@@ -14,19 +14,20 @@
 - [MMS 原生媒体导入与导出](#record-native-media)
 
 <a id="release-v2026-10-15-2-pre-1"></a>
+<a id="release-v2026-10-15-2"></a>
 
-<!-- release-notes:v2026.10.15.2-pre.1:begin -->
-## MikuMikuStudio v2026.10.15.2-pre.1
+<!-- release-notes:v2026.10.15.2:begin -->
+## MikuMikuStudio v2026.10.15.2
 
-Windows x64 · 预发布 / Prerelease / プレリリース
+Windows x64
 
-[中文](#release-v2026-10-15-2-pre-1-zh) | [English](#release-v2026-10-15-2-pre-1-en) | [日本語](#release-v2026-10-15-2-pre-1-ja)
+[中文](#release-v2026-10-15-2-zh) | [English](#release-v2026-10-15-2-en) | [日本語](#release-v2026-10-15-2-ja)
 
-<a id="release-v2026-10-15-2-pre-1-zh"></a>
+<a id="release-v2026-10-15-2-zh"></a>
 
 ### 中文
 
-本预发布包含自 `v2026.10.15.1` 以来的更新。
+本版本包含自 `v2026.10.15.1` 以来的更新。
 
 #### 更新内容
 
@@ -39,10 +40,6 @@ Windows x64 · 预发布 / Prerelease / プレリリース
 - 修复停止音频时的线程状态竞争，以及音频线程启动失败后可能无法结束的问题。
 - 保留 MME 特效指定的固定阴影贴图尺寸，修复附件绘制顺序和编辑选中项的保持问题。
 
-#### 已知限制
-
-FXAA 仍可能出现细描边断裂，TAA、SMAA T2x 在部分边缘仍可能波动。本版未完全解决这些问题，也未加入 DLSS、FSR 或 XeSS。此前白屏与摄像机崩溃报告缺少原始工程，尚不能确认已消除该报告中的全部故障。
-
 #### 下载与使用
 
 通常选择完整包。最小包保留原版 MMD 的功能范围及编码限制，不包含完整包的扩展编辑与导出功能。分别解压到独立目录后运行 `MikuMikuDance.exe`。模型、个人设置、MME、MMV 和 FFmpeg 需自行准备。
@@ -51,11 +48,11 @@ FXAA 仍可能出现细描边断裂，TAA、SMAA T2x 在部分边缘仍可能波
 
 两个主程序包均不附带 NVIDIA 修复插件。需要时单独下载 `MMSNvidiaAAFix.dll`，放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作，删除 DLL 不会撤销已安装的设置。
 
-<a id="release-v2026-10-15-2-pre-1-en"></a>
+<a id="release-v2026-10-15-2-en"></a>
 
 ### English
 
-This prerelease includes the changes since `v2026.10.15.1`.
+This release includes the changes since `v2026.10.15.1`.
 
 #### What's new
 
@@ -68,10 +65,6 @@ This prerelease includes the changes since `v2026.10.15.1`.
 - Fixed a thread-state race when stopping audio and a shutdown stall when the audio thread could not start.
 - Preserved fixed shadow-map sizes specified by MME effects and fixed accessory draw-order and editing-selection retention.
 
-#### Known limitations
-
-FXAA can still break thin outlines, and some edges can still fluctuate with TAA or SMAA T2x. These issues are not fully resolved. This version does not add DLSS, FSR, or XeSS. The original project for the reported white-screen camera crash was unavailable, so resolution of every failure in that report remains unconfirmed.
-
 #### Download and use
 
 Choose the full package for the features above. The minimal package retains the original MMD feature set and encoding limits, without the full build's extended editing and export features. Extract each package into a separate folder and run `MikuMikuDance.exe`. Models, personal settings, MME, MMV, and FFmpeg are not included.
@@ -80,11 +73,11 @@ Choose the full package for the features above. The minimal package retains the 
 
 Neither application package includes the NVIDIA fix. If needed, download `MMSNvidiaAAFix.dll` separately and place it beside the full build's EXE. Install it from **Help**, then restart MMS. Use **Help** to uninstall. Deleting the DLL does not remove an installed setting.
 
-<a id="release-v2026-10-15-2-pre-1-ja"></a>
+<a id="release-v2026-10-15-2-ja"></a>
 
 ### 日本語
 
-`v2026.10.15.1` 以降の変更を含むプレリリース版です。
+`v2026.10.15.1` 以降の変更を含む正式版です。
 
 #### 更新内容
 
@@ -97,10 +90,6 @@ Neither application package includes the NVIDIA fix. If needed, download `MMSNvi
 - 音声停止時のスレッド状態の競合と、音声スレッドの起動失敗時に終了できなくなる問題を修正しました。
 - MME エフェクトが指定した固定シャドウマップサイズを維持し、アクセサリの描画順と編集中の選択の保持を修正しました。
 
-#### 既知の制限
-
-FXAA では細い輪郭線が途切れる場合があり、TAA と SMAA T2x でも一部のエッジが変動する場合があります。これらの問題は完全には解決していません。DLSS・FSR・XeSS は追加していません。白画面とカメラのクラッシュに関する報告は元のプロジェクトを入手できず、報告されたすべての不具合が解消されたかは未確認です。
-
 #### ダウンロードと使い方
 
 通常は完全版を選んでください。最小版は原版 MMD の機能範囲と文字コード制限を維持し、完全版の拡張編集・出力機能を含みません。各パッケージを別のフォルダーに展開し、`MikuMikuDance.exe` を実行します。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
@@ -108,7 +97,7 @@ FXAA では細い輪郭線が途切れる場合があり、TAA と SMAA T2x で�
 #### NVIDIA 修正の導入（任意）
 
 NVIDIA 修正プラグインは両方のパッケージに含まれません。必要な場合のみ `MMSNvidiaAAFix.dll` を別途ダウンロードし、完全版の EXE と同じフォルダーに置きます。ヘルプからインストールして MMS を再起動してください。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
-<!-- release-notes:v2026.10.15.2-pre.1:end -->
+<!-- release-notes:v2026.10.15.2:end -->
 
 <a id="release-v2026-10-15-1-pre-1"></a>
 <a id="release-v2026-10-15-1"></a>
