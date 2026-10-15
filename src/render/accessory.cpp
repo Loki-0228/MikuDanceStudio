@@ -923,10 +923,8 @@ void LoadAccessoryFile(const wchar_t* path) {                   // 0x460B30
         hwnd, panel::kAccessoryCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
     mdl::Accessory(accessory)->order =
         static_cast<std::uint8_t>(displayIndex);
-    if (displayIndex >= 0)
-        app->AccessoryRenderSplitOrder() = std::max(
-            app->AccessoryRenderSplitOrder(),
-            static_cast<std::int32_t>(displayIndex + 1));
+    // Appending an accessory must not move the user-selected boundary between
+    // accessories rendered before and after the models, including a zero split.
     SendDlgItemMessageA(hwnd, panel::kAccessoryCombo, CB_SETCURSEL, displayIndex, 0);
     app->SelectedAccessorySlot() = static_cast<std::uint8_t>(slot);
     SendDlgItemMessageW(hwnd, panel::kRegisterScopeCombo, CB_ADDSTRING, 0,

@@ -963,12 +963,24 @@ INT_PTR __stdcall AccessorySettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
             return 0;
         }
         case 0x278: {  // OK: commit the new order
+            const HWND main = MainHwnd(app);
+            const LRESULT previousScope = SendMessageW(
+                GetDlgItem(main, panel::kRegisterScopeCombo), CB_GETCURSEL, 0, 0);
+            mdl::AccessoryRecord* scopeAccessory = nullptr;
+            if (previousScope >= 4) {
+                for (int slot = 0; slot < 255; ++slot) {
+                    auto* accessory = app->AccessorySlot(slot);
+                    if (accessory && accessory->order == previousScope - 4) {
+                        scopeAccessory = accessory;
+                        break;
+                    }
+                }
+            }
             app->state.accessoryRenderSplitOrder =
                 ReadIntFromEdit(hDlg, panel::kAccessoryOrderEdit, 256);
             ApplyAccessorySettingsDialog(app, g_accOrderCount, hDlg);
             app->SceneModified() = 1;
             InvalidateRect(MainHwnd(app), nullptr, FALSE);
-            const HWND main = MainHwnd(app);
             SendMessageW(GetDlgItem(main, panel::kAccessoryCombo), CB_RESETCONTENT, 0, 0);
             for (int j = 0; j < g_accOrderCount; ++j) {
                 SendMessageW(GetDlgItem(hDlg, panel::kOrderListBox), LB_GETTEXT, j,
@@ -976,7 +988,9 @@ INT_PTR __stdcall AccessorySettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                 SendMessageW(GetDlgItem(main, panel::kAccessoryCombo), CB_ADDSTRING, 0,
                              (LPARAM)text);
             }
-            SendMessageW(GetDlgItem(main, panel::kAccessoryCombo), CB_SETCURSEL, 0, 0);
+            const auto* selected = app->AccessorySlot(app->SelectedAccessorySlot());
+            SendMessageW(GetDlgItem(main, panel::kAccessoryCombo), CB_SETCURSEL,
+                         selected ? selected->order : static_cast<WPARAM>(-1), 0);
             SendMessageW(GetDlgItem(main, panel::kRegisterScopeCombo), CB_RESETCONTENT, 0, 0);
             if (app->EnglishUI() != 0) {
                 SendMessageW(GetDlgItem(main, panel::kRegisterScopeCombo), CB_ADDSTRING, 0,
@@ -1006,7 +1020,9 @@ INT_PTR __stdcall AccessorySettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                 SendMessageW(GetDlgItem(main, panel::kRegisterScopeCombo), CB_ADDSTRING, 0,
                              (LPARAM)buf);
             }
-            SendMessageW(GetDlgItem(main, panel::kRegisterScopeCombo), CB_SETCURSEL, 0, 0);
+            const LRESULT restoredScope = scopeAccessory ? scopeAccessory->order + 4
+                : previousScope < 4 ? previousScope : CB_ERR;
+            SendMessageW(GetDlgItem(main, panel::kRegisterScopeCombo), CB_SETCURSEL, restoredScope, 0);
             EndDialog(hDlg, 1);
             if (app->AccessoryOrderArray() != nullptr) {
                 free(app->AccessoryOrderArray());
@@ -1052,10 +1068,12 @@ INT_PTR __stdcall AccessorySettingsDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                 }
             } else {
                 orderIdx = 0;
-                swprintf_s(text, 0x64, L"%d", 0);
-                SetWindowTextW(GetDlgItem(hDlg, panel::kAccessoryOrderEdit), text);
-                SendMessageW(GetDlgItem(hDlg, panel::kAccessoryOrderEdit), EM_SETSEL, 0,
-                             GetWindowTextLengthW(GetDlgItem(hDlg, panel::kAccessoryOrderEdit)));
+                // SetWindowText sends EN_CHANGE even when the text is already
+                // "0". Do not recursively rewrite a valid zero boundary.
+                if (std::wcscmp(text, L"0") != 0) {
+                    SetWindowTextW(GetDlgItem(hDlg, panel::kAccessoryOrderEdit), L"0");
+                    SendMessageW(GetDlgItem(hDlg, panel::kAccessoryOrderEdit), EM_SETSEL, 0, 1);
+                }
             }
             const bool below = orderIdx < g_accOrderCount;
             SendMessageW(GetDlgItem(hDlg, panel::kOrderListBox), LB_SETCURSEL,
@@ -1164,12 +1182,9 @@ void BuildAccessoryOrderArray(MMDApp* app, int count) {  // was Sub439C90, VA 0x
 }
 // VA 0x00439D00 - thiscall app method (this = Block): commits the reorder
 // - order byte (obj+1181) and name (obj+568) updated from the dialog list
-// 0x274 (LB_GETTEXT per row), the selected-index byte (app+0x9E170) set
-// from order[0], SyncAccessoryEditPanel, per-object show-flag sweep (+1196) over the
-// 255 accessory slots (51 x 5 unrolled in the original), Sub42F1E0 +
-// Sub40D070.
+// 0x274 (LB_GETTEXT per row). Keep selection attached to its accessory slot
+// and preserve timeline row selections while the display order changes.
 void ApplyAccessorySettingsDialog(MMDApp* app, int count, HWND hDlg) {  // was Sub439D00, VA 0x00439D00
-    auto& s = *app;
     mdl::AccessoryRecord** order = static_cast<mdl::AccessoryRecord**>(
         app->AccessoryOrderArray());   // 0xA0B1C
     wchar_t text[256];
@@ -1183,24 +1198,7 @@ void ApplyAccessorySettingsDialog(MMDApp* app, int count, HWND hDlg) {  // was S
                      reinterpret_cast<LPARAM>(text));
         text_encoding::EncodeDisplay(acc->name, sizeof acc->name, text);
     }
-    if (count > 0 && order[0])
-        for (int slot = 0; slot < 255; ++slot)
-            if (app->AccessorySlot(slot) == order[0]) {
-                s.SelectedAccessorySlot() = static_cast<std::uint8_t>(slot);
-                break;
-            }
     SyncAccessoryEditPanel(app);                                             // 0x4134E0
-    for (int j = 0; j < 255; ++j) {
-        mdl::AccessoryRecord* acc = app->AccessorySlot(j);
-        if (acc != nullptr)
-            acc->rowSelected = 0;                               // 0x439DC7
-    }
-    {
-        mdl::AccessoryRecord* selected =
-            app->AccessorySlot(s.SelectedObjectSlot());
-        if (selected != nullptr)
-            selected->rowSelected = 1;                          // 0x439E34
-    }
     PostLanguageSweep(app);                                     // 0x42F1E0
     PostLanguageSweep2(app);                                    // 0x40D070
 }

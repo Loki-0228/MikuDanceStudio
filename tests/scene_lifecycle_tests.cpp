@@ -136,6 +136,7 @@ void CheckCoordinateReset(MMDApp* app, const std::filesystem::path& output) {
 
 #include "editor_feedback_checks.hpp"
 #include "sequence_scatter_checks.hpp"
+#include "accessory_feedback_checks.hpp"
 
 int multiplyAction = 0;
 int multiplyDialogs = 0;
@@ -1766,6 +1767,10 @@ int wmain(int argc, wchar_t** argv) {
     if (cameraStartup) wcscpy_s(app->EnvFileName(), 256, scenePath);
     if (!InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE)) return 3;
     ShowWindow(app->MainWindow(), SW_HIDE);
+    if (argc > 3 && std::wcscmp(argv[3], L"--accessory-feedback") == 0) {
+        CheckAccessoryFeedback(app, scenePath, argc > 4 ? argv[4] : L"all");
+        ShutdownCleanup(app); delete app; g_Block = nullptr; return 0;
+    }
 #if !MMD_ORIGINAL_PROFILE
     if (argc > 4 && std::wcscmp(argv[3], L"--sequence-scatter") == 0) {
         wcscpy_s(app->EnvFileName(), 256, scenePath); LoadSceneFile();

@@ -504,7 +504,6 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
                      static_cast<WPARAM>(sel), 0);
         SendMessageA(GetDlgItem(hwnd, panel::kRegisterScopeCombo), CB_DELETESTRING,
                      static_cast<WPARAM>(sel + 4), 0);
-        SendMessageA(GetDlgItem(hwnd, panel::kAccessoryCombo), CB_SETCURSEL, 0, 0);
         // fix indices above the deleted one
         for (int i = 0; i < 0xFF; ++i) {
             mdl::AccessoryRecord* p = app->AccessorySlot(i);
@@ -512,23 +511,22 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
                 --p->order;
             }
         }
-        // find the first slot with index 0 (new selection)
-        std::int32_t firstFree = 0x100;
+        // Choose the last displayed accessory, independently of reused storage slots.
+        std::int32_t lastSlot = -1;
+        int lastOrder = -1;
         for (int i = 0; i < 0xFF; ++i) {
             mdl::AccessoryRecord* p = app->AccessorySlot(i);
-            if (p != nullptr && p->order == 0) {
-                firstFree = i;
-                break;
+            if (p != nullptr && p->order > lastOrder) {
+                lastSlot = i;
+                lastOrder = p->order;
             }
         }
-        if (firstFree == 0x100) {
-            app->state.selectedObjectSlot = 0;
+        SendMessageA(GetDlgItem(hwnd, panel::kAccessoryCombo), CB_SETCURSEL, lastOrder, 0);
+        if (lastSlot < 0) {
+            app->SelectedAccessorySlot() = 0;
             SendMessageA(GetDlgItem(hwnd, panel::kMainComboGround), CB_SETCURSEL, -1, 0);
         } else {
-            SendMessageA(GetDlgItem(hwnd, panel::kAccessoryCombo), CB_SETCURSEL, 0, 0);
-            app->state.selectedObjectSlot =
-                static_cast<std::uint8_t>(firstFree);
-            SyncAccessoryEditPanel(app);
+            app->SelectedAccessorySlot() = static_cast<std::uint8_t>(lastSlot);
         }
         SendMessageA(GetDlgItem(hwnd, panel::kAttachBoneCombo), CB_RESETCONTENT, 0, 0);
         // clear the checkbox labels 0x1DE..0x1E4
@@ -544,7 +542,7 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
         if (oldSel < app->AccessoryRenderSplitOrder())
             --app->AccessoryRenderSplitOrder();
         EnableMenuItem(GetMenu(hwnd), 0xF9, MF_BYCOMMAND |
-            (firstFree == 0x100 ? MF_GRAYED : MF_ENABLED));
+            (lastSlot < 0 ? MF_GRAYED : MF_ENABLED));
         RebuildCameraModePanel(app);
         SendMessageA(GetDlgItem(hwnd, panel::kInterpCurveCombo), CB_DELETESTRING, 5, 0);
         SendMessageA(GetDlgItem(hwnd, panel::kInterpCurveCombo), CB_DELETESTRING, 4, 0);
@@ -553,6 +551,12 @@ void CmdControl450(MMDApp* app, HWND hwnd, std::uint16_t id,
         RefreshRequest(-1);
         InvalidateRect(hwnd, nullptr, FALSE);
         PostLanguageSweep2(app);
+        if (lastSlot >= 0) {
+            // Use the normal selection notification to synchronize the timeline
+            // highlight, parent controls and transform fields with the new target.
+            SendMessageW(hwnd, WM_COMMAND, MAKEWPARAM(panel::kAccessoryCombo, CBN_SELCHANGE),
+                         reinterpret_cast<LPARAM>(GetDlgItem(hwnd, panel::kAccessoryCombo)));
+        }
         break;
     }
 
