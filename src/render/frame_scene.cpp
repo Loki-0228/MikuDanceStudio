@@ -1,6 +1,5 @@
 #include "mikudancestudio/mmv4mms.hpp"
 #include "mikudancestudio/viewport_render_scale.hpp"
-#include "mikudancestudio/effect_preview_shadow.hpp"
 #include "mikudancestudio/transparent_capture.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/deformed_mesh_capture.hpp"
@@ -556,7 +555,6 @@ void RenderFrameScene(MMDApp* app) {
 
     viewport_render_scale::FrameScope previewScale(app);
     if (!previewScale.Ready()) return;
-    effect_preview_shadow::PrepareFrame(app);
     antialias::FrameScope antialiasFrame(app);
     if (!antialiasFrame.Ready()) return;
 

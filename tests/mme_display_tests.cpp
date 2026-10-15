@@ -13,7 +13,6 @@
 #include "mikudancestudio/text_encoding.hpp"
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/effect_display.hpp"
-#include "mikudancestudio/effect_preview_shadow.hpp"
 #include "mikudancestudio/effect_file_watch.hpp"
 #include "mikudancestudio/effect_api.hpp"
 #include "mikudancestudio/model.hpp"

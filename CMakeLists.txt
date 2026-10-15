@@ -428,7 +428,6 @@ add_library(mikudancestudio_core STATIC
     src/exports/effect_names.cpp
     src/exports/effect_paths.cpp
     src/exports/effect_apng.cpp
-    src/exports/effect_preview_shadow.cpp
     src/exports/effect_file_watch.cpp
     src/unported/stubs.cpp
 )
@@ -646,7 +645,7 @@ add_test(NAME nvidia_antialias_fix_tests COMMAND nvidia_antialias_fix_tests "$<T
 option(MIKUDANCESTUDIO_BUILD_EFFECT_TESTS "Build effect API regression tests" OFF)
 if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     enable_testing()
-    foreach(effect_check effect_file_watch effect_preview_shadow_source)
+    foreach(effect_check effect_file_watch)
         add_executable(${effect_check}_tests EXCLUDE_FROM_ALL tests/${effect_check}_tests.cpp)
         target_include_directories(${effect_check}_tests PRIVATE include)
         target_compile_features(${effect_check}_tests PRIVATE cxx_std_17)
@@ -655,7 +654,6 @@ if (MIKUDANCESTUDIO_BUILD_EFFECT_TESTS)
     endforeach()
     target_link_libraries(effect_file_watch_tests PRIVATE user32)
     add_test(NAME effect_file_watch_changes COMMAND effect_file_watch_tests "${CMAKE_BINARY_DIR}/file-watch-test-fixture")
-    add_test(NAME effect_preview_shadow_source COMMAND effect_preview_shadow_source_tests)
     add_executable(smaa_shader_tests EXCLUDE_FROM_ALL tests/smaa_shader_tests.cpp)
     target_include_directories(smaa_shader_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_compile_features(smaa_shader_tests PRIVATE cxx_std_17)

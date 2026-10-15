@@ -3,12 +3,32 @@
 本页按功能归并实现、诊断与验收资料。各记录中的「当前」「已完成」只适用于其注明的源码、构建和测试条件；当前使用入口见[文档导航](../../README.md)。
 
 ## 记录索引
+
+- [移除 MME 固定阴影的专用缩放](#record-mme-shadow-policy)
 - [MME 预览缩放与自动重载优化](#record-mme-preview-optimization)
 - [未变化模型的顶点缓存](#record-model-vertex-cache)
 - [相机移动缓存与最小包支持](#record-camera-preview-cache)
 - [StageNoRay 缩小预览后的 GPU 绘制耗时](#record-stage-no-ray-gpu-timing)
 - [StageNoRay 模型计算优化](#record-stage-no-ray-performance)
 - [Stage.pmm 的 MME 预览缩放与阴影范围优化](#record-mme-preview-performance)
+
+<a id="record-mme-shadow-policy"></a>
+## 移除 MME 固定阴影的专用缩放
+
+2026-10-15 调整：预览比例只主动改变默认渲染的阴影贴图分辨率，100% 预览和导出恢复原精度。删除 SoftShadow、ray 固定阴影的识别、资源重建挂钩和 ray 采样参数改写。MME 自建资源统一遵循 FX 声明，固定尺寸保持不变，声明为 `ViewportRatio` 的资源仍随视口变化。
+
+MME 的通用目标声明不能可靠区分阴影、反射、粒子状态或其他用途。特效还可能在着色器中固定采样尺寸，因此不能只缩小全部离屏纹理来保证效果一致。默认渲染拥有自己的阴影尺寸和采样参数，可以继续按预览比例调整。特效使用宿主提供的默认阴影时，也会收到这张调整后的贴图。
+
+下文记录保留其原始验证范围。其中启用了 SoftShadow、ray 专用缩放的尺寸表和性能数字不代表此次调整后的行为，不能沿用为当前性能结论。模型缓存和自动重载通知优化保留。
+
+本轮已构建完整包 `build/Release/MikuMikuDance.exe`。隐藏窗口的预览回归通过 411 项，覆盖默认阴影尺寸规则、导出绕过预览缩放及设备重置。真实 MME 工程按 100%、25%、25%、100% 顺序检查实际绘制目标，结果如下。
+
+| 工程 | MME 固定阴影目标 | 默认阴影贴图 |
+| --- | --- | --- |
+| StageNoRay | 四段均为 1024×1024 | 8192、2048、2048、8192，各为正方形 |
+| Stage（ray） | 四段均为 2048×2048 | 8192、2048、2048、8192，各为正方形 |
+
+两组固定阴影目标在四段中的绘制次数及图元数均保持一致。工程目录内 413 个 PMM、EMM、FX 和 FXH 文件的校验值未变化。该次验证不用于性能结论，也未重跑真实 MME 的 AVI 导出或 AMD 实机检查。构建、检查日志与文件校验值保存在 `.local/artifacts/mme-shadow-policy-20261015/`，汇总为 `verification.json`。
 
 <a id="record-mme-preview-optimization"></a>
 ## MME 预览缩放与自动重载优化
@@ -28,6 +48,8 @@ MMEffect 0.37 x64 的自动重载分支约每 100 毫秒检查一次文件时间
 
 <a id="record-mme-preview-optimization-小预览的固定阴影资源"></a>
 ### 小预览的固定阴影资源
+
+本节为历史实现，已由[统一的 MME 资源策略](#record-mme-shadow-policy)取代。
 
 完整包只缩放已识别的 SoftShadowM4 与 ray 固定阴影资源。粒子状态纹理、查找表和其他未知用途资源保持原尺寸。最小包没有视口渲染比例功能，因此不启用该缩放。
 
@@ -58,6 +80,8 @@ ray 的适配在内存中预处理并编译，仅匹配已确认的主特效结�
 
 <a id="record-mme-preview-optimization-预览缩放耗时"></a>
 ### 预览缩放耗时
+
+本节测量包含后来移除的 MME 固定阴影专用缩放，数值仅适用于当时的构建。
 
 当前构建在 StageNoRay 上完成两轮、Stage（ray）上完成一轮 `100% → 25% → 25% → 100%` 测量，采样期间均未检测到并发构建或其他测试渲染。固定模型姿态，使用 CPU 蒙皮并连续移动相机，每段至少四秒，段末等待已提交的 GPU 工作完成。以下为按帧数加权的整帧耗时，不是动作与物理播放帧率。
 

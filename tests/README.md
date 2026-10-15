@@ -185,9 +185,9 @@ MME 测试需在独立目录放入三个 MME DLL，日志必须显示 `PLUGINS m
 
 ## 阴影、录制预览和 MME 分配显示
 
-`effect_file_watch_tests` 检查真实 Windows 目录通知，覆盖普通保存、原子替换、删除、重建及无关文件修改。它在传入路径后附加进程号生成临时目录，仅清理自己的夹具。CTest 名称为 `effect_file_watch_changes`。`effect_preview_shadow_source_tests` 检查 ray 源码适配的严格匹配、未知文本回退、原尺寸恢复及 512 下限。
+`effect_file_watch_tests` 检查真实 Windows 目录通知，覆盖普通保存、原子替换、删除、重建及无关文件修改。它在传入路径后附加进程号生成临时目录，仅清理自己的夹具。CTest 名称为 `effect_file_watch_changes`。MME 固定阴影的专用缩放和 ray 源码改写已移除，相关源码适配测试也已删除。
 
-`python tests/mme_emd_runner.py <mme_display_tests 的 MikuMikuDance.exe> <MME目录> <输出目录> --file-watch` 在四种语言路径下保存测试 FX，验证原生自动重载开关、实际重新编译和屏幕输出颜色。完整包与最小包均运行该模式。`viewport_scale_performance_runner.py --verify-mme-shadow --capture` 检查实际 StageNoRay、ray 的阴影目标、小预览期间设备重置及 AVI 导出后恢复。`--no-mme-shadow` 与 `--no-file-watch` 只用于对照。实施范围和验证记录见 [MME 预览与自动重载](../docs/records/performance/preview.md#record-mme-preview-optimization)。
+`python tests/mme_emd_runner.py <mme_display_tests 的 MikuMikuDance.exe> <MME目录> <输出目录> --file-watch` 在四种语言路径下保存测试 FX，验证原生自动重载开关、实际重新编译和屏幕输出颜色。完整包与最小包均运行该模式。`viewport_scale_performance_runner.py --trace-targets --project-settings` 记录实际 StageNoRay、ray 在 100%、25%、25%、100% 预览下的绘制目标，检查 MME 固定阴影保持原尺寸、默认阴影随比例调整。`--no-file-watch` 仅用于关闭通知缓存的对照。实施范围和验证记录见 [MME 预览与自动重载](../docs/records/performance/preview.md#record-mme-preview-optimization)。
 
 `display_compatibility_tests` 与 `display_compatibility_runner.py` 保留为回归测试。它们使用隐藏生产窗口和真实 MOV 录制，验证动态精度滑条不改变光源或阴影范围、菜单开关可双向操作、预览拖动和尺寸切换，以及导出分辨率和 PNG 帧内容。各轮写入新的输出目录。
 

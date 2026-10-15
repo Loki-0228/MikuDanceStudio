@@ -1530,7 +1530,7 @@ bool ReadNumericDialog(HWND dialog, MMDApp* app, int count) {
         char* end=nullptr;const double value=std::strtod(text,&end);
         const bool empty=end==text;
         while(*end&&std::isspace(static_cast<unsigned char>(*end))) ++end;
-        if(empty||*end||!std::isfinite(value)||std::fabs(value)>std::numeric_limits<float>::max()) {
+        if(empty||*end||!std::isfinite(value)||std::fabs(value)>(std::numeric_limits<float>::max)()) {
             SetFocus(GetDlgItem(dialog,ids[i]));
             SendDlgItemMessageW(dialog,ids[i],EM_SETSEL,0,-1);
             MessageBeep(MB_ICONWARNING);return false;

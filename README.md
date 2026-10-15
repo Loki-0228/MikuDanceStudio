@@ -18,7 +18,7 @@
 | Image sequences, periodic backups, crash backup attempts, and morph force paste | Included | Included |
 | Equivalent skinning and morph optimizations, unchanged-model reuse, and camera-only outline updates with CPU skinning | Included in unreleased source | Included in unreleased source |
 | MME auto-reload using file-change notifications | Included in unreleased source | Included in unreleased source |
-| Recognized SoftShadow and ray shadow targets follow preview scale | Included in unreleased source; original size at 100% and during export | No preview scaling |
+| Preview shadow resolution | Scales the built-in renderer's shadow map; MME-owned targets follow their FX declarations | No preview scaling |
 | Recent projects, timeline force-paste button, and viewport render scaling | Included | Omitted |
 | FXAA, TAA, SMAA | Included; NVIDIA fix DLL is a separate optional download | Original anti-aliasing switch only |
 | New transparency sorting | Optional, disabled by default | Omitted; original single-pass material order |
@@ -60,7 +60,7 @@ startup. They are not stored in project files.
 | 图片序列、周期备份、崩溃备份尝试、表情强制粘贴 | 保留 | 保留 |
 | 蒙皮与表情的等价计算优化、未变化模型缓存、CPU 蒙皮下相机移动时仅更新描边 | 当前源码已包含，尚未发布 | 当前源码已包含，尚未发布 |
 | MME 自动重载使用文件变更通知 | 当前源码已包含，尚未发布 | 当前源码已包含，尚未发布 |
-| 已识别的 SoftShadow、ray 阴影目标随预览缩放 | 当前源码已包含；100% 与导出恢复原尺寸 | 不包含预览缩放 |
+| 预览阴影分辨率 | 只调整默认渲染的阴影贴图；MME 自建目标遵循 FX 声明 | 不包含预览缩放 |
 | 最近工程、时间轴强制粘贴按钮、视口渲染比例 | 保留 | 不包含 |
 | FXAA、TAA、SMAA | 保留；NVIDIA 补丁 DLL 另行按需下载 | 仅保留原抗锯齿开关 |
 | 新透明排序 | 可选低、标准、高、最高；默认关闭 | 不编入排序与剥层实现，使用原始单遍材质顺序 |
@@ -103,7 +103,7 @@ PMM `0002` 在保留标准文件头的前提下，通过扩展保存骨骼曲线
 | 連番画像、定期バックアップ、クラッシュ時のバックアップ試行、モーフの強制貼り付け | 含む | 含む |
 | スキニング・モーフの等価な計算最適化、変化のないモデルの再利用、CPU スキニングでのカメラ移動時の輪郭のみの更新 | 未公開のソースに含む | 未公開のソースに含む |
 | ファイル変更通知による MME 自動再読み込み | 未公開のソースに含む | 未公開のソースに含む |
-| 対応する SoftShadow・ray の影をプレビュー倍率に合わせて縮小 | 未公開のソースに含む。100% と書き出し時は元のサイズ | プレビュー縮小なし |
+| プレビューのシャドウ解像度 | 標準レンダラーのシャドウマップのみ調整。MME 独自のターゲットは FX の宣言に従う | プレビュー縮小なし |
 | 最近使ったプロジェクト、タイムラインの強制貼り付けボタン、ビューポート描画倍率 | 含む | 含まない |
 | FXAA、TAA、SMAA | 含む。NVIDIA 修正 DLL は任意の別ダウンロード | 従来のアンチエイリアス切り替えのみ |
 | 新しい透明ソート | 任意で有効化、初期設定は無効 | 含まない。従来の単一パスの材質順序を使用 |
