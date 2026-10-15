@@ -9,13 +9,60 @@
 #include <cmath>
 #include <vector>
 #include <array>
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+#include <thread>
 using namespace mikudancestudio;
 namespace fs = std::filesystem;
 void Check(bool ok, const char* why) { if (!ok) { std::printf("FAIL %s\n", why); std::exit(1); } }
 void CheckResult(bool ok, const std::wstring& error, const char* why) {
     if (!ok) std::fwprintf(stderr, L"%s\n", error.c_str()); Check(ok, why);
 }
+void ProbeVideo(const fs::path& source) {
+    auto* app = reinterpret_cast<MMDApp*>(static_cast<std::uintptr_t>(1));
+    int w = 0, h = 0; double duration = 0; std::wstring error;
+    CheckResult(media::OpenVideo(app, source.c_str(), w, h, duration, error, 1024), error, "video fixture open");
+    Check(w > 0 && h > 0 && w <= 1024 && h <= 1024, "bounded preview dimensions");
+    std::wprintf(L"VIDEO %s %dx%d %.3fs\n", source.filename().c_str(), w, h, duration);
+    const size_t bytes = sizeof(BITMAPINFOHEADER) + size_t(w) * h * 4;
+    for (double fraction : {.8, .1, .9, .0, .99, .4})
+        CheckResult(media::VideoFrame(app, duration * fraction, error) != nullptr, error, "exact seek including reverse and EOF");
+    const double target = duration * .7;
+    auto* exact = media::VideoFrame(app, target, error);
+    CheckResult(exact != nullptr, error, "reference export frame");
+    std::vector<unsigned char> expected(reinterpret_cast<unsigned char*>(exact), reinterpret_cast<unsigned char*>(exact) + bytes);
+    auto* initial = media::VideoFrame(app, 0, error);
+    std::vector<unsigned char> snapshot(reinterpret_cast<unsigned char*>(initial), reinterpret_cast<unsigned char*>(initial) + bytes);
+    // A worker must never overwrite a DIB still being uploaded by the renderer.
+    auto* retained = media::VideoFrame(app, duration * .8, error, false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    Check(std::memcmp(retained, snapshot.data(), bytes) == 0, "published DIB remains immutable during background decode");
+    std::vector<double> calls;
+    for (int i = 0; i < 300; ++i) {
+        const auto start = std::chrono::steady_clock::now();
+        CheckResult(media::VideoFrame(app, duration * ((i * 37) % 100) / 100., error, false) != nullptr, error, "nonblocking scrub");
+        calls.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    }
+    const auto start = std::chrono::steady_clock::now();
+    bool caughtUp = false;
+    do {
+        auto* latest = media::VideoFrame(app, target, error, false);
+        CheckResult(latest != nullptr, error, "latest request catches up");
+        if (std::memcmp(latest, expected.data(), bytes) == 0) { caughtUp = true; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    } while (std::chrono::steady_clock::now() - start < std::chrono::seconds(15));
+    Check(caughtUp, "last scrub request matches exact export frame without further timeline movement");
+    std::sort(calls.begin(), calls.end());
+    std::printf("SCRUB calls=300 p95_ms=%.6f max_ms=%.6f catchup_ms=%.3f\n", calls[285], calls.back(),
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    Check(calls[285] < 20, "preview calls do not wait for GOP decoding");
+    media::VideoFrame(app, duration * .9, error, false);
+    media::ReleaseVideo(app);
+    Check(!media::HasVideo(app), "close with decode pending");
+}
 int wmain(int argc, wchar_t** argv) {
+    if (argc == 3 && std::wcscmp(argv[1], L"--video") == 0) { ProbeVideo(argv[2]); return 0; }
     Check(argc == 2, "fixture directory required");
     const fs::path directory = argv[1];
     Check(media::IsAudioPath(L"song.Mp3") && media::IsAudioPath(L"song.AAC") && !media::IsAudioPath(L"song.mp3.txt"), "exact audio extensions");
@@ -46,10 +93,12 @@ int wmain(int argc, wchar_t** argv) {
     const auto wav = directory / L"tone.wav";
     Check(media::PrepareAudio(&audio, wav.c_str(), playable, error) && playable == wav.wstring(), "legacy PCM WAV remains direct");
     Check(!media::PrepareAudio(&audio, (directory / L"missing.mp3").c_str(), playable, error) && !error.empty(), "missing audio reports error");
+    for (const auto* name : {L"h264-baseline.mp4", L"h264-main.mp4", L"h264-high.mp4", L"h264-high10.mp4", L"h264-4k.mp4"})
+        ProbeVideo(directory / name);
     auto* app = reinterpret_cast<MMDApp*>(static_cast<std::uintptr_t>(1));
-    for (const auto* extension : {L"mp4", L"mov"}) {
+    for (const auto* name : {L"corners.mp4", L"corners.mov", L"h264-high10.mp4"}) {
         int w = 0, h = 0; double duration = 0;
-        const auto source = directory / (std::wstring(L"corners.") + extension);
+        const auto source = directory / name;
         CheckResult(media::OpenVideo(app, source.c_str(), w, h, duration, error), error, "native video open");
         Check(w == 64 && h == 48 && duration >= 7.99 && duration <= 8.01, "video geometry and duration");
         for (double seconds : {0., 1.1, .1, 1.9, 6.1, 7.9, 2.1, 0.}) {
@@ -65,7 +114,7 @@ int wmain(int argc, wchar_t** argv) {
             Check(bottom[0] > 235 && bottom[1] < 20 && bottom[2] < 20, "RGB32 orientation bottom blue");
         }
         media::ReleaseVideo(app); Check(!media::HasVideo(app), "video release");
-        std::wprintf(L"PASS native video %s\n", extension);
+        std::wprintf(L"PASS native video %s\n", name);
     }
     {
         int w=0,h=0; double duration=0;

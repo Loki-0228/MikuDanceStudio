@@ -520,67 +520,10 @@ void HandleMouseMove(std::uint32_t lParam, int mouseY) {
             colEnd = std::clamp(colEnd, 0, 200);
 
             const unsigned char flag = HoverFlag(app);
+            // A replacement marquee clears hidden and scrolled-out keys too.
+            if (!app->ShiftModifierActive()) ClearTimelineKeySelection(app);
             if (app->state.optflag[0] != 0) {
                 // ---- display-mode hover (0x4461B3) ------------------------
-                if (!app->ShiftModifierActive()) {
-                    // clear band visibility flags for all 200 rows
-                    // (0x4461CE..0x446312)
-                    auto* cameraKeys = app->CameraKeys();
-                    auto* lightKeys = app->LightKeys();
-                    auto* shadowKeys = app->ShadowKeys();
-                    auto* gravityKeys = app->GravityKeys();
-                    int* bandMaps = app->state.rowHitBand1;
-                    int* accWalk =
-                        app->state.rowHitAcc + 1;
-                    for (int row_i = 0; row_i < 200; ++row_i) {
-                        const int b0 = bandMaps[-200];  // band0 map
-                        if (b0 >= 0)
-                            cameraKeys[b0].selected = 0;
-                        const int b1 = bandMaps[0];     // band1 map
-                        if (b1 >= 0)
-                            lightKeys[b1].selected = 0;
-                        const int b2 = bandMaps[200];   // band2 map
-                        if (b2 >= 0)
-                            shadowKeys[b2].selected = 0;
-                        const int b3 = bandMaps[400];   // band3 map
-                        if (b3 >= 0)
-                            gravityKeys[b3].selected = 0;
-                        // accessory map + slot array, 40 groups of 5
-                        // (0x446242..0x4462FC); accWalk keeps walking the
-                        // whole map across rows, slotWalk restarts per row.
-                        int* slotWalk = app->state.jointLineMap + 1;
-                        for (int g = 0; g < 40; ++g, slotWalk += 5, accWalk += 5) {
-                            const int a0 = accWalk[-1];
-                            if (a0 >= 0) {
-                                const int s0 = slotWalk[-1];
-                                if (s0 >= 0)
-                                    SetAccessorySelected(app, s0, a0, 0);
-                            }
-                            const int accSel0 = accWalk[0];
-                            if (accSel0 >= 0 && slotWalk[0] >= 0)
-                                SetAccessorySelected(app, slotWalk[0], accSel0, 0);
-                            const int accSel1 = accWalk[1];
-                            if (accSel1 >= 0) {
-                                const int s2 = slotWalk[1];
-                                if (s2 >= 0)
-                                    SetAccessorySelected(app, s2, accSel1, 0);
-                            }
-                            const int accSel2 = accWalk[2];
-                            if (accSel2 >= 0) {
-                                const int s3 = slotWalk[2];
-                                if (s3 >= 0)
-                                    SetAccessorySelected(app, s3, accSel2, 0);
-                            }
-                            const int accSel3 = accWalk[3];
-                            if (accSel3 >= 0) {
-                                const int s4 = slotWalk[3];
-                                if (s4 >= 0)
-                                    SetAccessorySelected(app, s4, accSel3, 0);
-                            }
-                        }
-                        ++bandMaps;
-                    }
-                }
                 // hovered-row highlight for the four fixed bands
                 // (0x446342..0x44649F)
                 if (yBottom >= 160 && yTop <= 174 && rowStart < rowEnd) {
@@ -651,63 +594,6 @@ void HandleMouseMove(std::uint32_t lParam, int mouseY) {
                 mdl::DisplayKey* displayKeys = mdl::DisplayKeys(model);
                 mdl::MorphKey* morphKeys = mdl::MorphKeys(model);
                 mdl::BoneKey* boneKeys = mdl::BoneKeys(model);
-                if (!app->ShiftModifierActive()) {
-                    // clear bone/morph/IK visibility flags for all 200 rows
-                    // (0x44653F..0x4467F0)
-                    displayKeys[0].allocated = 0;
-                    morphKeys[0].allocated = 0;
-                    boneKeys[0].allocated = 0;
-                    int* map = app->state.rowHitMorph;
-                    for (int row_i = 0; row_i < 200; ++row_i) {
-                        for (int g = 0; g < 40; ++g, map += 5) {
-                            const int b0 = map[40000];  // bone map
-                            if (b0 > 0)
-                                displayKeys[b0].allocated = 0;
-                            const int m0 = map[0];      // morph map
-                            if (m0 > 0)
-                                morphKeys[m0].allocated = 0;
-                            const int i0 = map[-40000]; // IK map
-                            if (i0 > 0)
-                                boneKeys[i0].allocated = 0;
-                            const int b1 = map[40001];
-                            if (b1 > 0)
-                                displayKeys[b1].allocated = 0;
-                            const int m1 = map[1];
-                            if (m1 > 0)
-                                morphKeys[m1].allocated = 0;
-                            const int i1 = map[-39999];
-                            if (i1 > 0)
-                                boneKeys[i1].allocated = 0;
-                            const int b2 = map[40002];
-                            if (b2 > 0)
-                                displayKeys[b2].allocated = 0;
-                            const int m2 = map[2];
-                            if (m2 > 0)
-                                morphKeys[m2].allocated = 0;
-                            const int i2 = map[-39998];
-                            if (i2 > 0)
-                                boneKeys[i2].allocated = 0;
-                            const int b3 = map[40003];
-                            if (b3 > 0)
-                                displayKeys[b3].allocated = 0;
-                            const int m3 = map[3];
-                            if (m3 > 0)
-                                morphKeys[m3].allocated = 0;
-                            const int i3 = map[-39997];
-                            if (i3 > 0)
-                                boneKeys[i3].allocated = 0;
-                            const int b4 = map[40004];
-                            if (b4 > 0)
-                                displayKeys[b4].allocated = 0;
-                            const int m4 = map[4];
-                            if (m4 > 0)
-                                morphKeys[m4].allocated = 0;
-                            const int i4 = map[-39996];
-                            if (i4 > 0)
-                                boneKeys[i4].allocated = 0;
-                        }
-                    }
-                }
                 // hovered-row highlight over the morph map grid
                 // (0x446815..0x446A0F)
                 int colStartB = (yTop - kColY0Bone) / kColPitch;

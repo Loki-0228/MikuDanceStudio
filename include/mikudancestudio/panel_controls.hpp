@@ -296,6 +296,8 @@ constexpr int kCamMulPosXScaleEdit = 686;    // camera pos X * (frame-scale dial
 constexpr int kCamMulPosXOffsetEdit = 687;   // camera pos X + (frame-scale dialog: TO edit)
 constexpr int kBoneMulPosXScaleEdit = 686;   // bone-frame multiply pos X * (dialog 636)
 constexpr int kBoneMulPosXOffsetEdit = 687;  // bone-frame multiply pos X +
+constexpr int kBoneMulScaleXFactorEdit = 698; // MMS: scale X/Y/Z pairs, 698..703
+constexpr int kBoneMulScaleXOffsetEdit = 699;
 constexpr int kMorphMulScaleEdit = 686;      // facial 大きさ * (dialog 643)
 constexpr int kMorphMulOffsetEdit = 687;     // facial 大きさ +
 

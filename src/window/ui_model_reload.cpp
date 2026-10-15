@@ -134,13 +134,10 @@ void PostModelReload(MMDApp* app) {  // 0x41A650
         return;
     }
 
-    d3dx::D3DXMATRIXF targetTranslation{};
-    api.translation(&targetTranslation, -app->CameraPositionX(),
-                    -app->CameraPositionY(), -app->CameraPositionZ());
-    api.multiply(&targetTranslation, &targetTranslation, &rotation);
-    app->ViewOffsetX() -= targetTranslation.m[3][0];
-    app->ViewOffsetY() -= targetTranslation.m[3][1];
-    app->CameraDistance() -= targetTranslation.m[3][2];
+    // The world transform already applies the unparented camera target.
+    // Adding it to the eye again makes each edit refresh move the camera.
+    app->ViewOffsetX() = 0.0f;
+    app->ViewOffsetY() = 0.0f;
 }
 
 void ApplyCurrentCameraView(MMDApp* app) {
@@ -270,11 +267,8 @@ void PostModelReload2(MMDApp* app) {  // 0x40D940
 }
 
 void RebuildModelModePanel(MMDApp* app) {  // was Sub44D610, 0x44D610
-    // 整个切换过程必须保持渲染画面不变：ReloadModels
-    // （相机关键帧寻位）和 PostModelReload 都会重写视线参数，因此在此处保存
-    // 视线参数，并在结尾时连同当前帧的旋转轴心一并还原
-    // （相机面板以 cameraPos 为轴心，模型编辑
-    // 以世界原点为轴心）。
+    // Preserve the free view across a pivot change. With Track enabled,
+    // keep the evaluated camera view instead of restoring free-view offsets.
     const float eyeOldX = app->ViewOffsetX();
     const float eyeOldY = app->ViewOffsetY();
     const float eyeOldDistance = app->CameraDistance();
@@ -311,16 +305,18 @@ void RebuildModelModePanel(MMDApp* app) {  // was Sub44D610, 0x44D610
     app->ApplyTimelineLightState();
     app->Renderer()->device->SetLight(0, &app->SceneLight());
 
-    // Restore the eye to the state it arrived in, then carry it across the pivot change
-    // caused by the panel byte. For model editing the eye *is* the viewpoint, so
-    // restoring it before the carry makes the switch image-exact regardless of what
-    // the intervening reloads did to it.
-    app->ViewOffsetX() = eyeOldX;
-    app->ViewOffsetY() = eyeOldY;
-    app->CameraDistance() = eyeOldDistance;
-    float focusNew[3] = {0.0f, 0.0f, 0.0f};
-    ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focusNew);
-    CarryEyeForFocusChange(app, focusOld, focusNew);
+    // Tracking uses the camera target already applied by the world transform.
+    // Only the free view needs compensation for a change of orbit pivot.
+    if (app->state.followCameraEnabled != 0) {
+        ApplyCurrentCameraView(app);
+    } else {
+        app->ViewOffsetX() = eyeOldX;
+        app->ViewOffsetY() = eyeOldY;
+        app->CameraDistance() = eyeOldDistance;
+        float focusNew[3] = {0.0f, 0.0f, 0.0f};
+        ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focusNew);
+        CarryEyeForFocusChange(app, focusOld, focusNew);
+    }
 }
 
 void RebuildCameraModePanel(MMDApp* app) {  // was Sub44D780, 0x44D780

@@ -305,7 +305,10 @@ void ResetAppState(MMDApp* app) {
     for (int id : kDisable)
         EnableWindow(GetDlgItem(hwnd, id), FALSE);
     {
-        static const int kZeroEdits[] = {425, 426, 409, 410, 478, 479, 480, 481, 482, 483};
+        static const int kFrameEdits[] = {425, 426, 409, 410};
+        for (int id : kFrameEdits)
+            ReplaceEditText(hwnd, id, "0");
+        static const int kZeroEdits[] = {478, 479, 480, 481, 482, 483};
         for (int id : kZeroEdits)
             ReplaceEditText(hwnd, id, "0.0000");
         ReplaceEditText(hwnd, 484, "1.0000");
@@ -350,9 +353,11 @@ void ResetAppState(MMDApp* app) {
                  BM_CLICK, 0, 0);
     app->state.groundGridEnabled = 1;
     CheckMenuItem(GetMenu(hwnd), 0xD7, 8u);
+    // Reset to the enabled default without dispatching the user's toggle
+    // command, which would immediately disable the just-restored grid.
     SendMessageA(GetDlgItem(app->FloatingWindow() != nullptr
                                 ? app->FloatingWindow() : hwnd, panel::kCoordAxisCheckbox),
-                 BM_CLICK, 1, 0);
+                 BM_SETCHECK, BST_CHECKED, 0);
     app->state.groundShadowEnabled = 1;
     CheckMenuItem(GetMenu(hwnd), 0xDD, 8u);
 

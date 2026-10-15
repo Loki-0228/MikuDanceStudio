@@ -55,6 +55,7 @@
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/mmd_app.hpp"
+#include "mikudancestudio/native_media.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/runtime_log.hpp"
@@ -709,10 +710,10 @@ void FrameDriver(MMDApp* app) {
 
     // ---- 5. dynamic overlay producer + D3D scene envelope ---------------
     if (device_lost_wait::Pending(app)) return;
-    // Decode the playback sample before entering BeginScene, just as manual
-    // timeline seeks refresh it. The AVI reader caches unchanged samples.
+    // Poll modern video even while stopped, so the last asynchronous scrub
+    // request reaches the screen without another mouse movement.
     if (s.AviBackgroundEnabled() != 0 &&
-        (s.PlaybackActive() != 0 || s.AviBackgroundTexture() == nullptr ||
+        (s.PlaybackActive() != 0 || media::HasVideo(app) || s.AviBackgroundTexture() == nullptr ||
          device_lost_wait::BackgroundRefreshPending(app)))
         AviBgOverlayRefresh(app);
     if (s.state.timelineAdvanceRequested != 0) antialias::ResetHistory(app);

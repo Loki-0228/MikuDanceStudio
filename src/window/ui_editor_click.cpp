@@ -237,6 +237,11 @@ static void ClearActiveModelFlags(MMDApp* app) {
         displayKeys[i].allocated = 0;
 }
 
+void ClearTimelineKeySelection(MMDApp* app) {
+    if (app->CameraMode() != 0) ClearGlobalFrameSelection(app);
+    else ClearActiveModelFlags(app);
+}
+
 static void SetTimelineSelectionRange(MMDApp* app, std::int32_t firstOffset,
                                       std::int32_t firstBase,
                                       std::int32_t lastOffset,

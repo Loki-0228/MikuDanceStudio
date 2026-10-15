@@ -67,6 +67,8 @@
 
 #include "mikudancestudio/mmd_app.hpp"
 #include "mikudancestudio/model.hpp"
+#include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/bone_key_pool.hpp"
 #include "mikudancestudio/ported_funcs.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "device_lost_wait.hpp"
@@ -368,14 +370,18 @@ void PumpDeleteRebuild(MMDApp* app, HWND focus, bool focusNotInPanelEdit) {
     if (!DeleteShortcutAllowed(app, focusAcceptsKeys, inFrameEdit)) {
         return;
     }
-    // Delete removes the keyframes of the SELECTED bones on the current frame
-    // in addition to the explicitly marked ones ("全選択 -> Del"): the mark
-    // array (bone key +0x39 allocated byte) is what the deletion backend walks,
-    // so the selected bones' current-frame records are marked first.  With no
-    // key to delete the call returns 0 and the tables stay untouched.
-    if (unsigned char* model = app->SelectedModel(); model != nullptr) {
-        const std::uint8_t slot = app->SelectedModelSlot();
-        if (slot < kModelSlotCount) {
+    // Explicit timeline marks define the deletion. Only fall back to the
+    // viewport's selected bones when no timeline keys are selected.
+    if (unsigned char* model = app->SelectedModel(); model && app->CameraMode() == 0) {
+        const auto marked = [](const auto* keys, std::size_t capacity) {
+            for (std::size_t i = 0; keys && i < capacity; ++i)
+                if (keys[i].allocated != 0) return true;
+            return false;
+        };
+        const auto& record = *mdl::Mdl(model);
+        if (!marked(record.boneKeys, mdl::BoneKeyCapacity(record)) &&
+            !marked(record.morphKeys, mdl::MorphKeyCapacity(record.morphKeys)) &&
+            !marked(record.displayKeys, mdl::KeyPoolCapacity(record.displayKeys))) {
             MarkSelectedBoneKeysAtFrame(model,
                                         static_cast<int>(app->CurrentFrame()));
         }

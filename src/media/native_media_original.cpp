@@ -41,7 +41,7 @@ bool OpenVideo(MMDApp*, const wchar_t*, int& width, int& height, double& duratio
     return false;
 }
 bool HasVideo(MMDApp*) { return false; }
-BITMAPINFOHEADER* VideoFrame(MMDApp*, double, std::wstring& error) { error = kUnavailable; return nullptr; }
+BITMAPINFOHEADER* VideoFrame(MMDApp*, double, std::wstring& error, bool) { error = kUnavailable; return nullptr; }
 unsigned long long VideoFrameRevision(MMDApp*) { return 0; }
 void ReleaseVideo(MMDApp*) {}
 }

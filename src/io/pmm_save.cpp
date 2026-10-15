@@ -610,7 +610,7 @@ void WritePmmModelBlocks(int fd, unsigned char** const slots,
                 mdl::DisplayGroups(model);
             for (unsigned char i = 0; i < boneCount; ++i) {    // 0x41B7D5
                 const unsigned char b =
-                    groups[i].nameEn[0] != 0;
+                    groups[i].flags != 0;
                 W(fd, &b, 1);
             }
         }
@@ -934,11 +934,11 @@ void WritePmmConfigBlock(int fd, MMDApp* s, HWND main, char* text) {
         text[0] = 0;
         GetWindowTextA(GetDlgItem(main, panel::kPlayStartFrameEdit), text, 256);
         std::int32_t playStartFrame = 0;
-        if (*text && !frame_limits::Parse(text, playStartFrame)) throw std::runtime_error("Invalid playback start frame");
+        if (!frame_limits::ParsePlaybackBound(text, playStartFrame)) throw std::runtime_error("Invalid playback start frame");
         text[0] = 0;
         GetWindowTextA(GetDlgItem(main, panel::kPlayStopFrameEdit), text, 256);
         std::int32_t playStopFrame = 0;
-        if (*text && !frame_limits::Parse(text, playStopFrame)) throw std::runtime_error("Invalid playback stop frame");
+        if (!frame_limits::ParsePlaybackBound(text, playStopFrame)) throw std::runtime_error("Invalid playback stop frame");
         W(fd, &playStartFrame, 4);
         W(fd, &playStopFrame, 4);
     }

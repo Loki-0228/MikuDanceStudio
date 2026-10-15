@@ -42,6 +42,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
 #include "mikudancestudio/bone_scale.hpp"
 #include "mikudancestudio/bone_scale_gizmo.hpp"
@@ -583,6 +584,58 @@ void UpdateBoneBoxSelection(MMDApp* app) {
         PostLanguageSweep(app);
 }
 
+void BeginBackgroundGesture(MMDApp* app) {
+    using Target = MMDApp::BackgroundGesture::Target;
+    auto& gesture = app->backgroundGesture;
+    gesture = {};
+    const int control = app->CtrlModifierState();
+    if (control != 1 && control != 3) return;
+    // The video is drawn over the picture. Hidden media must not intercept
+    // the gesture; Ctrl with no visible media must not move the camera.
+    gesture.target = Target::Empty;
+    if (app->AviBackgroundEnabled() == 1 && app->AviFrameWidth() > 0 && app->AviFrameHeight() > 0) {
+        gesture.target = Target::Video;
+        gesture.x = app->AviOffsetX(); gesture.y = app->AviOffsetY();
+    } else if (app->PictureBackgroundEnabled() && app->PictureWidth() > 0 && app->PictureHeight() > 0) {
+        gesture.target = Target::Picture;
+        gesture.x = app->PictureOffsetX(); gesture.y = app->PictureOffsetY();
+    }
+}
+
+void DragBackground(MMDApp* app, bool zoom, int dx, int dy) {
+    using Target = MMDApp::BackgroundGesture::Target;
+    auto& gesture = app->backgroundGesture;
+    if (gesture.target == Target::Empty || (dx == 0 && dy == 0)) return;
+    const bool video = gesture.target == Target::Video;
+    if (video ? app->AviBackgroundEnabled() != 1 : !app->PictureBackgroundEnabled()) return;
+    auto& x = video ? app->AviOffsetX() : app->PictureOffsetX();
+    auto& y = video ? app->AviOffsetY() : app->PictureOffsetY();
+    float& scale = video ? app->AviScale() : app->PictureScale();
+    if (zoom) {
+        const double before = std::isfinite(scale) && scale > 0 ? scale : 1.0;
+        scale = static_cast<float>(std::clamp(before * std::exp(std::clamp(-dy * .01, -20.0, 20.0)), .001, 100.0));
+        // Keep the media's centre fixed while scaling.
+        gesture.x += (before - scale) * (video ? app->AviFrameWidth() : app->PictureWidth()) * .5;
+        gesture.y += (before - scale) * (video ? app->AviFrameHeight() : app->PictureHeight()) * .5;
+    } else {
+        // Invert the overlay's screen-space conversion. Accumulate fractions
+        // so slow one-pixel drags work at every viewport scale.
+        const double unitsPerPixel = 1.2000000476837158 / ViewportScale(app);
+        gesture.x += dx * unitsPerPixel;
+        gesture.y += dy * unitsPerPixel;
+    }
+    const auto bounded = [](double value) {
+        return std::clamp(value, double(std::numeric_limits<std::int32_t>::min()),
+                          double(std::numeric_limits<std::int32_t>::max()));
+    };
+    gesture.x = bounded(gesture.x); gesture.y = bounded(gesture.y);
+    x = static_cast<std::int32_t>(std::llround(gesture.x));
+    y = static_cast<std::int32_t>(std::llround(gesture.y));
+    if (video) AviBgPlacementRefresh(app);
+    else PicBgOverlayRefresh(app);
+    app->state.messageSeen = 1;
+}
+
 void BeginOrEndViewportToolDrag(MMDApp* app, int operation) {
     const int leftState = app->LeftMouseButtonState();
     if (leftState == 1) {
@@ -592,6 +645,7 @@ void BeginOrEndViewportToolDrag(MMDApp* app, int operation) {
         g_viewportPressHandled = true;
         if (operation == 1 || operation == 2) {
             // Zoom and pan use the same unlimited relative gesture as the HUD.
+            BeginBackgroundGesture(app);
             BeginCenteredDrag(app, operation);
             return;
         }
@@ -688,6 +742,7 @@ void BeginOrEndViewportToolDrag(MMDApp* app, int operation) {
         if (viewOperation == 1 || viewOperation == 2) {
             RestoreViewportToolCursor(app, viewOperation);
             app->ViewToolDragOperation() = ViewportToolAction::None;
+            app->backgroundGesture = {};
         }
         if (mode != 0) {
             if (mode >= 1 && mode <= 3)
@@ -1014,7 +1069,10 @@ void MouseInteractionBegin(MMDApp* app) {
 
     if (app->LeftMouseButtonHeld()) {
         const ViewportToolAction viewMode = app->ViewToolDragOperation();
-        if (viewMode == ViewportToolAction::CameraOrbit) {
+        const bool header = viewMode == ViewportToolAction::CameraOrbit || viewMode == ViewportToolAction::CameraPan;
+        if (header && app->backgroundGesture.target != MMDApp::BackgroundGesture::Target::Camera) {
+            DragBackground(app, viewMode == ViewportToolAction::CameraOrbit, dx, dy);
+        } else if (viewMode == ViewportToolAction::CameraOrbit) {
             float& distance = app->CameraMode() != 0 && app->CameraParentModel() >= 0
                 ? app->CameraPositionZ() : app->CameraDistance();
             distance -= static_cast<float>(dy) * 0.1f;

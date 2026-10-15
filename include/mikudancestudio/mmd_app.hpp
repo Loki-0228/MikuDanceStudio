@@ -1657,6 +1657,13 @@ public:
         state.playbackCursorSeconds = static_cast<float>(m_playbackCursorSeconds);
         state.playbackEndSeconds = static_cast<float>(m_playbackEndSeconds);
     }
+    // Latch the header gesture's target until release. Fractional placement
+    // stays outside the serialized PMM state, whose offsets are integers.
+    struct BackgroundGesture {
+        enum class Target { Camera, Empty, Picture, Video };
+        Target target = Target::Camera;
+        double x = 0, y = 0;
+    } backgroundGesture;
 };
 
 static_assert(sizeof(MMDApp) >= sizeof(MMDAppState),

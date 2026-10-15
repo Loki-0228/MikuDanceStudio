@@ -289,7 +289,7 @@ void CollectEnglishNameEdit(MMDApp* app, HWND hEdit, int idx);  // was Sub43BED0
 int CollectToonFileNames(HWND hDlg);             // was Sub41EA20, VA 0x0041EA20
 // (SaveEnhancedModel / SetModelColor declared in ported_funcs.hpp; RefreshMenuLanguage below)
 // misc dialog bodies: misc_dialogs.cpp
-void ApplyBoneFrameScaleAdd(MMDApp* app, HWND hDlg);
+bool ApplyBoneFrameScaleAdd(MMDApp* app, HWND hDlg);
 void ApplyMorphScaleAdd(MMDApp* app, HWND hDlg);  // was Sub43E680, VA 0x0043E680
 void InitModelOrderDialog(int count, HWND hDlg);  // was Sub41E810, VA 0x0041E810
 void InitGravityDialog(HWND hDlg);               // was Sub423160, VA 0x00423160
@@ -865,6 +865,61 @@ static const char kMsgFineShadowJp[] =
 // WM_COMMAND: id 1 -> apply selected bone keys + EndDialog(1); id 2 -> EndDialog(2).
 // Reference: MikuMikuDance.exe sub_44D3F0.
 // ===========================================================================
+// Extend the existing dialog below its angle rows. The original resource and
+// original-profile window keep their native layout.
+static void AddBoneMultiplyScaleRows(MMDApp* app, HWND dialog) {
+    if (MMD_ORIGINAL_PROFILE) return;
+    RECT extra{0, 0, 0, 60}, window{};
+    MapDialogRect(dialog, &extra);
+    GetWindowRect(dialog, &window);
+    const int height = window.bottom - window.top + extra.bottom;
+    int top = window.top - extra.bottom / 2;
+    MONITORINFO monitor{sizeof(monitor)};
+    if (GetMonitorInfoW(MonitorFromWindow(dialog, MONITOR_DEFAULTTONEAREST), &monitor))
+        top = (std::max)(int(monitor.rcWork.top),
+            (std::min)(top, int(monitor.rcWork.bottom) - height));
+    SetWindowPos(dialog, nullptr, window.left, top, window.right - window.left, height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    for (int id : {IDOK, IDCANCEL}) {
+        HWND button = GetDlgItem(dialog, id);
+        RECT rect{}; GetWindowRect(button, &rect);
+        MapWindowPoints(nullptr, dialog, reinterpret_cast<POINT*>(&rect), 2);
+        SetWindowPos(button, nullptr, rect.left, rect.top + extra.bottom, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    const HFONT font = reinterpret_cast<HFONT>(SendMessageW(
+        GetDlgItem(dialog, panel::kBoneMulPosXScaleEdit), WM_GETFONT, 0, 0));
+    const auto add = [&](const wchar_t* kind, const wchar_t* text, int id,
+                         int x, int y, int width, int height, DWORD style) {
+        RECT rect{x, y, x + width, y + height}; MapDialogRect(dialog, &rect);
+        HWND child = CreateWindowExW(0, kind, text, WS_CHILD | WS_VISIBLE | style,
+            rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+            dialog, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+            reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(dialog, GWLP_HINSTANCE)), nullptr);
+        SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        return child;
+    };
+    const wchar_t* label = app->EnglishUI() == kUiChinese ? L"缩放" :
+        app->EnglishUI() ? L"scale" : L"拡大率";
+    add(L"STATIC", label, -1, 8, 117, 80, 12, SS_LEFT);
+    HWND previous = GetDlgItem(dialog, panel::kBoneMulPosXOffsetEdit + 10);
+    for (int axis = 0; axis < 3; ++axis) {
+        const int y = 130 + axis * 15;
+        const wchar_t* names[] = {L"X *", L"Y *", L"Z *"};
+        add(L"STATIC", names[axis], -1, 26, y + 2, 13, 12, SS_LEFT);
+        add(L"STATIC", L"+", -1, 74, y + 2, 7, 12, SS_LEFT);
+        for (int column = 0; column < 2; ++column) {
+            HWND edit = add(L"EDIT", column ? L"0.0" : L"1.0",
+                panel::kBoneMulScaleXFactorEdit + 2 * axis + column,
+                column ? 82 : 40, y, 30, 12,
+                WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL);
+            SetWindowPos(edit, previous, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            previous = edit;
+        }
+    }
+}
+
 INT_PTR CALLBACK BoneFrameMultiplyDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
                                           LPARAM lParam) {  // was Sub44D3F0, VA 0x0044D3F0
     (void)lParam;
@@ -872,6 +927,7 @@ INT_PTR CALLBACK BoneFrameMultiplyDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
         MMDApp* app = g_Block;
         MakeDialogTopmostIfRequested(app, hDlg);
         LocalizeChineseDialog(app, hDlg);
+        AddBoneMultiplyScaleRows(app, hDlg);
         for (int i = 0; i < 12; i += 2) {
             PrefillEdit(hDlg, panel::kBoneMulPosXScaleEdit + i, "1.0");
         }
@@ -884,7 +940,16 @@ INT_PTR CALLBACK BoneFrameMultiplyDlgProc(HWND hDlg, UINT msg, WPARAM wParam,
     if (msg == WM_COMMAND) {
         const WORD id = LOWORD(wParam);
         if (id == 1) {
-            ApplyBoneFrameScaleAdd(g_Block, hDlg);
+            if (!ApplyBoneFrameScaleAdd(g_Block, hDlg)) {
+                const int language = g_Block->EnglishUI();
+                MessageBoxW(hDlg, language == kUiChinese ?
+                    L"请输入有效数字。所有选中帧的缩放结果必须大于 0，且在支持范围内。" :
+                    language ? L"Enter valid numbers. The resulting scale of every selected key must be positive and within the supported range." :
+                    L"有効な数値を入力してください。選択した全フレームの拡大率は正の値で、対応範囲内である必要があります。",
+                    language == kUiChinese ? L"骨骼帧调整" : language ? L"Bone frame adjustment" : L"ボーンフレーム補正",
+                    MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
             EndDialog(hDlg, 1);
             return 0;
         }

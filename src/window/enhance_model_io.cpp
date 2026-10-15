@@ -9,6 +9,7 @@
 #include "mikudancestudio/ui_translation.hpp"
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/frame_rate_correction.hpp"
+#include "mikudancestudio/sequence_scatter.hpp"
 #include "viewport_corner_menu.hpp"
 // ===========================================================================
 // Enhance-model IO: toon collect (0x41EA20), save model (0x41EC10), model colour (0x4A4850)
@@ -1419,6 +1420,7 @@ void RefreshMenuLanguage(MMDApp* app) {  // was Sub40B5A0, VA 0x0040B5A0
     RefreshSkinningMenu(app);
     bake::RefreshMenu(app);
     frame_rate_correction::RefreshMenu(app);
+    sequence_scatter::RefreshMenu(app);
     RemoveLegacyAutoSortingMenuItem(app);
     RefreshTransparentSortPrecisionMenu(app);
     // Refresh the Help menu's corner label along with the interface language.

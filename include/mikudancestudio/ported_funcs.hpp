@@ -27,6 +27,7 @@ class PhysicsScene;  // physics_scene.hpp (the "0x48" physics scene wrapper)
 // Shared camera/light/shadow/gravity/accessory selection reset. Missing
 // tracks are allowed during scene construction and teardown.
 void ClearGlobalFrameSelection(MMDApp* app);
+void ClearTimelineKeySelection(MMDApp* app);
 
 // ---- startup chain --------------------------------------------------------
 // VA 0x0047A5B0 - subsystem alloc + config load + window classes + window.
@@ -244,6 +245,7 @@ void HandleDropFiles(HDROP);                                // VA 0x00461300
 //      src/render/bg_overlay.cpp, src/render/device_reset.cpp,
 //      src/app/avi_record_start.cpp, src/app/dshow_record_graph.cpp) ------
 void AviBgOverlayRefresh(MMDApp*);            // VA 0x004168D0 (was Sub4168D0)
+void AviBgPlacementRefresh(MMDApp*);          // Refresh geometry without decoding a frame.
 void PicBgOverlayRefresh(MMDApp*);            // VA 0x00417130 (was Sub417130)
 void StartAviRecordWindow(MMDApp*);           // VA 0x0045E820 (stub twin Sub45E820)
 void StartAviRecordFullscreen(MMDApp*);       // VA 0x00464760 (stub twin Sub464760)

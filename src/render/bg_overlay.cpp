@@ -180,7 +180,7 @@ void RefreshOverlayVertexBuffer(MMDApp* app, IDirect3DVertexBuffer9* vb,
                                 const OverlayPlacement& placement) {
     // Port-side guard: the 168-byte overlay vertex buffers are created by the
     // D3D init chain; the original walks them unconditionally.
-    if (vb == nullptr)
+    if (vb == nullptr || app->Renderer() == nullptr)
         return;
     void* locked = nullptr;
     if (FAILED(vb->Lock(0, kBackgroundVertexBytes, &locked, 0)) || locked == nullptr)  // 0x416CE9
@@ -299,12 +299,15 @@ void AviBgOverlayRefresh(MMDApp* app) {
         const double cursor = s.PlaybackCursorSeconds();
         videoSeconds = cursor + static_cast<std::int32_t>(s.state.a0B10) / 30.0;
     }
-    void* bits = media::HasVideo(app) ? media::VideoFrame(app, videoSeconds, decodeError)
+    const auto previousRevision = media::VideoFrameRevision(app);
+    void* bits = media::HasVideo(app) ? media::VideoFrame(app, videoSeconds, decodeError, s.RecordingWindow() != nullptr)
                 : getFrame != nullptr ? AVIStreamGetFrame(getFrame, sample)
                                      : nullptr;                   // 0x416B4F
     if (bits == nullptr) {
         ReleaseAviBackgroundHandles(app);
-        MessageBoxA(OverlayHwnd(app),                             // 0x416BD8
+        if (!decodeError.empty())
+            MessageBoxW(OverlayHwnd(app), decodeError.c_str(), L"Video playback", MB_OK | MB_ICONERROR);
+        else MessageBoxA(OverlayHwnd(app),                        // 0x416BD8
                     app->EnglishUI() != 0
                         ? "Cannot open AVI file"
                         : "\x41\x56\x49\x83\x74\x83\x40\x83\x43\x83\x8B\x82"
@@ -321,13 +324,13 @@ void AviBgOverlayRefresh(MMDApp* app) {
     }
 
     const auto revision = media::VideoFrameRevision(app);
+    if (revision != previousRevision) s.state.messageSeen = 1;
     unsigned long long uploadedRevision = 0;
     DWORD revisionSize = sizeof(uploadedRevision);
     if (revision && SUCCEEDED(s.AviBackgroundTexture()->GetPrivateData(
             kVideoUploadRevision, &uploadedRevision, &revisionSize)) &&
         revisionSize == sizeof(uploadedRevision) && uploadedRevision == revision) {
-        RefreshOverlayVertexBuffer(app, s.AviOverlayVertices(),
-            {s.AviOffsetX(), s.AviOffsetY(), s.AviScale(), s.AviFrameWidth(), s.AviFrameHeight()});
+        AviBgPlacementRefresh(app);
         device_lost_wait::BackgroundRefreshed(app);
         return;
     }
@@ -384,6 +387,11 @@ void AviBgOverlayRefresh(MMDApp* app) {
     }
     // (the original clears its stack slot after the release - 0x416CC7)
 
+    AviBgPlacementRefresh(app);
+}
+
+void AviBgPlacementRefresh(MMDApp* app) {
+    auto& s = *app;
     RefreshOverlayVertexBuffer(
         app, s.AviOverlayVertices(),
         {s.AviOffsetX(), s.AviOffsetY(), s.AviScale(),

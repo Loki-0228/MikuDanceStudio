@@ -8,6 +8,7 @@
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/animation_curve_editor.hpp"
 #include "mikudancestudio/frame_rate_correction.hpp"
+#include "mikudancestudio/sequence_scatter.hpp"
 #include "mikudancestudio/native_media.hpp"
 // ===========================================================================
 // VA 0x0047E8A0 - CommandDispatch  (original: sub_47E8A0, 0x10A6A = 68KB)
@@ -412,6 +413,7 @@ void CommandDispatch(HWND ctrl, WPARAM wParam) {
     if (ctrl == nullptr && notification <= 1 && plugin_menu::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification == 0 && bake::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification == 0 && frame_rate_correction::HandleCommand(app, id)) return;
+    if (ctrl == nullptr && notification == 0 && sequence_scatter::HandleCommand(app, id)) return;
     if (ctrl == nullptr && notification == 0 && HandleSkinningCommand(app, id)) return;
     // MMS addition: the Help menu's dock-corner item (command 32810) cycles
     // one corner on each ordinary menu click.

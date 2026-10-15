@@ -1205,9 +1205,9 @@ static void Cmd400_PlayRangeEdits(MMDApp* app, HWND hwnd) {
     char text[0x100];
     GetWindowTextA(GetDlgItem(hwnd, panel::kPlayStartFrameEdit), text, sizeof text);
     std::int32_t start = 0, end = 0;
-    if (!frame_limits::Parse(text, start)) { MessageBeep(MB_ICONWARNING); return; }
+    if (!frame_limits::ParsePlaybackBound(text, start)) { MessageBeep(MB_ICONWARNING); return; }
     GetWindowTextA(GetDlgItem(hwnd, panel::kPlayStopFrameEdit), text, sizeof text);
-    if (!frame_limits::Parse(text, end)) { MessageBeep(MB_ICONWARNING); return; }
+    if (!frame_limits::ParsePlaybackBound(text, end)) { MessageBeep(MB_ICONWARNING); return; }
     if (app->PlaybackStartsAtCurrentFrame() != 0) {
         app->PlaybackStartSeconds() = FrameToSeconds(
             app->state.currentFrame);
@@ -3104,6 +3104,10 @@ void CmdControl400(MMDApp* app, HWND hwnd, std::uint16_t id,
         if (notify == CBN_SELCHANGE &&
             app->FrameRangeDialog() == nullptr) {
             ApplyModelComboSelection(app);
+        } else if (notify == CBN_CLOSEUP &&
+                   GetFocus() == GetDlgItem(hwnd, panel::kMainComboModel)) {
+            // Once the picker closes, arrows belong to the frame navigator.
+            SetFocus(hwnd);
         }
         break;
 

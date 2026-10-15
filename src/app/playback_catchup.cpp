@@ -264,7 +264,7 @@ void PlayingBeyondEnd(MMDApp* app) {
         GetWindowTextA(GetDlgItem(static_cast<HWND>(s.Hwnd()), panel::kPlayStartFrameEdit),
                        text, sizeof text);
         std::int32_t frame = 0;
-        if (!frame_limits::Parse(text, frame)) { s.PlaybackActive() = 0; StopPlayback(app); return; }
+        if (!frame_limits::ParsePlaybackBound(text, frame)) { s.PlaybackActive() = 0; StopPlayback(app); return; }
         // x64 0x7FF7CB44BC3E..0x7FF7CB44BC4B: cvtsi2ss of the
         // zero-extended frame, then divss by the 30.0f slot.
         s.PlaybackStartSeconds() = UnsigFlt(frame) / 30.0f;

@@ -4,6 +4,7 @@
 #include <limits>
 #include <cstdlib>
 #include <cerrno>
+#include <cctype>
 namespace mikudancestudio::frame_limits {
 // The editor and native/plugin records share signed 32-bit frame indices.
 // Reserve the final value for exclusive range ends and the next-frame cursor.
@@ -22,5 +23,14 @@ inline bool Parse(const char* value,std::int32_t& result) noexcept {
     errno=0;char* end=nullptr;const auto parsed=std::strtoll(value,&end,10);
     if(errno==ERANGE||end==value||*end||parsed<0||parsed>maximum)return false;
     result=static_cast<std::int32_t>(parsed);return true;
+}
+// Playback range edits are optional: blank starts at zero, and a zero end
+// selects the last registered frame. Other frame inputs remain strict.
+inline bool ParsePlaybackBound(const char* value,std::int32_t& result) noexcept {
+    if (!value) return false;
+    const char* first=value;
+    while (*first && std::isspace(static_cast<unsigned char>(*first))) ++first;
+    if (!*first) { result=0;return true; }
+    return Parse(value,result);
 }
 }

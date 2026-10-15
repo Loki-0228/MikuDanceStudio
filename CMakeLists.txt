@@ -232,6 +232,8 @@ add_library(mikudancestudio_core STATIC
     src/animation/native_frame_retime.cpp
     src/animation/frame_rate_correction.cpp
     src/animation/morph_curve.cpp
+    src/animation/sequence_scatter.cpp
+    src/window/sequence_scatter_dialog.cpp
     src/animation/bone_curve.cpp
     src/window/frame_rate_dialog.cpp
     src/window/animation_curve_host_ui.cpp
@@ -263,6 +265,7 @@ add_library(mikudancestudio_core STATIC
     src/window/accessory_paste.cpp
     src/media/wave_audio.cpp
     src/media/native_media.cpp
+    src/media/native_video.cpp
     src/media/wic_mov_recorder.cpp
     src/render/transparent_capture.cpp
     src/media/media_load.cpp
@@ -432,6 +435,7 @@ add_library(mikudancestudio_core STATIC
 if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
     get_target_property(MMD_ORIGINAL_CORE_SOURCES mikudancestudio_core SOURCES)
     list(REMOVE_ITEM MMD_ORIGINAL_CORE_SOURCES
+        src/animation/sequence_scatter.cpp src/window/sequence_scatter_dialog.cpp
         src/model/bone_scale.cpp src/physics/physics_scale.cpp
         src/animation/animation_curve_host.cpp src/animation/morph_curve.cpp src/animation/bone_curve.cpp
         src/window/animation_curve_host_ui.cpp src/window/frame_rate_dialog.cpp
@@ -443,7 +447,7 @@ if(MIKUDANCESTUDIO_PROFILE STREQUAL "mmd932")
         src/io/alembic_export.cpp src/io/mesh_bake_cache.cpp
         src/window/alembic_export_dialog.cpp
         src/render/transparent_geometry.cpp src/render/transparent_peeling.cpp
-        src/media/native_media.cpp src/media/wic_mov_recorder.cpp src/app/mf_h264_recorder.cpp)
+        src/media/native_media.cpp src/media/native_video.cpp src/media/wic_mov_recorder.cpp src/app/mf_h264_recorder.cpp)
     set_property(TARGET mikudancestudio_core PROPERTY SOURCES "${MMD_ORIGINAL_CORE_SOURCES}")
     target_sources(mikudancestudio_core PRIVATE
         src/model/bone_scale_original.cpp src/physics/physics_scale_original.cpp
@@ -790,7 +794,7 @@ endif()
 option(MIKUDANCESTUDIO_BUILD_UI_TESTS "Build user-acceptance regression tests" OFF)
 if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     add_executable(native_media_tests EXCLUDE_FROM_ALL tests/native_media_tests.cpp
-        src/media/native_media.cpp src/media/wic_mov_recorder.cpp)
+        src/media/native_media.cpp src/media/native_video.cpp src/media/wic_mov_recorder.cpp)
     target_include_directories(native_media_tests PRIVATE include)
     target_link_libraries(native_media_tests PRIVATE mfplat mfreadwrite mfuuid ole32 oleaut32 windowscodecs)
     set_target_properties(native_media_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")

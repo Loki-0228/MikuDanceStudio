@@ -33,6 +33,8 @@
 #include <cstring>
 #include <string>
 #include <cwchar>
+#include <cerrno>
+#include <cctype>
 #include <new>
 #include <unordered_set>
 
@@ -417,67 +419,111 @@ void MorphPanelRefresh(unsigned char* model) {  // x64 0x7FF7CB4ED750
 }
 
 // Original bone-frame multiply helper: 9.26 x64 RVA 0x9C9F0..0x9D145.
-// Only the selected bone keys are transformed; position and angle have six
-// scale/add pairs. Camera tracks and the editing view are independent.
+// Only selected bone keys are transformed. MMS adds three scale-channel pairs
+// below the original position/angle pairs, using the unposed model-space axes
+// of the stored key. Row directions (including shear) and curves are preserved.
 void SnapshotSelectedKeysForUndo(unsigned char*, int);
-void ApplyBoneFrameScaleAdd(MMDApp* app, HWND dialog) {
+bool ApplyBoneFrameScaleAdd(MMDApp* app, HWND dialog) {
     auto* bytes = app->SelectedModel();
     auto* model = mdl::Mdl(bytes);
-    if (!model || !model->boneKeys) return;
-    float scale[6], add[6];
-    bool changed = false, rotate = false, selected = false;
-    for (int pair = 0; pair < 6; ++pair) {
-        char text[64]{};
-        GetDlgItemTextA(dialog, panel::kBoneMulPosXScaleEdit + 2 * pair, text, sizeof(text));
-        scale[pair] = static_cast<float>(std::atof(text));
-        GetDlgItemTextA(dialog, panel::kBoneMulPosXOffsetEdit + 2 * pair, text, sizeof(text));
-        add[pair] = static_cast<float>(std::atof(text));
-        if (!std::isfinite(scale[pair]) || !std::isfinite(add[pair])) return;
+    if (!model || !model->boneKeys) return true;
+    float scale[9], add[9];
+    std::fill_n(scale, 9, 1.f); std::fill_n(add, 9, 0.f);
+    bool changed = false, rotate = false, resize = false;
+    const auto read = [&](int id, float& value) {
+        HWND edit = GetDlgItem(dialog, id);
+        char text[128]{};
+        if (GetWindowTextLengthA(edit) >= sizeof(text)) return false;
+        GetWindowTextA(edit, text, sizeof(text));
+        char* end = nullptr; errno = 0;
+        const double parsed = std::strtod(text, &end);
+        if (end == text || errno == ERANGE) return false;
+        while (*end && std::isspace(static_cast<unsigned char>(*end))) ++end;
+        value = static_cast<float>(parsed);
+        return !*end && std::isfinite(value);
+    };
+    const int pairs = MMD_ORIGINAL_PROFILE ? 6 : 9;
+    for (int pair = 0; pair < pairs; ++pair) {
+        for (int column = 0; column < 2; ++column) {
+            const int id = panel::kBoneMulPosXScaleEdit + 2 * pair + column;
+            if (!read(id, column ? add[pair] : scale[pair])) {
+                SetFocus(GetDlgItem(dialog, id));
+                SendDlgItemMessageW(dialog, id, EM_SETSEL, 0, -1);
+                return false;
+            }
+        }
         if (scale[pair] != 1.f || add[pair] != 0.f) {
             changed = true;
-            if (pair >= 3) rotate = true;
+            if (pair >= 3 && pair < 6) rotate = true;
+            if (pair >= 6) resize = true;
         }
     }
-    if (!changed) return;
-    // Runtime pool capacity, resolved once for both sweeps below.
+    if (!changed) return true;
     const std::size_t boneKeyCapacity = mdl::BoneKeyCapacity(*model);
-    for (std::size_t i = 0; i < boneKeyCapacity; ++i)
-        if (model->boneKeys[i].allocated) { selected = true; break; }
-    if (!selected) return;
     auto& api = d3dx::Get();
-    if (rotate && !api.Load()) return;
-    SnapshotSelectedKeysForUndo(bytes, app->CurrentFrame());
+    if (rotate && !api.Load()) return false;
     constexpr float pi = 3.141592f;
     add[3] *= pi / 180.f;
     add[4] *= -pi / 180.f;
     add[5] *= -pi / 180.f;
+    struct Pending { int index; mdl::BoneKey key; bone_scale::Matrix scale; };
+    std::vector<Pending> pending;
     for (std::size_t i = 0; i < boneKeyCapacity; ++i) {
-        auto& key = model->boneKeys[i];
+        auto key = model->boneKeys[i];
         if (!key.allocated) continue;
-        for (int axis = 0; axis < 3; ++axis)
+        for (int axis = 0; axis < 3; ++axis) {
             key.position[axis] = key.position[axis] * scale[axis] + add[axis];
-        if (!rotate) continue;
-        d3dx::D3DXMATRIXF matrix{}, rotation{}, axisMatrix{};
-        api.matrixRotationQuaternion(&matrix, key.rotation);
-        float x = std::asin(std::fmax(-1.f, std::fmin(1.f, -matrix.m[2][1])));
-        float y = std::atan2(matrix.m[2][0], matrix.m[2][2]);
-        float z = std::atan2(matrix.m[0][1], matrix.m[1][1]);
-        if (std::fabs(std::cos(x)) < 1e-6f) {
-            z += matrix.m[0][1] > 0.f ? pi : -pi;
-            y += matrix.m[2][0] > 0.f ? pi : -pi;
+            if (!std::isfinite(key.position[axis])) return false;
         }
-        api.rotZ(&rotation, z * scale[5] + add[5]);
-        api.rotX(&axisMatrix, x * scale[3] + add[3]);
-        api.multiply(&rotation, &rotation, &axisMatrix);
-        api.rotY(&axisMatrix, y * scale[4] + add[4]);
-        api.multiply(&rotation, &rotation, &axisMatrix);
-        api.quatFromMatrix(key.rotation, &rotation);
+        auto stretch = bone_scale::Key(bytes, static_cast<int>(i));
+        if (resize) {
+            for (int axis = 0; axis < 3; ++axis) {
+                if (scale[axis + 6] == 1.f && add[axis + 6] == 0.f) continue;
+                double length = 0;
+                for (int c = 0; c < 3; ++c)
+                    length += double(stretch.v[axis * 3 + c]) * stretch.v[axis * 3 + c];
+                length = std::sqrt(length);
+                const double result = length * scale[axis + 6] + add[axis + 6];
+                if (!(length > 0) || !(result > 0) || !std::isfinite(result)) return false;
+                for (int c = 0; c < 3; ++c)
+                    stretch.v[axis * 3 + c] = static_cast<float>(stretch.v[axis * 3 + c] * result / length);
+            }
+            if (!bone_scale::Valid(stretch)) return false;
+        }
+        if (rotate) {
+            d3dx::D3DXMATRIXF matrix{}, rotation{}, axisMatrix{};
+            api.matrixRotationQuaternion(&matrix, key.rotation);
+            float x = std::asin(std::fmax(-1.f, std::fmin(1.f, -matrix.m[2][1])));
+            float y = std::atan2(matrix.m[2][0], matrix.m[2][2]);
+            float z = std::atan2(matrix.m[0][1], matrix.m[1][1]);
+            if (std::fabs(std::cos(x)) < 1e-6f) {
+                z += matrix.m[0][1] > 0.f ? pi : -pi;
+                y += matrix.m[2][0] > 0.f ? pi : -pi;
+            }
+            api.rotZ(&rotation, z * scale[5] + add[5]);
+            api.rotX(&axisMatrix, x * scale[3] + add[3]);
+            api.multiply(&rotation, &rotation, &axisMatrix);
+            api.rotY(&axisMatrix, y * scale[4] + add[4]);
+            api.multiply(&rotation, &rotation, &axisMatrix);
+            api.quatFromMatrix(key.rotation, &rotation);
+            for (float value : key.rotation) if (!std::isfinite(value)) return false;
+        }
+        pending.push_back({static_cast<int>(i), key, stretch});
+    }
+    if (pending.empty()) return true;
+    // Validate the whole selection before opening one undo entry or changing
+    // any key. SetKey keeps each slot's existing scale interpolation curve.
+    SnapshotSelectedKeysForUndo(bytes, app->CurrentFrame());
+    for (const auto& item : pending) {
+        model->boneKeys[item.index] = item.key;
+        if (resize) bone_scale::SetKey(bytes, item.index, item.scale);
     }
     PanelPaint(app);
     CurvePanelRepaint(app);
     SeekModelFrame(bytes, app->CurrentFrame(), app->PlaybackPhysicsMode());
     PostViewRefresh(app);
     app->SceneModified() = 1;
+    return true;
 }
 
 // ===========================================================================

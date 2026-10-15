@@ -6,6 +6,10 @@
 #include "mikudancestudio/ui_language.hpp"
 #include "mikudancestudio/model.hpp"
 #include "mikudancestudio/bone_key_pool.hpp"
+#include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/bone_scale.hpp"
+#include "mikudancestudio/sequence_scatter.hpp"
+#include "mikudancestudio/morph_curve.hpp"
 #include "mikudancestudio/panel_controls.hpp"
 #include "mikudancestudio/effect_api.hpp"
 #include "mikudancestudio/text_encoding.hpp"
@@ -21,6 +25,9 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <fstream>
+#include <wrl/client.h>
 
 namespace mikudancestudio {
 void LoadSceneFile();
@@ -35,7 +42,9 @@ void CmdViewMenu(MMDApp*, HWND, std::uint16_t, std::uint16_t);
 void CmdFileMenu(MMDApp*, HWND, std::uint16_t, std::uint16_t);
 void HandleWindowPaint(MMDApp*);
 void RefreshAfterFrameApply(MMDApp*);
+void ConsumeArrowKeyNavigation(MMDApp*);
 bool SaveSceneCopy(MMDApp*, const wchar_t*);
+bool ApplyBoneFrameScaleAdd(MMDApp*, HWND);
 }
 using namespace mikudancestudio;
 namespace {
@@ -43,13 +52,125 @@ void Check(bool ok, const char* what) {
     if (!ok) { std::fprintf(stderr, "FAIL: %s\n", what); std::exit(7); }
 }
 
+void CheckCoordinateReset(MMDApp* app, const std::filesystem::path& output) {
+    const HWND main = app->MainWindow();
+    const auto owner = [&]() { return app->FloatingWindow() ? app->FloatingWindow() : main; };
+    const auto expect = [&](bool enabled) {
+        Check((app->GroundGridEnabled() != 0) == enabled, "coordinate render flag matches the requested state");
+        Check(((GetMenuState(GetMenu(main), 215, MF_BYCOMMAND) & MF_CHECKED) != 0) == enabled,
+              "coordinate menu matches the render flag");
+        Check((SendDlgItemMessageW(owner(), panel::kCoordAxisCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED) == enabled,
+              "coordinate checkbox matches the render flag");
+    };
+    const auto set = [&](bool enabled) {
+        if ((app->GroundGridEnabled() != 0) != enabled) CommandDispatch(nullptr, 215);
+        expect(enabled);
+    };
+    const auto viewport = [&]() {
+        app->state.messageSeen = 10;
+        RenderFrameScene(app);
+        auto* device = app->Renderer()->device;
+        Microsoft::WRL::ComPtr<IDirect3DSurface9> source, resolved, cpu;
+        Check(SUCCEEDED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &source)), "get coordinate viewport");
+        D3DSURFACE_DESC desc{}; source->GetDesc(&desc);
+        Check(SUCCEEDED(device->CreateRenderTarget(desc.Width, desc.Height, D3DFMT_A8R8G8B8,
+            D3DMULTISAMPLE_NONE, 0, FALSE, &resolved, nullptr)), "create coordinate resolve target");
+        Check(SUCCEEDED(device->StretchRect(source.Get(), nullptr, resolved.Get(), nullptr, D3DTEXF_NONE)),
+              "resolve coordinate viewport");
+        Check(SUCCEEDED(device->CreateOffscreenPlainSurface(desc.Width, desc.Height, D3DFMT_A8R8G8B8,
+            D3DPOOL_SYSTEMMEM, &cpu, nullptr)), "create coordinate readback");
+        Check(SUCCEEDED(device->GetRenderTargetData(resolved.Get(), cpu.Get())), "read coordinate viewport pixels");
+        D3DLOCKED_RECT lock{};
+        Check(SUCCEEDED(cpu->LockRect(&lock, nullptr, D3DLOCK_READONLY)), "lock coordinate viewport pixels");
+        std::vector<std::uint32_t> pixels;
+        // Exclude the control rows and FPS text: these pixels belong to the 3D viewport.
+        for (UINT y = desc.Height / 3; y < desc.Height * 3 / 4; ++y) {
+            const auto* row = reinterpret_cast<const std::uint32_t*>(static_cast<const char*>(lock.pBits) + y * lock.Pitch);
+            for (UINT x = desc.Width / 3; x < desc.Width * 2 / 3; ++x) pixels.push_back(row[x]);
+        }
+        cpu->UnlockRect(); return pixels;
+    };
+    expect(true);
+    set(false);
+    const auto hidden = viewport();
+    ResetAppState(app);
+    expect(true); // Regression: BM_CLICK used to toggle the just-enabled flag off.
+    const auto visible = viewport();
+    Check(visible != hidden, "new scene visibly restores ground coordinates in the 3D viewport");
+    for (bool detached : {false, true}) {
+        HWND floating = nullptr;
+        if (detached) {
+            floating = CreateWindowExW(0, L"MicWindow", L"Coordinate reset test", WS_POPUP,
+                0, 0, 640, 480, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+            Check(floating != nullptr, "create hidden real floating-panel window");
+            app->FloatingWindow() = floating;
+            for (int id = 536; id <= 557; ++id) SetParent(GetDlgItem(main, id), floating);
+        }
+        for (int language : {0, 1, 2}) {
+            app->EnglishUI() = language; LocalizeUI(app);
+            for (bool previous : {false, true}) {
+                set(previous);
+                ResetAppState(app); expect(true);
+                ResetAppState(app); expect(true);
+                SendDlgItemMessageW(owner(), panel::kCoordAxisCheckbox, BM_CLICK, 0, 0); expect(false);
+                SendDlgItemMessageW(owner(), panel::kCoordAxisCheckbox, BM_CLICK, 0, 0); expect(true);
+            }
+        }
+        for (bool saved : {false, true}) {
+            set(saved);
+            const auto path = output / ((saved ? L"coordinates-on-" : L"coordinates-off-") +
+                std::to_wstring(detached) + L".pmm");
+            Check(SaveSceneCopy(app, path.c_str()), "save project coordinate visibility");
+            set(!saved);
+            wcscpy_s(app->EnvFileName(), 256, path.c_str()); LoadSceneFile(); expect(saved);
+            ResetAppState(app); expect(true);
+        }
+        if (floating) {
+            for (int id = 536; id <= 557; ++id) SetParent(GetDlgItem(floating, id), main);
+            app->FloatingWindow() = nullptr; DestroyWindow(floating);
+        }
+    }
+    std::puts("PASS coordinate new/open state, repeated reset, menu/checkbox, floating panel, three languages and viewport pixels");
+}
+
+
+#include "editor_feedback_checks.hpp"
+#include "sequence_scatter_checks.hpp"
 
 int multiplyAction = 0;
 int multiplyDialogs = 0;
+const wchar_t* invalidMultiplyValue = nullptr;
+std::filesystem::path multiplyOutput;
+void CaptureMultiplyDialog(HWND dialog) {
+    if (multiplyOutput.empty()) return;
+    RECT rect{}; GetWindowRect(dialog, &rect);
+    const int width = rect.right - rect.left, height = rect.bottom - rect.top;
+    BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width; info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32;
+    void* pixels = nullptr;
+    HBITMAP bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+    HDC dc = CreateCompatibleDC(nullptr); auto old = SelectObject(dc, bitmap);
+    SendMessageW(dialog, WM_PRINT, reinterpret_cast<WPARAM>(dc),
+        PRF_CLIENT | PRF_NONCLIENT | PRF_CHILDREN | PRF_ERASEBKGND);
+    GdiFlush();
+    BITMAPFILEHEADER header{}; header.bfType = 0x4d42;
+    header.bfOffBits = sizeof(header) + sizeof(info.bmiHeader);
+    header.bfSize = header.bfOffBits + width * height * 4;
+    const auto path = multiplyOutput / (L"bone-multiply-" + std::to_wstring(g_Block->EnglishUI()) + L".bmp");
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    output.write(reinterpret_cast<const char*>(&info.bmiHeader), sizeof(info.bmiHeader));
+    output.write(static_cast<const char*>(pixels), width * height * 4);
+    Check(bool(output), "capture real multiply window paint");
+    SelectObject(dc, old); DeleteObject(bitmap); DeleteDC(dc);
+}
 LRESULT CALLBACK InspectMultiplyDialog(int code, WPARAM wp, LPARAM lp) {
     if (code == HCBT_ACTIVATE) {
         HWND dialog = reinterpret_cast<HWND>(wp);
         if (GetDlgItem(dialog, panel::kBoneMulPosXScaleEdit)) {
+            if (GetPropW(dialog, L"MMS.Test.MultiplyInspected")) return 1;
+            SetPropW(dialog, L"MMS.Test.MultiplyInspected", reinterpret_cast<HANDLE>(1));
             ++multiplyDialogs;
             if (g_Block->EnglishUI() == kUiChinese) {
                 wchar_t text[128]{};
@@ -61,10 +182,55 @@ LRESULT CALLBACK InspectMultiplyDialog(int code, WPARAM wp, LPARAM lp) {
             }
             if (multiplyAction < 2)
                 SetDlgItemTextW(dialog, panel::kBoneMulPosXOffsetEdit, L"2");
-            else
+            else if (multiplyAction == 2)
                 SetDlgItemTextW(dialog, panel::kBoneMulPosXOffsetEdit + 10, L"90");
+            if (multiplyAction >= 3) {
+                RECT client{}, angle{}, first{}, last{}, button{};
+                GetClientRect(dialog, &client);
+                const auto bounds = [&](int id, RECT& rect) {
+                    HWND child = GetDlgItem(dialog, id);
+                    Check(child != nullptr, "scale field exists in the original dialog");
+                    GetWindowRect(child, &rect);
+                    MapWindowPoints(nullptr, dialog, reinterpret_cast<POINT*>(&rect), 2);
+                    Check(rect.left >= 0 && rect.top >= 0 && rect.right <= client.right && rect.bottom <= client.bottom,
+                          "multiply control fits the client area");
+                };
+                bounds(panel::kBoneMulPosXOffsetEdit + 10, angle);
+                bounds(panel::kBoneMulScaleXFactorEdit, first);
+                bounds(panel::kBoneMulScaleXOffsetEdit + 4, last);
+                bounds(IDOK, button);
+                Check(first.top > angle.bottom && last.bottom < button.top,
+                      "scale rows appear below angle and above confirmation");
+                HWND previous = GetDlgItem(dialog, panel::kBoneMulPosXOffsetEdit + 10);
+                for (int i = 0; i < 6; ++i) {
+                    HWND field = GetDlgItem(dialog, panel::kBoneMulScaleXFactorEdit + i);
+                    Check(GetNextDlgTabItem(dialog, previous, FALSE) == field,
+                          "Tab follows angle, then scale X/Y/Z pairs");
+                    wchar_t text[32]{}; GetWindowTextW(field, text, 32);
+                    Check(std::wcscmp(text, i % 2 ? L"0.0" : L"1.0") == 0,
+                          "new scale inputs default to identity");
+                    previous = field;
+                }
+                Check(GetNextDlgTabItem(dialog, previous, FALSE) == GetDlgItem(dialog, IDOK),
+                      "Tab reaches confirmation after scale");
+                if (multiplyAction == 5) CaptureMultiplyDialog(dialog);
+                if (multiplyAction == 3 || multiplyAction == 4) {
+                    const wchar_t* values[] = {L"2", L"0.5", L"0.5", L"-0.25", L"3", L"1"};
+                    for (int i = 0; i < 6; ++i)
+                        SetDlgItemTextW(dialog, panel::kBoneMulScaleXFactorEdit + i, values[i]);
+                    SetDlgItemTextW(dialog, panel::kBoneMulPosXOffsetEdit, L"2");
+                }
+                if (multiplyAction >= 10) {
+                    SetDlgItemTextW(dialog, panel::kBoneMulPosXOffsetEdit, L"2");
+                    SetDlgItemTextW(dialog, multiplyAction == 11 ? panel::kBoneMulScaleXOffsetEdit :
+                        panel::kBoneMulScaleXFactorEdit, invalidMultiplyValue);
+                    Check(!ApplyBoneFrameScaleAdd(g_Block, dialog), "invalid scale transaction is rejected");
+                }
+            }
             ShowWindow(dialog, SW_HIDE);
-            PostMessageW(dialog, WM_COMMAND, multiplyAction == 0 ? IDCANCEL : IDOK, 0);
+            PostMessageW(dialog, WM_COMMAND,
+                multiplyAction == 0 || multiplyAction == 4 || multiplyAction >= 10 ? IDCANCEL : IDOK, 0);
+            return 1; // Keep test dialogs from activating the user's desktop.
         }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
@@ -125,7 +291,70 @@ void CheckBoneMultiply(MMDApp* app, mdl::ModelRecord* model) {
     Check(std::fabs(std::fabs(keys[0].rotation[2]) - std::sqrt(.5f)) < 1e-4f &&
           keys[0].rotation[2] < 0.f,
           "bone angle add uses degrees and the MMD Z-axis direction");
-    std::puts("PASS bone multiply translation, rotation, cancel and undo/redo");
+    bone_scale::Matrix firstScale, laterScale, otherScale;
+    laterScale.v[0] = 2.f; laterScale.v[4] = 3.f; laterScale.v[8] = 4.f;
+    otherScale.v[0] = 1.25f;
+    bone_scale::SetKey(bytes, 0, firstScale);
+    bone_scale::SetKey(bytes, later, laterScale);
+    bone_scale::SetKey(bytes, 1, otherScale);
+    const bone_scale::Curve curve{10, 50, 90, 120};
+    bone_scale::SetKeyCurve(bytes, later, curve);
+    const auto savedFirst = keys[0], savedLater = keys[later];
+    const auto undoBefore = model->undoState[0];
+    invoke(5);
+    invoke(4);
+    Check(model->undoState[0] == undoBefore && bone_scale::Key(bytes, 0) == firstScale &&
+          bone_scale::Key(bytes, later) == laterScale && keys[0].position[0] == savedFirst.position[0],
+          "identity and cancel preserve scale, position and undo history");
+    invoke(3);
+    const auto resultFirst = bone_scale::Key(bytes, 0), resultLater = bone_scale::Key(bytes, later);
+    Check(resultFirst.v[0] == 2.5f && resultFirst.v[4] == .25f && resultFirst.v[8] == 4.f &&
+          resultLater.v[0] == 4.5f && resultLater.v[4] == 1.25f && resultLater.v[8] == 13.f,
+          "scale multiply/add operates on each selected frame's own XYZ values");
+    Check(bone_scale::Key(bytes, 1) == otherScale && bone_scale::KeyCurve(bytes, later) == curve,
+          "unselected scale and selected interpolation curve are preserved");
+    const auto refreshedPose = bone_scale::Pose(bytes, 0);
+    Check(std::fabs(refreshedPose.v[0] - resultFirst.v[0]) < .01f &&
+          std::fabs(refreshedPose.v[4] - resultFirst.v[4]) < .01f &&
+          std::fabs(refreshedPose.v[8] - resultFirst.v[8]) < .01f,
+          "current pose refreshes from the modified scale key");
+    UndoModelEdit(bytes, &frame);
+    Check(bone_scale::Key(bytes, 0) == firstScale && bone_scale::Key(bytes, later) == laterScale &&
+          keys[0].position[0] == savedFirst.position[0], "one undo restores position and scale together");
+    RedoModelEdit(bytes, &frame);
+    Check(bone_scale::Key(bytes, 0) == resultFirst && bone_scale::Key(bytes, later) == resultLater &&
+          keys[0].position[0] == savedFirst.position[0] + 2.f, "one redo restores the combined edit");
+    keys[0].allocated = keys[later].allocated = 1;
+    const auto validUndo = model->undoState[0];
+    const auto validFirst = keys[0], validLater = keys[later];
+    for (const wchar_t* value : {L"", L"abc", L"1x", L"nan", L"inf", L"1e50", L"0", L"-1", L"1e-8", L"1e5"}) {
+        invalidMultiplyValue = value; invoke(10);
+        Check(bone_scale::Key(bytes, 0) == resultFirst && bone_scale::Key(bytes, later) == resultLater &&
+              std::memcmp(&keys[0], &validFirst, sizeof(validFirst)) == 0 &&
+              std::memcmp(&keys[later], &validLater, sizeof(validLater)) == 0 && model->undoState[0] == validUndo,
+              "invalid input leaves every selected channel and undo history unchanged");
+    }
+    // First selected key is valid; a later key fails. No earlier edit may leak.
+    firstScale.v[0] = 2.f; laterScale.v[0] = .25f;
+    bone_scale::SetKey(bytes, 0, firstScale); bone_scale::SetKey(bytes, later, laterScale);
+    invalidMultiplyValue = L"-0.5"; invoke(11);
+    Check(bone_scale::Key(bytes, 0) == firstScale && bone_scale::Key(bytes, later) == laterScale &&
+          keys[0].position[0] == validFirst.position[0] && model->undoState[0] == validUndo,
+          "a later invalid scale rejects the entire selection atomically");
+    // Non-diagonal imported scales must retain their row directions.
+    firstScale.v = {2, .5f, 0, .25f, 3, 0, 0, 0, 4};
+    bone_scale::SetKey(bytes, 0, firstScale);
+    invoke(3);
+    const auto sheared = bone_scale::Key(bytes, 0);
+    Check(std::fabs(sheared.v[1] / sheared.v[0] - .25f) < 1e-6f &&
+          std::fabs(sheared.v[3] / sheared.v[4] - 1.f / 12.f) < 1e-6f,
+          "scale adjustment preserves non-diagonal row directions");
+    const int originalLanguage = app->EnglishUI();
+    for (int language : {0, 1, 2}) {
+        app->EnglishUI() = language; LocalizeUI(app); invoke(5);
+    }
+    app->EnglishUI() = originalLanguage; LocalizeUI(app);
+    std::puts("PASS bone multiply XYZ scale, translation, rotation, cancel, validation, curves and undo/redo");
 }
 
 LRESULT CALLBACK KeepEdgeTestOffscreen(int code,WPARAM wp,LPARAM lp) {
@@ -555,25 +784,26 @@ void CheckFreeViewPlayback(MMDApp* app, bool retainedCameraParent) {
     Check(std::memcmp(stoppedTransforms.data(), expectedTransforms.data(), sizeof(stoppedTransforms)) == 0,
           "stopping playback keeps the actual view transforms");
 
-    // Camera mode alone does not attach the view to the model root; tracking does.
+    // An explicit camera parent applies in the camera panel and in tracked
+    // model view. It is ignored only by the untracked free model view above.
     app->CameraParentModel() = slot; app->CameraParentBone() = 0;
+    std::array<D3DMATRIX, 3> attachedTransforms{};
     for (bool cameraPanel : {true, false}) {
         app->CameraMode() = cameraPanel ? 1 : 0;
         app->state.followCameraEnabled = cameraPanel ? 0 : 1;
+        ApplyCurrentCameraView(app);
         SetupFrameWorldTransform(app);
-        if (cameraPanel) {
-            float focus[3]{};
-            ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focus);
-            Check(focus[0] == app->CameraPositionX() &&
-                  focus[1] == app->CameraPositionY() &&
-                  focus[2] == app->CameraPositionZ(),
-                  "camera mode without tracking uses the camera key, not its model attachment");
-        } else {
-            Check(app->ViewOffsetX() == app->CameraPositionX() &&
-                  app->ViewOffsetY() == app->CameraPositionY() &&
-                  app->CameraDistance() == app->CameraPositionZ(),
-                  "tracking mode applies the camera attachment");
-        }
+        float focus[3]{};
+        Check(ResolveFrameFocus(app, static_cast<int>(app->CameraReferenceMode()), focus) ==
+                  FrameFocusSource::AttachmentBone, "camera and tracked model views resolve the explicit parent");
+        Check(app->ViewOffsetX() == app->CameraPositionX() &&
+              app->ViewOffsetY() == app->CameraPositionY() &&
+              app->CameraDistance() == app->CameraPositionZ(),
+              "attached views use the camera's relative offset");
+        const auto currentTransforms = transforms();
+        if (cameraPanel) attachedTransforms = currentTransforms;
+        else Check(std::memcmp(attachedTransforms.data(), currentTransforms.data(), sizeof(currentTransforms)) == 0,
+                   "camera and tracked model panels render the same attached camera");
     }
     app->CameraMode() = app->state.followCameraEnabled = 0;
     app->CameraParentModel() = -1;
@@ -1527,6 +1757,8 @@ int wmain(int argc, wchar_t** argv) {
         const DWORD length = GetFullPathNameW(argv[1], 256, scenePath, nullptr);
         Check(length > 0 && length < 256, "resolve scene path before app changes current directory");
     }
+    if (argc > 4 && std::wcscmp(argv[3], L"--bone-multiply") == 0)
+        multiplyOutput = std::filesystem::absolute(argv[4]);
     auto* app = new MMDApp();
     g_Block = app;
     app->state = MMDAppState{};
@@ -1534,6 +1766,28 @@ int wmain(int argc, wchar_t** argv) {
     if (cameraStartup) wcscpy_s(app->EnvFileName(), 256, scenePath);
     if (!InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE)) return 3;
     ShowWindow(app->MainWindow(), SW_HIDE);
+#if !MMD_ORIGINAL_PROFILE
+    if (argc > 4 && std::wcscmp(argv[3], L"--sequence-scatter") == 0) {
+        wcscpy_s(app->EnvFileName(), 256, scenePath); LoadSceneFile();
+        CheckSequenceScatter(app, argv[4]);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; return 0;
+    }
+#endif
+    if (argc > 3 && std::wcscmp(argv[3], L"--repeat-delete") == 0) {
+        wcscpy_s(app->EnvFileName(), 256, scenePath); LoadSceneFile();
+        CheckRepeatedDelete(app);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; return 0;
+    }
+    if (argc > 5 && std::wcscmp(argv[3], L"--editor-feedback") == 0) {
+        wcscpy_s(app->EnvFileName(), 256, scenePath); LoadSceneFile();
+        if (std::wcscmp(argv[4], L"parent") == 0) CheckCameraBoneMotion(app);
+        else CheckEditorFeedback(app, argv[4], argv[5]);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; return 0;
+    }
+    if (argc > 3 && std::wcscmp(argv[3], L"--coordinate-reset") == 0) {
+        CheckCoordinateReset(app, scenePath);
+        ShutdownCleanup(app); delete app; g_Block = nullptr; return 0;
+    }
     if (cameraLoad) {
 #ifdef REQUIRE_MME
         Check(GetModuleHandleW(L"MMEffect.dll") && GetModuleHandleW(L"MMHack.dll"),
@@ -1629,6 +1883,29 @@ int wmain(int argc, wchar_t** argv) {
         CheckStartupView(app);
         ShutdownCleanup(app); delete app; g_Block = nullptr;
         return 0;
+    }
+    if (argc > 3 && std::wcscmp(argv[3], L"--bone-multiply") == 0) {
+        app->EnglishUI() = kUiChinese; LocalizeUI(app);
+        LoadModelFile(app, scenePath, false);
+        auto* model = mdl::Mdl(app->SelectedModel());
+        Check(model && model->boneCount > 1, "load model for scale dialog integration");
+        CheckBoneMultiply(app, model);
+        if (!multiplyOutput.empty()) {
+            const auto expected = bone_scale::Key(app->SelectedModel(), 0);
+            const int later = static_cast<int>(model->boneKeys[0].next);
+            const auto laterValue = bone_scale::Key(app->SelectedModel(), later);
+            const auto curve = bone_scale::KeyCurve(app->SelectedModel(), later);
+            const auto saved = multiplyOutput / L"bone-multiply-roundtrip.pmm";
+            Check(SaveSceneCopy(app, saved.c_str()), "save adjusted scales through the real PMM writer");
+            ResetAppState(app); wcscpy_s(app->EnvFileName(), 256, saved.c_str()); LoadSceneFile();
+            model = mdl::Mdl(app->SelectedModel());
+            Check(model != nullptr && bone_scale::Key(app->SelectedModel(), 0) == expected &&
+                  bone_scale::Key(app->SelectedModel(), static_cast<int>(model->boneKeys[0].next)) == laterValue &&
+                  bone_scale::KeyCurve(app->SelectedModel(), static_cast<int>(model->boneKeys[0].next)) == curve,
+                  "real PMM save/reopen retains adjusted matrices and curves");
+            std::puts("PASS adjusted bone scale PMM save/reopen");
+        }
+        ShutdownCleanup(app); delete app; g_Block = nullptr; return 0;
     }
     if(argc>3&&std::wcscmp(argv[3],L"--ui-language-audit")==0){
         app->EnglishUI()=kUiChinese;LocalizeUI(app);wcscpy_s(app->EnvFileName(),256,scenePath);LoadSceneFile();CheckChineseUi(app);

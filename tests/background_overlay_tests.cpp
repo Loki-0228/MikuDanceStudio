@@ -159,7 +159,9 @@ int main() {
     app->CurrentFrame() = 1; AviBgOverlayRefresh(app.get());
     CheckPixels(app.get(), 1, 7, 9, 168, 106);
     app->AviOffsetX() = 20; app->AviOffsetY() = 15; app->AviScale() = .5f;
-    AviBgOverlayRefresh(app.get());
+    // Placement must reuse the displayed frame, even if the timeline changed.
+    app->CurrentFrame() = 0;
+    AviBgPlacementRefresh(app.get());
     CheckPixels(app.get(), 1, 27, 24, 108, 73);
     AVIStreamGetFrameClose(static_cast<PGETFRAME>(app->AviFrameReader()));
     AVIStreamRelease(static_cast<PAVISTREAM>(app->AviStream()));
