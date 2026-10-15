@@ -6,6 +6,8 @@
 
 [Documentation / 文档导航 / ドキュメント](docs/README.md)
 
+[v2026.10.15.1-pre.1 预发布候选 / Prerelease candidate / プレリリース候補](docs/records/releases.md#release-v2026-10-15-1-pre-1)
+
 ## Downloads and package differences
 
 [GitHub Releases](https://github.com/Loki-0228/MikuMikuStudio/releases/latest) provides Windows x64 packages with `full` or `minimal` in the filename and lists their contents in the release notes. The table below describes the current source profiles, including changes that have not been released. The minimal build uses the `mmd932` build profile:

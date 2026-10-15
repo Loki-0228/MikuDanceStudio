@@ -3,6 +3,7 @@
 本页按功能归并实现、诊断与验收资料。各记录中的「当前」「已完成」只适用于其注明的源码、构建和测试条件；当前使用入口见[文档导航](../README.md)。
 
 ## 记录索引
+- [v2026.10.15.1-pre.1 预发布说明](#release-v2026-10-15-1-pre-1)
 - [MikuDanceStudio v2026.10.14.6 release notes / 发布说明 / リリースノート](#release-v2026-10-14-6)
 - [共享阴影滤波修复](#record-release-notes-shared)
 - [v2026.10.13.1 发布说明](#release-v2026-10-13-1)
@@ -10,6 +11,68 @@
 - [v2026.10.11.3 构建与发布记录](#record-release-3)
 - [v2026.10.11.2 构建与发布记录](#record-release-2)
 - [MMS 原生媒体导入与导出](#record-native-media)
+
+<a id="release-v2026-10-15-1-pre-1"></a>
+<!-- prerelease-notes:v2026.10.15.1-pre.1:begin -->
+## MikuMikuStudio v2026.10.15.1-pre.1
+
+Windows x64 预发布候选，变更范围为 `v2026.10.14.6` 之后的提交。完整包与最小包来自同一源码提交，具体提交号与文件校验值见包内 `RELEASE_BUILD.json`。本记录用于准备发布，不表示已经上传 GitHub。
+
+### 中文
+
+本次增加以下功能，并修复编辑与播放问题。
+
+- 完整包修复常见 8-bit H.264 MP4 导入失败。视频在后台解码，连续拖动只追赶最新目标，主界面可以继续操作。预览长边最多 1024 像素，背景可能短暂滞后；录制和图片序列输出仍等待准确帧。
+- 按住 Ctrl 拖动视口右上角的十字箭头或放大镜，可以移动或缩放背景。图片和视频共用此操作，位置与缩放比例随工程保存。
+- 完整包的「编辑」菜单增加「选中帧序列散布」。选中的表情片段可按间隔和速度的均值、方差插入指定帧范围，保留原片段，跳过已有关键帧冲突，一次散布可整体撤销。窗口采用紧凑布局。
+- 完整包在原有骨骼位置与角度调整窗口下方增加 XYZ 缩放乘数和偏移量，并与位置、角度一起撤销。非法输入拒绝整次操作。
+- 修复播放范围为空时「播放」按钮和 P 键无效。修复新建工程时坐标显示状态、Track 镜头偏移、切换模型后方向键误切模型，以及保存后重开丢失显示分组折叠状态。
+- 修复删除时间轴关键帧时连带删除此前选中的骨骼记录，以及框选残留旧选择。补全表情、显示、IK 和外部亲删除的撤销记录，撤销后一次删除不会恢复前一次删除的关键帧。
+- 完整包减少密集骨骼缩放轨道播放和曲线选区同步的重复扫描。两种构建档保留本轮已有的模型缓存、MME 文件变更通知与重载优化；完整包中受支持的特效阴影目标随预览尺寸调整。本次没有给出通用帧率提升比例。
+- 完整包按需扩展编辑容量，保存 PMM 时优先使用原版 `0002` 格式。超出原版容量或路径编码限制的工程才使用 MMS 扩展格式，具体边界见文件兼容文档。
+
+完整包包含 `MikuMikuDance.exe` 和可选的 `MMSNvidiaAAFix.dll`。最小包只包含程序及说明、许可证，保留 `mmd932` 功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码。两个包均不捆绑模型、个人设置、MME、MMV 或 FFmpeg。
+
+Windows 无法解码的格式（如部分 10-bit H.264）需要另行提供 FFmpeg。查找位置依次为程序旁的 `tools/ffmpeg.exe`、`ffmpeg.exe` 和 `PATH`。高位深视频转换为 8-bit RGB 预览。最小包保持原版 AVI 背景路径。
+
+本轮验证覆盖两种构建档编译、最小版界面、连续删除与撤销、框选、镜头与焦点、坐标状态、PMM 保存重开、散布、缩放编辑、H.264 与 4K 定位、视频播放中动作和物理推进，以及实际录制输出。曲线数值、同步和密集播放回归通过。三个既有界面测试目标仍失败：`animation_curve_host_tests` 的标签重绘、`animation_curve_editor_tests` 的左箭头平移，以及 `morph_curve_host_ui_tests` 的拖帧和按钮位置。这些断言在修改前基线日志中同样失败，预发布未宣称全部测试通过。外部 MMD 9.32 往返及所有 MME 特效组合未在本轮复测。
+
+### English
+
+This prerelease candidate includes the following changes since `v2026.10.14.6`.
+
+- The full build fixes common 8-bit H.264 MP4 imports. Background decoding follows the latest requested frame without blocking timeline edits. Preview frames are limited to 1024 pixels on the longer edge and may lag briefly. Recording and image-sequence export wait for the exact frame.
+- Ctrl-drag the viewport's pan or zoom button to move or resize background images and videos. PMM saves their placement.
+- The full build adds **Scatter selected frame sequence** to Edit. It copies selected morph keyframes into a target range with configurable interval and speed means and variances. It preserves the source, skips conflicting placements, and supports one-step undo in a compact dialog.
+- XYZ scale multipliers and offsets appear below the existing position and angle controls in the full build. Invalid values reject the entire edit.
+- Fixed empty playback bounds disabling Play and P, coordinate visibility after scene reset, Track camera drift, arrow-key focus after model selection, and display-group expansion after reopening PMM.
+- Fixed stale marquee selections and deletion affecting previously selected bones. Morph, display, IK, and external-parent deletions now have their own undo records, so undoing the latest deletion does not restore the preceding one.
+- Reduced repeated scans during dense scale-track playback and curve selection synchronization. The candidate also includes model-cache, MME notification and reload, preview-shadow, and automatic-capacity changes already committed since the previous release. No general FPS gain is claimed.
+
+Both packages use the source revision recorded in `RELEASE_BUILD.json`. The full package includes the optional NVIDIA helper. The minimal package retains the `mmd932` feature set and excludes scatter, bone scaling, free curves, and modern video decoding. Neither package includes models, personal settings, MME, MMV, or FFmpeg.
+
+Formats unsupported by Windows, including some 10-bit H.264 files, require a separately installed FFmpeg. Lookup order is `tools/ffmpeg.exe` beside the application, `ffmpeg.exe` beside it, then `PATH`. Preview output is 8-bit RGB. Minimal retains AVI backgrounds.
+
+Builds and the targeted editing, media, playback, undo, and persistence checks passed. Three existing UI test targets still fail on label repaint, left-arrow panning, and morph-panel drag/layout assertions. The same failures occur in the recorded baseline. This candidate does not claim a fully passing test suite. Original MMD round trips and every MME effect combination were not retested.
+
+### 日本語
+
+`v2026.10.14.6` 以降の変更を含む Windows x64 向けプレリリース候補です。
+
+- 完全版で一般的な 8-bit H.264 MP4 の読み込みを修正しました。動画を別スレッドでデコードし、最新の要求フレームを追跡します。プレビューは長辺 1024 ピクセルまでで、一時的に遅れる場合があります。録画と連番画像出力では正しいフレームを待ちます。
+- Ctrl を押しながらビューポートの移動・拡大縮小ボタンをドラッグすると、背景画像や動画の位置と大きさを変更できます。設定は PMM に保存されます。
+- 完全版の編集メニューに選択フレーム列の散布を追加しました。選択した表情キーフレームを、間隔と速度の平均・分散に従って指定範囲に挿入します。元の列を残し、既存キーとの衝突を避け、操作全体を一度で元に戻せます。
+- 完全版の既存の位置・角度調整ダイアログ下部に XYZ スケールの乗数と加算値を追加しました。
+- 再生範囲が空の場合の再生ボタンと P キー、座標表示の初期化、Track のカメラずれ、モデル選択後の矢印キー、PMM 再読込時の表示グループ開閉状態を修正しました。
+- 範囲選択の残りや、以前選択したボーンのキーまで削除される問題を修正しました。表情・表示・IK・外部親の削除も独立して元に戻せます。
+- 密なスケールキーの再生と曲線の選択同期で重複走査を減らしました。既存のモデルキャッシュ、MME 再読込、プレビューの影、容量拡張の変更も含みます。一般的な FPS 向上率は示していません。
+
+完全版と最小版のソースコミットは同一で、`RELEASE_BUILD.json` に記録されます。最小版は `mmd932` の範囲を維持し、散布、ボーンスケール、自由曲線、現代的な動画デコードを含みません。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
+
+Windows が対応しない一部の 10-bit H.264 などには、別途 FFmpeg が必要です。検索順は実行ファイル横の `tools/ffmpeg.exe`、`ffmpeg.exe`、`PATH` です。プレビューは 8-bit RGB に変換します。最小版の背景動画は AVI のままです。
+
+両構成のビルドと、対象の編集・メディア・再生・取り消し・保存の検証は通過しました。ラベル再描画、左矢印の移動、表情パネルのドラッグと配置に関する既存の UI テスト 3 件は、変更前の基準ログと同様に失敗しています。全テスト通過は主張しません。原版 MMD との往復保存や、すべての MME エフェクトの組み合わせは今回再検証していません。
+<!-- prerelease-notes:v2026.10.15.1-pre.1:end -->
 
 <a id="release-v2026-10-14-6"></a>
 ## MikuDanceStudio v2026.10.14.6 release notes / 发布说明 / リリースノート

@@ -7,6 +7,7 @@
 | 编辑骨骼、表情、附件或场景曲线 | [关键帧与曲线编辑](animation-curves.md) |
 | 整体或沿 XYZ 缩放骨骼 | [骨骼缩放](bone-scaling.md) |
 | 按目标帧率调整整个工程 | [帧率修正](frame-rate.md) |
+| 在指定范围内按随机间隔和速度插入表情片段 | [选中帧序列散布](sequence-scatter.md) |
 | 将物理运动记录为关键帧 | [物理烧录](physics-baking.md) |
 | 缓存最终几何或导出 ABC | [网格导出与烘焙](mesh-export.md) |
 

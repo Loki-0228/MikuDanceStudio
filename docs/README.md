@@ -7,6 +7,8 @@
 | 要做什么 | 从这里开始 |
 | --- | --- |
 | 编辑骨骼、表情、镜头，调整曲线或烘焙动作 | [动画编辑](guides/animation.md) |
+| 复制表情片段并随机安排间隔和速度 | [选中帧序列散布](guides/sequence-scatter.md) |
+| 移动或缩放背景图片与视频 | [背景媒体操作](guides/background-media.md) |
 | 设置抗锯齿、预览尺寸、透明排序和阴影 | [画面设置](guides/rendering.md) |
 | 使用 MME、分配效果和自动重载 FX | [MME 特效](guides/effects.md) |
 | 选择运算器，判断缩小预览为何没有提速 | [性能与设备](guides/performance.md) |

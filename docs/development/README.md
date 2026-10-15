@@ -5,6 +5,7 @@
 | 配置依赖并构建程序 | [仓库构建说明](../../README.md#从源码构建)、[最小构建档](../reference/minimal-build.md#构建) |
 | 找到源码、产物与本地证据 | [工作区布局](workspace.md) |
 | 选择适用的回归测试 | [测试与验收](testing.md) |
+| 检查提交并生成完整、最小预发布包 | [整理预发布包](prerelease.md) |
 | 测量顶点阶段或整帧耗时 | [帧基准](benchmarks.md) |
 | 注册原生插件菜单 | [插件菜单接口](plugin-menus.md) |
 | 修改工程文件格式 | [PMM 扩展参考](../reference/pmm-extensions.md) |

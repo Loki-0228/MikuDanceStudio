@@ -8,6 +8,7 @@
 - [材质、光照与描边记录](rendering/materials.md)
 - [阴影实现与验证记录](rendering/shadows.md)
 - [透明排序与合成记录](rendering/transparency.md)
+- [背景媒体导入与操作记录](rendering/background-media.md)
 
 ## 性能与设备
 
