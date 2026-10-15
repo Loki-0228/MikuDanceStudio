@@ -3,7 +3,7 @@
 本页按功能归并实现、诊断与验收资料。各记录中的「当前」「已完成」只适用于其注明的源码、构建和测试条件；当前使用入口见[文档导航](../README.md)。
 
 ## 记录索引
-- [v2026.10.15.1-pre.1 预发布说明](#release-v2026-10-15-1-pre-1)
+- [v2026.10.15.1 发布说明](#release-v2026-10-15-1)
 - [MikuDanceStudio v2026.10.14.6 release notes / 发布说明 / リリースノート](#release-v2026-10-14-6)
 - [共享阴影滤波修复](#record-release-notes-shared)
 - [v2026.10.13.1 发布说明](#release-v2026-10-13-1)
@@ -13,19 +13,20 @@
 - [MMS 原生媒体导入与导出](#record-native-media)
 
 <a id="release-v2026-10-15-1-pre-1"></a>
+<a id="release-v2026-10-15-1"></a>
 
-<!-- prerelease-notes:v2026.10.15.1-pre.1:begin -->
-## MikuMikuStudio v2026.10.15.1-pre.1
+<!-- release-notes:v2026.10.15.1:begin -->
+## MikuMikuStudio v2026.10.15.1
 
 Windows x64
 
-[中文](#release-v2026-10-15-1-pre-1-zh) | [English](#release-v2026-10-15-1-pre-1-en) | [日本語](#release-v2026-10-15-1-pre-1-ja)
+[中文](#release-v2026-10-15-1-zh) | [English](#release-v2026-10-15-1-en) | [日本語](#release-v2026-10-15-1-ja)
 
-<a id="release-v2026-10-15-1-pre-1-zh"></a>
+<a id="release-v2026-10-15-1-zh"></a>
 
 ### 中文
 
-本预发布版包含自 `v2026.10.14.6` 以来的更新。
+本版本包含自 `v2026.10.14.6` 以来的更新。
 
 #### 更新内容
 
@@ -48,11 +49,11 @@ Windows x64
 
 两个主程序包均不附带 NVIDIA 修复插件。需要时单独下载 `MMSNvidiaAAFix.dll`，放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作，删除 DLL 不会撤销已安装的设置。
 
-<a id="release-v2026-10-15-1-pre-1-en"></a>
+<a id="release-v2026-10-15-1-en"></a>
 
 ### English
 
-This prerelease includes the changes since `v2026.10.14.6`.
+This release includes the changes since `v2026.10.14.6`.
 
 #### What's new
 
@@ -75,11 +76,11 @@ Full-build video previews are limited to 1024 pixels on the longer edge and conv
 
 Neither application package includes the NVIDIA fix. If needed, download `MMSNvidiaAAFix.dll` separately and place it beside the full build's EXE. Install it from **Help**, then restart MMS. Use **Help** to uninstall. Deleting the DLL does not remove an installed setting.
 
-<a id="release-v2026-10-15-1-pre-1-ja"></a>
+<a id="release-v2026-10-15-1-ja"></a>
 
 ### 日本語
 
-`v2026.10.14.6` 以降の変更を含むプレリリース版です。
+`v2026.10.14.6` 以降の変更を含む正式版です。
 
 #### 更新内容
 
@@ -101,7 +102,7 @@ Neither application package includes the NVIDIA fix. If needed, download `MMSNvi
 #### NVIDIA 修正の導入（任意）
 
 NVIDIA 修正プラグインは両方のパッケージに含まれません。必要な場合のみ `MMSNvidiaAAFix.dll` を別途ダウンロードし、完全版の EXE と同じフォルダーに置きます。ヘルプからインストールして MMS を再起動してください。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
-<!-- prerelease-notes:v2026.10.15.1-pre.1:end -->
+<!-- release-notes:v2026.10.15.1:end -->
 
 <a id="release-v2026-10-14-6"></a>
 ## MikuDanceStudio v2026.10.14.6 release notes / 发布说明 / リリースノート

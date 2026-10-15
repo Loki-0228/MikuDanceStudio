@@ -9,15 +9,19 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-if ($Version -notmatch '^v\d{4}\.\d{2}\.\d{2}\.\d+-pre\.\d+$') {
-    throw '版本格式须为 vYYYY.MM.DD.N-pre.N。'
+if ($Version -notmatch '^v\d{4}\.\d{2}\.\d{2}\.\d+(-pre\.\d+)?$') {
+    throw '版本格式须为 vYYYY.MM.DD.N 或 vYYYY.MM.DD.N-pre.N。'
 }
+$isPrerelease = $Version -match '-pre\.\d+$'
+$releaseLabelZh = if ($isPrerelease) { '预发布版' } else { '正式版' }
+$releaseLabelEn = if ($isPrerelease) { 'prerelease' } else { 'release' }
+$releaseLabelJa = if ($isPrerelease) { 'プレリリース版' } else { '正式版' }
 $status = & git -C $repo status --porcelain
 if ($LASTEXITCODE -ne 0 -or $status) { throw '打包前须提交源码，工作区和暂存区必须干净。' }
 $commit = (& git -C $repo rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw '无法读取源码提交。' }
 $notes = [IO.File]::ReadAllText((Join-Path $repo 'docs/records/releases.md'))
-$pattern = '(?s)<!-- prerelease-notes:' + [regex]::Escape($Version) + ':begin -->\s*(.*?)\s*<!-- prerelease-notes:' + [regex]::Escape($Version) + ':end -->'
+$pattern = '(?s)<!-- (?:pre)?release-notes:' + [regex]::Escape($Version) + ':begin -->\s*(.*?)\s*<!-- (?:pre)?release-notes:' + [regex]::Escape($Version) + ':end -->'
 $match = [regex]::Match($notes, $pattern)
 if (-not $match.Success) { throw '找不到此版本的发布说明。' }
 $releaseNotes = $match.Groups[1].Value + "`n"
@@ -35,7 +39,7 @@ foreach ($build in $builds) {
     if (-not $sourceRoot -or [IO.Path]::GetFullPath($sourceRoot) -ne $repo -or $buildProfile -ne $build.Profile) {
         throw "构建目录不属于当前源码或构建档错误：$($build.Path)"
     }
-    if ($platform -ne 'x64') { throw "预发布包要求 x64 构建：$($build.Path)" }
+    if ($platform -ne 'x64') { throw "发布包要求 x64 构建：$($build.Path)" }
     if (-not (Test-Path -LiteralPath (Join-Path $build.Path 'Release/MikuMikuDance.exe'))) {
         throw "缺少 Release 程序：$($build.Path)"
     }
@@ -65,17 +69,17 @@ foreach ($build in $builds) {
     $readme = @"
 # MikuMikuStudio $Version ($($build.Name))
 
-Windows x64 预发布候选。解压到独立目录后运行 MikuMikuDance.exe。
+Windows x64 ${releaseLabelZh}。解压到独立目录后运行 MikuMikuDance.exe。
 完整包与最小包请分别解压。已有设置、模型和插件的安装目录请保留。
 两个主程序包均不含英伟达修复插件。需要时单独下载 MMSNvidiaAAFix.dll，安装方法见 RELEASE_NOTES.md。
 更新内容、使用限制与安装方法见 RELEASE_NOTES.md，源码提交和文件校验值见 RELEASE_BUILD.json。
 
-Windows x64 prerelease candidate. Extract full and minimal into separate directories.
+Windows x64 ${releaseLabelEn}. Extract full and minimal into separate directories.
 Run MikuMikuDance.exe. Keep existing installations that contain settings, models, or plugins.
 Neither application package includes the NVIDIA fix. Download MMSNvidiaAAFix.dll separately if needed; see RELEASE_NOTES.md for installation.
 See RELEASE_NOTES.md for changes, usage limits, and installation instructions.
 
-Windows x64 プレリリース候補。完全版と最小版は別々のフォルダーに展開してください。
+Windows x64 ${releaseLabelJa}。完全版と最小版は別々のフォルダーに展開してください。
 MikuMikuDance.exe を実行します。設定やモデル、プラグインを含む既存の環境は残してください。
 NVIDIA 修正 DLL は両パッケージに含まれません。必要な場合のみ別途ダウンロードし、導入方法は RELEASE_NOTES.md を参照してください。
 変更内容、利用上の制限、導入方法は RELEASE_NOTES.md、ソースコミットは RELEASE_BUILD.json を参照してください。
@@ -86,7 +90,7 @@ Source: https://github.com/Loki-0228/MikuMikuStudio/tree/$commit
     $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | Sort-Object FullName | ForEach-Object {
         [ordered]@{Path=[IO.Path]::GetRelativePath($stage, $_.FullName).Replace('\','/'); Bytes=$_.Length; SHA256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
     })
-    $manifest = [ordered]@{Version=$Version; Commit=$commit; Profile=$build.Profile; Platform='windows-x64'; Configuration='Release'; Uploaded=$false; CreatedUtc=[DateTime]::UtcNow.ToString('o'); Files=$files}
+    $manifest = [ordered]@{Version=$Version; Commit=$commit; Prerelease=$isPrerelease; Profile=$build.Profile; Platform='windows-x64'; Configuration='Release'; Uploaded=$false; CreatedUtc=[DateTime]::UtcNow.ToString('o'); Files=$files}
     [IO.File]::WriteAllText((Join-Path $stage 'RELEASE_BUILD.json'), ($manifest | ConvertTo-Json -Depth 6) + "`n")
     $zip = Join-Path $output ($name + '.zip')
     [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
@@ -104,5 +108,5 @@ Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $output
 $checksums.Add((Get-FileHash -LiteralPath (Join-Path $output 'LICENSE') -Algorithm SHA256).Hash.ToLowerInvariant() + '  LICENSE')
 [IO.File]::WriteAllLines((Join-Path $output 'SHA256SUMS.txt'), $checksums)
 [IO.File]::WriteAllText((Join-Path $output 'RELEASE_NOTES.md'), $releaseNotes)
-[IO.File]::WriteAllText((Join-Path $output 'RELEASE_BUILD.json'), ([ordered]@{Version=$Version; Commit=$commit; Uploaded=$false; Packages=$packages; OptionalComponents=$optionalComponents} | ConvertTo-Json -Depth 6) + "`n")
-Write-Output "预发布包已生成：$output"
+[IO.File]::WriteAllText((Join-Path $output 'RELEASE_BUILD.json'), ([ordered]@{Version=$Version; Commit=$commit; Prerelease=$isPrerelease; Uploaded=$false; Packages=$packages; OptionalComponents=$optionalComponents} | ConvertTo-Json -Depth 6) + "`n")
+Write-Output "发布包已生成：$output"
