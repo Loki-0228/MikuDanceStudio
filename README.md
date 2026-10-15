@@ -20,7 +20,7 @@
 | MME auto-reload using file-change notifications | Included in unreleased source | Included in unreleased source |
 | Recognized SoftShadow and ray shadow targets follow preview scale | Included in unreleased source; original size at 100% and during export | No preview scaling |
 | Recent projects, timeline force-paste button, and viewport render scaling | Included | Omitted |
-| FXAA, TAA, SMAA, and optional NVIDIA fix DLL | Included | Original anti-aliasing switch only |
+| FXAA, TAA, SMAA | Included; NVIDIA fix DLL is a separate optional download | Original anti-aliasing switch only |
 | New transparency sorting | Optional, disabled by default | Omitted; original single-pass material order |
 | Shadow reconstruction, dynamic precision, filtering | Clipping prevention and dynamic resolution; optional shared shadow-map filtering, disabled by default | Original projection and SM2/SM3 shaders; no enhanced-filter control |
 | Bone scaling, nine-channel bone curves, and morph curves | Included | Omitted; original Bezier interpolation retained |
@@ -28,7 +28,7 @@
 | Media | Modern imports and MP4/MOV export through Windows media components | WAV audio, AVI backgrounds and AVI export |
 | PMM, VMD, VPD saving | Can include MMS extensions | Standard data only; imported MMS extensions are ignored |
 
-The full ZIP contains `MikuMikuDance.exe`, the optional `MMSNvidiaAAFix.dll`, and license files in `licenses/`. The minimal ZIP contains the executable and licenses. Neither includes models, user settings, or MME.
+Both application ZIPs contain `MikuMikuDance.exe` and licenses. Neither includes models, user settings, MME, or the NVIDIA fix DLL. Starting with `v2026.10.15.1-pre.1`, `MMSNvidiaAAFix.dll` is a separate optional release asset with [installation instructions](docs/guides/nvidia-fix.md).
 
 The minimal build checks CP932 encoding and field lengths for names and references stored in files, and rejects values it cannot represent. Model editing saves PMD only and rejects lossy PMX-to-PMD conversion. Save extended full-build projects as separate copies when using the minimal build, because scale, curve, and mesh-cache extensions are discarded. Round-trip loading and saving with the actual MMD 9.32 executable has not yet been validated. See [minimal build limits](docs/reference/minimal-build.md).
 
@@ -62,7 +62,7 @@ startup. They are not stored in project files.
 | MME 自动重载使用文件变更通知 | 当前源码已包含，尚未发布 | 当前源码已包含，尚未发布 |
 | 已识别的 SoftShadow、ray 阴影目标随预览缩放 | 当前源码已包含；100% 与导出恢复原尺寸 | 不包含预览缩放 |
 | 最近工程、时间轴强制粘贴按钮、视口渲染比例 | 保留 | 不包含 |
-| FXAA、TAA、SMAA、可选 NVIDIA 补丁 DLL | 保留 | 仅保留原抗锯齿开关 |
+| FXAA、TAA、SMAA | 保留；NVIDIA 补丁 DLL 另行按需下载 | 仅保留原抗锯齿开关 |
 | 新透明排序 | 可选低、标准、高、最高；默认关闭 | 不编入排序与剥层实现，使用原始单遍材质顺序 |
 | 阴影重构、动态精度和滤波 | 保留防裁切与动态精度；可选「滤波加强」，默认关闭 | 使用原版投影及 SM2/SM3 着色器，无「滤波加强」 |
 | 骨骼缩放、九通道骨骼曲线和表情曲线 | 保留 | 不编入，保留原有 Bezier 插值 |
@@ -71,7 +71,7 @@ startup. They are not stored in project files.
 | PMM、VMD、VPD 保存 | 可写 MMS 扩展数据 | 仅写标准内容，忽略读取到的 MMS 扩展 |
 | MME | 保留原生 DX9 接口，插件需另行安装 | 保留原生 DX9 接口，插件需另行安装 |
 
-完整包 ZIP 包含 `MikuMikuDance.exe`、可选的 `MMSNvidiaAAFix.dll` 和 `licenses/` 下的许可文件；最小包包含主程序和许可文件。两者均不附带用户配置、模型或 MME。
+完整包和最小包 ZIP 均包含 `MikuMikuDance.exe` 与许可文件，不附带用户配置、模型、MME 或 NVIDIA 修复 DLL。从 `v2026.10.15.1-pre.1` 起，`MMSNvidiaAAFix.dll` 作为独立附件按需下载，见[安装说明](docs/guides/nvidia-fix.md)。
 
 最小包仍保留三语界面等便利修复，并非原版 MMD 的逐字节复刻。它按原版格式的名称编码和字段长度检查保存内容：名称与文件内引用须能完整表示为 CP932，超出范围时拒绝保存。模型编辑只提供 PMD 保存；最小包拒绝 PMX 到 PMD 的有损转换。
 
@@ -105,7 +105,7 @@ PMM `0002` 在保留标准文件头的前提下，通过扩展保存骨骼曲线
 | ファイル変更通知による MME 自動再読み込み | 未公開のソースに含む | 未公開のソースに含む |
 | 対応する SoftShadow・ray の影をプレビュー倍率に合わせて縮小 | 未公開のソースに含む。100% と書き出し時は元のサイズ | プレビュー縮小なし |
 | 最近使ったプロジェクト、タイムラインの強制貼り付けボタン、ビューポート描画倍率 | 含む | 含まない |
-| FXAA、TAA、SMAA、任意の NVIDIA 修正 DLL | 含む | 従来のアンチエイリアス切り替えのみ |
+| FXAA、TAA、SMAA | 含む。NVIDIA 修正 DLL は任意の別ダウンロード | 従来のアンチエイリアス切り替えのみ |
 | 新しい透明ソート | 任意で有効化、初期設定は無効 | 含まない。従来の単一パスの材質順序を使用 |
 | シャドウ処理の再構成、動的精度、フィルタリング | クリッピング防止、動的精度、共有シャドウマップのフィルター強化（初期設定は無効） | 従来の投影と SM2/SM3 シェーダー。平滑化スイッチなし |
 | ボーンスケール、9 チャンネルのボーン曲線、モーフ曲線 | 含む | 含まない。従来の Bezier 補間を維持 |
@@ -113,7 +113,7 @@ PMM `0002` 在保留标准文件头的前提下，通过扩展保存骨骼曲线
 | 音声・動画 | Windows メディアコンポーネントによる各種形式の読み込みと MP4・MOV 出力 | WAV 音声、AVI 背景、AVI 出力 |
 | PMM・VMD・VPD 保存 | MMS 拡張を保存可能 | 標準データのみ保存。読み込んだ MMS 拡張は無視 |
 
-完全版 ZIP には `MikuMikuDance.exe`、任意の `MMSNvidiaAAFix.dll`、`licenses/` 内のライセンスファイルが含まれます。最小版には実行ファイルとライセンスが含まれます。モデル、ユーザー設定、MME は同梱しません。
+両方のアプリ ZIP に `MikuMikuDance.exe` とライセンスを含みます。モデル、ユーザー設定、MME、NVIDIA 修正 DLL は同梱しません。`v2026.10.15.1-pre.1` 以降、`MMSNvidiaAAFix.dll` は任意の独立ダウンロードです。[導入手順](docs/guides/nvidia-fix.md)を参照してください。
 
 最小版は、ファイル内に保存する名前と参照先の CP932 表現およびフィールド長を確認し、表現できない内容の保存を拒否します。モデル編集の保存形式は PMD のみで、情報が失われる PMX から PMD への変換も拒否します。完全版の拡張を含むプロジェクトを最小版で保存すると、スケール、曲線、メッシュキャッシュの拡張が失われるため、別名で保存してください。実際の MMD 9.32 を使った双方向の読み込みと再保存は、まだ検証できていません。[最小版の制限](docs/reference/minimal-build.md)も参照してください。
 
@@ -210,7 +210,7 @@ image. Sampling does not advance animation or physics and does not add files.
 PMM v2 extensions store the AA switch, algorithm, and last SMAA choice. Loading
 a project does not overwrite local defaults. See [PMM settings](docs/reference/pmm-extensions.md).
 
-The full ZIP includes the optional `MMSNvidiaAAFix.dll`. Keep it beside `MikuMikuDance.exe` to manage the fix from **Help**. When the menu opens, the DLL checks this program's driver setting and offers **Install** or **Uninstall**. Either operation requests Windows administrator approval and takes effect the next time MMS starts.
+Download the optional `MMSNvidiaAAFix.dll` separately if you need the fix. Place it beside the full build's `MikuMikuDance.exe` to manage the fix from **Help**. Copying the DLL does not install the driver setting. When the menu opens, the DLL checks this program's setting and offers **Install** or **Uninstall**. Either operation requests Windows administrator approval and takes effect the next time MMS starts.
 
 The fix applies to NVIDIA only. Installation stops if no usable NVIDIA driver is available; AMD and Intel do not receive this setting. Uninstalling warns that MSAA may show white edges or seams again and removes only this program's setting. Deleting the DLL hides the menu entry without undoing an installed setting.
 
@@ -419,7 +419,7 @@ MME 着色器和透明贴图保留覆盖检查。程序按实际能力检测 NVI
 本机默认设置。临时硬件回退和未知档位不会覆盖工程原记录，用户重新选择后才更新。
 具体格式见 [PMM v2 项目扩展](docs/reference/pmm-extensions.md)。
 
-完整包附带可选的 `MMSNvidiaAAFix.dll`。将其保留在 `MikuMikuDance.exe` 同目录，即可通过「帮助」菜单管理补丁。打开菜单时，DLL 查询当前程序的驱动设置，并显示安装或卸载选项。两种操作均请求 Windows 管理员授权，下次启动 MMS 时生效。
+需要此修复时，单独下载 `MMSNvidiaAAFix.dll`，放到完整版的 `MikuMikuDance.exe` 同目录，通过「帮助」菜单管理补丁。放置 DLL 不会自动安装驱动设置。打开菜单时，DLL 查询当前程序的设置，并显示安装或卸载选项。两种操作均请求 Windows 管理员授权，下次启动 MMS 时生效。
 
 此设置只应用于 NVIDIA；没有可用 NVIDIA 驱动时停止安装，AMD、Intel 不应用该设置。卸载前会提示 MSAA 白边或接缝可能再次出现，卸载仅移除当前程序的设置。删除 DLL 会隐藏菜单入口，但不会撤销已安装的驱动设置。
 
@@ -628,7 +628,7 @@ T2x の最初の画像は 2 回、以後は画像ごとに 1 回だけシーン�
 AA の有効状態、方式、前回の SMAA 選択は PMM v2 拡張に保存されます。
 読み込み時にローカルの既定設定を書き換えません。
 
-完全版 ZIP に任意の `MMSNvidiaAAFix.dll` を同梱しています。`MikuMikuDance.exe` と同じフォルダーに置くと、ヘルプメニューから修正を管理できます。メニューを開くと DLL が現在のプログラムのドライバー設定を確認し、インストールまたはアンインストールを表示します。どちらも Windows の管理者権限を要求し、次回の MMS 起動時に反映されます。
+必要な場合のみ `MMSNvidiaAAFix.dll` を別途ダウンロードし、完全版の `MikuMikuDance.exe` と同じフォルダーに置いてください。配置しただけではドライバー設定は変更されません。ヘルプメニューを開くと DLL が現在の設定を確認し、インストールまたはアンインストールを表示します。どちらも Windows の管理者権限を要求し、次回の MMS 起動時に反映されます。
 
 この設定は NVIDIA 専用です。利用可能な NVIDIA ドライバーがない場合はインストールを中止し、AMD・Intel には適用しません。アンインストール前に MSAA の白い縁や継ぎ目が再発する可能性を表示し、現在のプログラムの設定だけを解除します。DLL の削除はメニュー項目を非表示にするだけで、適用済みの設定は解除しません。
 

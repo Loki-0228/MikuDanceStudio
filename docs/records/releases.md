@@ -31,7 +31,7 @@ Windows x64 预发布候选，变更范围为 `v2026.10.14.6` 之后的提交。
 - 完整包减少密集骨骼缩放轨道播放和曲线选区同步的重复扫描。两种构建档保留本轮已有的模型缓存、MME 文件变更通知与重载优化；完整包中受支持的特效阴影目标随预览尺寸调整。本次没有给出通用帧率提升比例。
 - 完整包按需扩展编辑容量，保存 PMM 时优先使用原版 `0002` 格式。超出原版容量或路径编码限制的工程才使用 MMS 扩展格式，具体边界见文件兼容文档。
 
-完整包包含 `MikuMikuDance.exe` 和可选的 `MMSNvidiaAAFix.dll`。最小包只包含程序及说明、许可证，保留 `mmd932` 功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码。两个包均不捆绑模型、个人设置、MME、MMV 或 FFmpeg。
+完整包与最小包均包含 `MikuMikuDance.exe`、说明和许可证。`MMSNvidiaAAFix.dll` 从主程序包中移出，作为独立可选附件提供，安装方法见同页附件 `NVIDIA_FIX_README.md`。不需要 NVIDIA 修复的用户无需下载；下载或放置 DLL 不会自动修改驱动设置，仍需在「帮助」菜单明确安装。最小包保留 `mmd932` 功能范围，不含散布、骨骼缩放、自由曲线或现代视频解码。两个包均不捆绑模型、个人设置、MME、MMV 或 FFmpeg。
 
 Windows 无法解码的格式（如部分 10-bit H.264）需要另行提供 FFmpeg。查找位置依次为程序旁的 `tools/ffmpeg.exe`、`ffmpeg.exe` 和 `PATH`。高位深视频转换为 8-bit RGB 预览。最小包保持原版 AVI 背景路径。
 
@@ -49,7 +49,7 @@ This prerelease candidate includes the following changes since `v2026.10.14.6`.
 - Fixed stale marquee selections and deletion affecting previously selected bones. Morph, display, IK, and external-parent deletions now have their own undo records, so undoing the latest deletion does not restore the preceding one.
 - Reduced repeated scans during dense scale-track playback and curve selection synchronization. The candidate also includes model-cache, MME notification and reload, preview-shadow, and automatic-capacity changes already committed since the previous release. No general FPS gain is claimed.
 
-Both packages use the source revision recorded in `RELEASE_BUILD.json`. The full package includes the optional NVIDIA helper. The minimal package retains the `mmd932` feature set and excludes scatter, bone scaling, free curves, and modern video decoding. Neither package includes models, personal settings, MME, MMV, or FFmpeg.
+Both packages use the source revision recorded in `RELEASE_BUILD.json`. Neither application ZIP includes the NVIDIA helper. Download `MMSNvidiaAAFix.dll` separately only if needed; see the attached `NVIDIA_FIX_README.md`. Copying the DLL does not install a driver setting. Installation requires an explicit command in Help. The minimal package retains the `mmd932` feature set and excludes scatter, bone scaling, free curves, and modern video decoding. Neither package includes models, personal settings, MME, MMV, or FFmpeg.
 
 Formats unsupported by Windows, including some 10-bit H.264 files, require a separately installed FFmpeg. Lookup order is `tools/ffmpeg.exe` beside the application, `ffmpeg.exe` beside it, then `PATH`. Preview output is 8-bit RGB. Minimal retains AVI backgrounds.
 
@@ -67,7 +67,7 @@ Builds and the targeted editing, media, playback, undo, and persistence checks p
 - 範囲選択の残りや、以前選択したボーンのキーまで削除される問題を修正しました。表情・表示・IK・外部親の削除も独立して元に戻せます。
 - 密なスケールキーの再生と曲線の選択同期で重複走査を減らしました。既存のモデルキャッシュ、MME 再読込、プレビューの影、容量拡張の変更も含みます。一般的な FPS 向上率は示していません。
 
-完全版と最小版のソースコミットは同一で、`RELEASE_BUILD.json` に記録されます。最小版は `mmd932` の範囲を維持し、散布、ボーンスケール、自由曲線、現代的な動画デコードを含みません。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
+完全版と最小版のソースコミットは同一で、`RELEASE_BUILD.json` に記録されます。NVIDIA 修正 DLL は両方の ZIP から除外しました。必要な場合のみ独立した `MMSNvidiaAAFix.dll` をダウンロードし、添付の `NVIDIA_FIX_README.md` を参照してください。DLL の配置だけでは設定は変更されず、ヘルプメニューから明示的にインストールする必要があります。最小版は `mmd932` の範囲を維持し、散布、ボーンスケール、自由曲線、現代的な動画デコードを含みません。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
 
 Windows が対応しない一部の 10-bit H.264 などには、別途 FFmpeg が必要です。検索順は実行ファイル横の `tools/ffmpeg.exe`、`ffmpeg.exe`、`PATH` です。プレビューは 8-bit RGB に変換します。最小版の背景動画は AVI のままです。
 

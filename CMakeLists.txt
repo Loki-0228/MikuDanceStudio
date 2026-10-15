@@ -1336,7 +1336,9 @@ endif()
 # The runtime assets (Data\toon*.bmp, mmconfig.ini) come from the reference
 # MMD installation and are not part of this source tree.
 # ---------------------------------------------------------------------------
-install(TARGETS MikuDanceStudio MMSNvidiaAAFix RUNTIME DESTINATION .)
+install(TARGETS MikuDanceStudio RUNTIME DESTINATION .)
+# The NVIDIA driver-setting helper is an explicit, separate download/install.
+install(TARGETS MMSNvidiaAAFix RUNTIME DESTINATION . COMPONENT NvidiaAAFix EXCLUDE_FROM_ALL)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/licenses/" DESTINATION licenses)
 
 if(Python3_Interpreter_FOUND)
