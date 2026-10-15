@@ -29,10 +29,10 @@ $builds = @(
 )
 foreach ($build in $builds) {
     $cache = [IO.File]::ReadAllText((Join-Path $build.Path 'CMakeCache.txt'))
-    $home = [regex]::Match($cache, '(?m)^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$').Groups[1].Value.Trim()
-    $profile = [regex]::Match($cache, '(?m)^MIKUDANCESTUDIO_PROFILE:STRING=(.+)$').Groups[1].Value.Trim()
+    $sourceRoot = [regex]::Match($cache, '(?m)^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$').Groups[1].Value.Trim()
+    $buildProfile = [regex]::Match($cache, '(?m)^MIKUDANCESTUDIO_PROFILE:STRING=(.+)$').Groups[1].Value.Trim()
     $platform = [regex]::Match($cache, '(?m)^CMAKE_GENERATOR_PLATFORM:STRING=(.+)$').Groups[1].Value.Trim()
-    if (-not $home -or [IO.Path]::GetFullPath($home) -ne $repo -or $profile -ne $build.Profile) {
+    if (-not $sourceRoot -or [IO.Path]::GetFullPath($sourceRoot) -ne $repo -or $buildProfile -ne $build.Profile) {
         throw "构建目录不属于当前源码或构建档错误：$($build.Path)"
     }
     if ($platform -ne 'x64') { throw "预发布包要求 x64 构建：$($build.Path)" }
