@@ -423,11 +423,14 @@ void CheckRecentProjects(MMDApp* app) {
         if(GetMenuState(child,viewport_render_scale::kCommand,MF_BYCOMMAND)!=UINT(-1))view=child;
     }
     Check(view!=nullptr,"find the viewport scale command in the real View menu");
+    SendMessageW(host,WM_INITMENUPOPUP,reinterpret_cast<WPARAM>(file),0);
+    SendMessageW(host,WM_UNINITMENUPOPUP,reinterpret_cast<WPARAM>(file),0);
     SendMessageW(host,WM_MENUSELECT,MAKEWPARAM(viewport_render_scale::kCommand,0),reinterpret_cast<LPARAM>(view));
     Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&click))==0,
         "clicking viewport scale ignores stale Open menu bounds");
     Check(!PeekMessageW(&command,host,WM_COMMAND,WM_COMMAND,PM_REMOVE),
         "viewport scale click never posts an Open command");
+    SendMessageW(host,WM_INITMENUPOPUP,reinterpret_cast<WPARAM>(file),0);
     SendMessageW(host,WM_MENUSELECT,MAKEWPARAM(position,MF_POPUP),reinterpret_cast<LPARAM>(file));
     Check(recent_projects::MenuFilter(MSGF_MENU,0,reinterpret_cast<LPARAM>(&click))==1,"clicking original Open bypasses submenu navigation");
     MH_DisableHook(reinterpret_cast<void*>(&GetMenuItemRect));MH_RemoveHook(reinterpret_cast<void*>(&GetMenuItemRect));
@@ -596,7 +599,7 @@ void CheckShadowFilter(MMDApp* app) {
 }
 }
 
-int main() {
+int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     SetProcessDPIAware();
     Check(MH_Initialize() == MH_OK, "initialize hidden-window guards");
@@ -609,6 +612,13 @@ int main() {
     SetWindowPos(window, nullptr, 0, 0, 1200,820, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     HandleWindowSize(app);
     Check(!IsWindowVisible(window), "production host stays hidden");
+    if (argc == 2 && (std::string(argv[1]) == "--recent-menu-only" || std::string(argv[1]) == "--accessory-only")) {
+        if (std::string(argv[1]) == "--recent-menu-only") CheckRecentProjects(app);
+        else CheckAccessoryMenu(app);
+        ShutdownCleanup(app); g_Block=nullptr; delete app;
+        std::puts("Requested menu regressions passed");
+        return 0;
+    }
     CheckShadowFilter(app);
     CheckForcePasteControls(app);
     CheckRecentProjects(app);

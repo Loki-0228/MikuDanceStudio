@@ -5,6 +5,13 @@
 #include "mikudancestudio/d3dx_dyn.hpp"
 #include "mikudancestudio/globals.hpp"
 #include "mikudancestudio/panel_controls.hpp"
+#include "mikudancestudio/model.hpp"
+#include "mikudancestudio/model_layout.hpp"
+#include "mikudancestudio/global_key_layout.hpp"
+#include "mikudancestudio/accessory_layout.hpp"
+#include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/bone_key_pool.hpp"
+#include "mikudancestudio/frame_limits.hpp"
 #include <cmath>
 #include <algorithm>
 #include <climits>
@@ -17,6 +24,18 @@ namespace mikudancestudio::image_sequence {
 namespace {
 struct Session { Options options; std::uint64_t written = 0; };
 std::unordered_map<MMDApp*, Session> sessions;
+template<class Key>
+std::uint32_t TrackEnd(const Key* keys, std::size_t capacity, std::uint32_t head = 0) {
+    std::uint32_t last = 0;
+    if (!keys) return last;
+    for (std::size_t visited = 0; visited < capacity && head < capacity; ++visited) {
+        last = std::max(last, std::min(keys[head].frame, std::uint32_t(frame_limits::maximum)));
+        const auto next = keys[head].next;
+        if (!next || next == head) break;
+        head = next;
+    }
+    return last;
+}
 std::wstring FileError(MMDApp* app, const wchar_t* path, unsigned long code) {
     wchar_t number[32]{};
     swprintf_s(number, L" (0x%08lX)", code);
@@ -40,12 +59,36 @@ std::uint32_t DefaultEndFrame(MMDApp* app) {
     const int stop = static_cast<int>(GetDlgItemInt(app->MainWindow(),
         panel::kPlayStopFrameEdit, &valid, TRUE));
     if (valid && stop > 0) return static_cast<std::uint32_t>(stop);
-    std::uint32_t end = app->LastRegisteredFrame();
+    return std::max(app->LastRegisteredFrame(), SceneEndFrame(app));
+}
+
+std::uint32_t SceneEndFrame(MMDApp* app) {
+    std::uint32_t end = 0;
+    const auto track = [&](const auto* keys) {
+        end = std::max(end, TrackEnd(keys, mdl::KeyPoolCapacity(keys)));
+    };
+    track(app->CameraKeys()); track(app->LightKeys());
+    track(app->ShadowKeys()); track(app->GravityKeys());
+    for (int slot = 0; slot < 255; ++slot)
+        if (app->AccessorySlot(slot)) track(app->AccessoryKeys(slot));
+    for (int slot = 0; slot < kModelSlotCount; ++slot) {
+        const auto* model = app->ModelSlot(slot);
+        if (!model) continue;
+        const auto& m = *mdl::Mdl(model);
+        const auto boneCapacity = mdl::BoneKeyCapacity(m);
+        for (std::uint32_t bone = 0; bone < std::min<std::size_t>(m.boneCount, boneCapacity); ++bone)
+            end = std::max(end, TrackEnd(m.boneKeys, boneCapacity, bone));
+        const auto morphCapacity = mdl::MorphKeyCapacity(m);
+        for (std::uint32_t morph = 0; morph < std::min<std::size_t>(m.morphCount, morphCapacity); ++morph)
+            end = std::max(end, TrackEnd(m.morphKeys, morphCapacity, morph));
+        track(m.displayKeys);
+    }
     if (const auto* audio = app->Audio(); audio && audio->dataSize > 0 &&
         audio->format.nAvgBytesPerSec > 0) {
         const double frames = std::ceil(static_cast<double>(audio->dataSize) *
             g_FrameScale / audio->format.nAvgBytesPerSec);
-        if (frames > end) end = static_cast<std::uint32_t>(frames);
+        if (std::isfinite(frames) && frames > end)
+            end = static_cast<std::uint32_t>(std::min(frames, double(frame_limits::maximum)));
     }
     return end;
 }

@@ -133,8 +133,15 @@ float4 Motion(VOut v,float alpha) {
  clip(alpha-0.0001);
  float2 current=v.current.xy/v.current.w*float2(0.5,-0.5)+0.5;
  float2 previous=v.previous.xy/max(v.previous.w,0.000001)*float2(0.5,-0.5)+0.5;
- bool valid=Controls.z>0.5&&alpha>=0.999&&v.previous.w>0.000001&&v.depth.y>0;
- return float4((previous-current)*ViewportMap.xy,max(v.depth.x,0),valid?v.depth.y:0);
+ // Depth-writing alpha materials (notably MMD hair) still have tracked
+ // geometry. Rejecting all partial coverage left them jittering indefinitely.
+ // The resolve still validates depth; non-depth-writing blends remain invalid.
+ bool valid=Controls.z>0.5&&v.previous.w>0.000001&&v.depth.y>0;
+ float2 velocity=(previous-current)*ViewportMap.xy;
+ // Subtracting two captured clip positions introduces subpixel round-off.
+ // Do not let that noise drive SMAA's velocity-change rejection on a still mesh.
+ if(all(abs(velocity)<Controls.xy/64.0))velocity=0;
+ return float4(velocity,max(v.depth.x,0),valid?v.depth.y:0);
 }
 float4 PS(VOut v,float2 pixel:VPOS):COLOR0 {
  return Motion(v,tex2D(Coverage,(pixel+0.5)*Controls.xy).a);

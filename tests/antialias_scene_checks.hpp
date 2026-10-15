@@ -62,8 +62,8 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
     CommandDispatch(nullptr,MAKEWPARAM(277,0));capture("disabled");
     const auto disabled=capturedPixels;
     select(antialias::Algorithm::Fxaa);
-    Check(!app->antialiasing.enabled,"algorithm selection preserves disabled state");
-    CommandDispatch(nullptr,MAKEWPARAM(277,0));capture("fxaa");
+    Check(app->antialiasing.enabled,"algorithm selection enables the main AA item");
+    capture("fxaa");
     Check(disabled!=capturedPixels,"FXAA changes actual rendered edge pixels");
     auto* formatQuery=(*reinterpret_cast<void***>(r->d3d9))[10];
     Check(MH_CreateHook(formatQuery,&RejectAntialiasFloatTarget,reinterpret_cast<void**>(&originalAntialiasCheckFormat))==MH_OK &&
@@ -264,7 +264,9 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
                 if(item.wID==277){parent=child;popup=item.hSubMenu;index=j;}
             }
         }
-        Check(popup && GetMenuItemCount(popup)==4,"algorithm flyout has original MSAA, FXAA, TAA and grouped SMAA");
+        Check(popup && GetMenuItemCount(popup)==5,"algorithm flyout has Off, original MSAA, FXAA, TAA and grouped SMAA");
+        wchar_t offLabel[32]{};GetMenuStringW(popup,antialias::kOffCommand,offLabel,32,MF_BYCOMMAND);
+        Check(std::wcscmp(offLabel,language==2?L"关闭":language==1?L"Off":L"オフ")==0,"Off is localized in every UI language");
         const int smaaPosition=GetMenuItemCount(popup)-1;
         auto smaaPopup=GetSubMenu(popup,smaaPosition);
         Check(smaaPopup && GetMenuItemCount(smaaPopup)==4,"four SMAA variants are available in the right-hand submenu");
@@ -272,17 +274,21 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
             // Selecting a variant refreshes the native submenu, so do not keep
             // the old handle between command dispatches.
             const auto child=GetSubMenu(popup,smaaPosition);
-            const bool smaaActive=active>=antialias::Algorithm::Smaa && active<antialias::Algorithm::Count;
+            const bool enabled=app->antialiasing.enabled;
+            Check(((GetMenuState(parent,277,MF_BYCOMMAND)&MF_CHECKED)!=0)==enabled,"main item mirrors enabled state");
+            Check(((GetMenuState(popup,antialias::kOffCommand,MF_BYCOMMAND)&MF_CHECKED)!=0)==!enabled,
+                "Off is marked exactly when the main item is disabled");
+            const bool smaaActive=enabled && active>=antialias::Algorithm::Smaa && active<antialias::Algorithm::Count;
             Check(((GetMenuState(popup,antialias::kSmaaCommand,MF_BYCOMMAND)&MF_CHECKED)!=0)==smaaActive,
                 "SMAA parent is marked only when a SMAA variant is selected");
             Check(GetMenuDefaultItem(child,FALSE,0)==UINT(-1),"SMAA submenu has no default choice");
             for(const auto variant:{antialias::Algorithm::SmaaStandard,antialias::Algorithm::Smaa,
                                    antialias::Algorithm::SmaaT2xStandard,antialias::Algorithm::SmaaT2xEnhanced}) {
-                Check(((GetMenuState(child,antialias::kFirstCommand+unsigned(variant),MF_BYCOMMAND)&MF_CHECKED)!=0)==(active==variant),
+                Check(((GetMenuState(child,antialias::kFirstCommand+unsigned(variant),MF_BYCOMMAND)&MF_CHECKED)!=0)==(enabled && active==variant),
                     "SMAA child marks the current algorithm instead of the remembered variant");
             }
             for(const auto other:{antialias::Algorithm::MmdOriginal,antialias::Algorithm::Fxaa,antialias::Algorithm::Taa}) {
-                Check(((GetMenuState(popup,antialias::kFirstCommand+unsigned(other),MF_BYCOMMAND)&MF_CHECKED)!=0)==(active==other),
+                Check(((GetMenuState(popup,antialias::kFirstCommand+unsigned(other),MF_BYCOMMAND)&MF_CHECKED)!=0)==(enabled && active==other),
                     "the algorithm submenu marks only the selected family");
             }
         };
@@ -302,6 +308,20 @@ void CheckAntialiasScene(MMDApp* app, const wchar_t* directory) {
                                antialias::Algorithm::SmaaT2xStandard,antialias::Algorithm::SmaaT2xEnhanced,
                                antialias::Algorithm::Taa,antialias::Algorithm::MmdOriginal,antialias::Algorithm::Fxaa}) {
             select(active);checkSmaaSelection(active);
+            CommandDispatch(nullptr,MAKEWPARAM(277,0));
+            Check(!app->antialiasing.enabled && app->antialiasing.algorithm==active,"main Off remembers the selected algorithm");
+            checkSmaaSelection(active);
+            CommandDispatch(nullptr,MAKEWPARAM(277,0));
+            Check(app->antialiasing.enabled && app->antialiasing.algorithm==active,"main On restores the selected algorithm");
+            checkSmaaSelection(active);
+            SendMessageW(app->MainWindow(),WM_COMMAND,antialias::kOffCommand,0);
+            Check(!app->antialiasing.enabled && app->antialiasing.algorithm==active,"submenu Off disables without forgetting the algorithm");
+            checkSmaaSelection(active);
+            SendMessageW(app->MainWindow(),WM_COMMAND,antialias::kOffCommand,0);
+            Check(!app->antialiasing.enabled,"selecting Off twice remains disabled");
+            select(active);
+            Check(app->antialiasing.enabled,"selecting an algorithm turns AA back on");
+            checkSmaaSelection(active);
         }
         SendMessageW(app->MainWindow(),WM_MENUSELECT,MAKEWPARAM(index,MF_POPUP),reinterpret_cast<LPARAM>(parent));
         MSG enter{};enter.message=WM_KEYDOWN;enter.wParam=VK_RETURN;

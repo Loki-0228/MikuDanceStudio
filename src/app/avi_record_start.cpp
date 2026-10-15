@@ -341,7 +341,7 @@ void StartAviRecordWindow(MMDApp* app) {
         return;
     }
     if (image_sequence::Active(app))
-        SetWindowTextW(recWnd, image_sequence::Text(app, L"正在输出图片序列…",
+        SetWindowTextW(recWnd, image_sequence::Text(app, L"正在导出图片序列…",
             L"Exporting image sequence…", L"連番画像を出力中…"));
     ShowWindow(recWnd, SW_SHOW);                               // 0x45EA38
     UpdateWindow(recWnd);

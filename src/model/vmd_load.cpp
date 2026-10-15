@@ -7,11 +7,10 @@
 // ===========================================================================
 // __thiscall on the APP block (not the model):
 //
-//   LoadVmdMotion(app, FileName)   FileName = ANSI path (the original's
-//                               GetOpenFileNameA buffer; the ported file
-//                               dialog hands over a wide path, so the
-//                               LoadVmdFile wrapper below converts with
-//                               CP_ACP first - documented deviation)
+//   LoadVmdMotion(app, FileName)   Legacy ANSI-path entry.
+//   LoadVmdFile(path)             Unicode entry used by the file dialog and
+//                               file drop; preserves the path through open
+//                               and extension loading.
 //
 // Two file flavors share the entry: "Vocaloid Motion Data file" (old,
 // 10-byte model name, ver=1) and "Vocaloid Motion Data 0002" (20-byte
@@ -776,17 +775,11 @@ int LoadVmdMotion(MMDApp* app, const char* fileName) {
     return LoadVmdMotionPath(app, fileName, nullptr);
 }
 
-// Wide-path entry used by the ported file dialog (0x461300's GetOpenFileNameA
-// equivalent).  CP_ACP conversion matches what the ANSI dialog produced.
+// Keep dialog/drop paths in Unicode, as model loading does. An ANSI roundtrip
+// loses characters that are not available in the system code page.
 void LoadVmdFile(const wchar_t* path) {
     if (g_Block == nullptr) return;
-#if MMD_ORIGINAL_PROFILE
     LoadVmdMotionPath(g_Block, nullptr, path);
-#else
-    char ansi[MAX_PATH];
-    WideCharToMultiByte(CP_ACP, 0, path, -1, ansi, MAX_PATH, nullptr, nullptr);
-    LoadVmdMotion(g_Block, ansi);
-#endif
 }
 
 }  // namespace mikudancestudio

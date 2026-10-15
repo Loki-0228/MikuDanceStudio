@@ -380,7 +380,7 @@ void UpdateBoneFrames(MMDApp* app) {
         app->PhysicsResetPending() = 1;
 
     const double frame = cursor * kFrameRate;
-    if (app->state.optflag[0] != 0 ||
+    if (app->FrameStepPlayback() != 0 || app->state.optflag[0] != 0 ||
         app->state.followCameraEnabled != 0)
         InitGlobalTracks(app, frame);
     else

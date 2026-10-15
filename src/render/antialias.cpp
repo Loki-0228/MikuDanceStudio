@@ -7,6 +7,8 @@
 #include "mikudancestudio/build_profile.hpp"
 #include "mikudancestudio/pmm_project_settings.hpp"
 #include "antialias_shader.hpp"
+#include "outline_coverage_shader.hpp"
+#include "mikudancestudio/model.hpp"
 #include "smaa_shader.hpp"
 #include "smaa_lookup.hpp"
 #include <wrl/client.h>
@@ -29,6 +31,10 @@ struct Target {
     ComPtr<IDirect3DTexture9> historyDepth;
     ComPtr<IDirect3DSurface9> historyDepthSurface;
     ComPtr<IDirect3DPixelShader9> fxaa, temporal, smaa[4];
+    ComPtr<IDirect3DVertexShader9> outlineVertex;
+    ComPtr<IDirect3DPixelShader9> outlinePixel;
+    ComPtr<IDirect3DVertexDeclaration9> outlineDeclaration;
+    bool outlineAttempted=false;
     ComPtr<IDirect3DTexture9> edges, weights, areaLookup, searchLookup;
     ComPtr<IDirect3DSurface9> edgeSurface, weightSurface;
     D3DSURFACE_DESC description{};
@@ -318,6 +324,79 @@ void ApplyRenderState(MMDApp* app) {
         app->antialiasing.enabled && !PostProcess(app->antialiasing));
 }
 void Release(MMDApp* app){motion::Release(app);targets.erase(app);}
+bool DrawOutline(MMDApp* app,unsigned char* model,unsigned firstIndex,
+                 unsigned indexCount,const float* uniformColor) {
+    if(build_profile::original || !app || !model || !PostProcess(app->antialiasing))return false;
+    const auto found=targets.find(app);if(found==targets.end())return false;
+    auto& t=found->second;auto* device=app->Renderer()->device;
+    ComPtr<IDirect3DSurface9> target;
+    if(FAILED(device->GetRenderTarget(0,&target)) || target.Get()!=t.color.Get())return false;
+    auto* body=mdl::ResourceAs<IDirect3DVertexBuffer9>(mdl::Mdl(model)->vertexBuffer);
+    if(!body)return false;
+    if(!t.outlineAttempted) {
+        t.outlineAttempted=true;
+        ComPtr<ID3DBlob> vs,ps,error;
+        HRESULT hr=graphics_runtime::Compile(kOutlineCoverageShader,sizeof(kOutlineCoverageShader)-1,
+            "outline coverage",nullptr,nullptr,"outlineVertex","vs_3_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&vs,&error);
+        if(SUCCEEDED(hr))hr=graphics_runtime::Compile(kOutlineCoverageShader,sizeof(kOutlineCoverageShader)-1,
+            "outline coverage",nullptr,nullptr,"outlinePixel","ps_3_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&ps,&error);
+        const D3DVERTEXELEMENT9 elements[]={
+            {0,0,D3DDECLTYPE_FLOAT3,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_POSITION,0},
+            {0,12,D3DDECLTYPE_D3DCOLOR,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_COLOR,0},
+            {1,0,D3DDECLTYPE_FLOAT3,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_POSITION,1},
+            {1,12,D3DDECLTYPE_FLOAT3,D3DDECLMETHOD_DEFAULT,D3DDECLUSAGE_NORMAL,0},D3DDECL_END()};
+        if(SUCCEEDED(hr))hr=device->CreateVertexShader(static_cast<const DWORD*>(vs->GetBufferPointer()),&t.outlineVertex);
+        if(SUCCEEDED(hr))hr=device->CreatePixelShader(static_cast<const DWORD*>(ps->GetBufferPointer()),&t.outlinePixel);
+        if(SUCCEEDED(hr))hr=device->CreateVertexDeclaration(elements,&t.outlineDeclaration);
+        if(FAILED(hr)) {
+            t.outlineVertex.Reset();t.outlinePixel.Reset();t.outlineDeclaration.Reset();
+            runtime_log::Write("Outline coverage unavailable hr=%08lX: %s",hr,error?static_cast<const char*>(error->GetBufferPointer()):"");
+        }
+    }
+    if(!t.outlineDeclaration)return false;
+    D3DMATRIX world{},view{},projection{};D3DVIEWPORT9 viewport{};
+    if(FAILED(device->GetTransform(D3DTS_WORLD,&world)) || FAILED(device->GetTransform(D3DTS_VIEW,&view)) ||
+       FAILED(device->GetTransform(D3DTS_PROJECTION,&projection)) || FAILED(device->GetViewport(&viewport)))return false;
+    const auto multiply=[](const D3DMATRIX& a,const D3DMATRIX& b) {
+        D3DMATRIX result{};
+        for(unsigned i=0;i<4;++i)for(unsigned j=0;j<4;++j)for(unsigned k=0;k<4;++k)
+            result.m[i][j]+=a.m[i][k]*b.m[k][j];
+        return result;
+    };
+    const auto transform=multiply(multiply(world,view),projection);
+    float constants[28]{};std::memcpy(constants,&transform,sizeof(transform));
+    constants[16]=viewport.Width*.5f;constants[17]=viewport.Height*.5f;
+    if(uniformColor){std::memcpy(constants+20,uniformColor,16);constants[24]=1;}
+    // Restore the surrounding effect pass and the second vertex stream too;
+    // motion capture and subsequent accessory draws observe these bindings.
+    ComPtr<IDirect3DVertexShader9> oldVertex;ComPtr<IDirect3DPixelShader9> oldPixel;
+    ComPtr<IDirect3DVertexDeclaration9> oldDeclaration;ComPtr<IDirect3DVertexBuffer9> oldStream;
+    UINT oldOffset=0,oldStride=0;float oldConstants[28]{};
+    constexpr D3DRENDERSTATETYPE states[]={D3DRS_ALPHABLENDENABLE,D3DRS_SRCBLEND,D3DRS_DESTBLEND,
+        D3DRS_BLENDOP,D3DRS_ALPHATESTENABLE,D3DRS_ALPHAFUNC,D3DRS_ALPHAREF};
+    DWORD values[_countof(states)]{};
+    if(FAILED(device->GetVertexShader(&oldVertex)) || FAILED(device->GetPixelShader(&oldPixel)) ||
+       FAILED(device->GetVertexDeclaration(&oldDeclaration)) ||
+       FAILED(device->GetStreamSource(1,&oldStream,&oldOffset,&oldStride)) ||
+       FAILED(device->GetVertexShaderConstantF(0,oldConstants,7)))return false;
+    for(unsigned i=0;i<_countof(states);++i)if(FAILED(device->GetRenderState(states[i],&values[i])))return false;
+    const auto additional=mdl::Mdl(model)->pmxAdditionalUvCount;
+    const UINT stride=sizeof(mdl::SkinnedVertexBase)+(additional>=1 && additional<=4?16*additional:0);
+    HRESULT hr=device->SetStreamSource(1,body,0,stride);
+    if(SUCCEEDED(hr))hr=device->SetVertexDeclaration(t.outlineDeclaration.Get());
+    if(SUCCEEDED(hr))hr=device->SetVertexShader(t.outlineVertex.Get());
+    if(SUCCEEDED(hr))hr=device->SetPixelShader(t.outlinePixel.Get());
+    if(SUCCEEDED(hr))hr=device->SetVertexShaderConstantF(0,constants,7);
+    const DWORD coverageStates[]={TRUE,D3DBLEND_SRCALPHA,D3DBLEND_INVSRCALPHA,D3DBLENDOP_ADD,
+        TRUE,D3DCMP_GREATER,0};
+    for(unsigned i=0;i<_countof(states);++i)if(SUCCEEDED(hr))hr=device->SetRenderState(states[i],coverageStates[i]);
+    if(SUCCEEDED(hr))hr=device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,0,0,mdl::Mdl(model)->vertexCount,firstIndex,indexCount/3);
+    device->SetVertexShader(oldVertex.Get());device->SetPixelShader(oldPixel.Get());
+    device->SetVertexDeclaration(oldDeclaration.Get());device->SetStreamSource(1,oldStream.Get(),oldOffset,oldStride);
+    device->SetVertexShaderConstantF(0,oldConstants,7);
+    for(unsigned i=0;i<_countof(states);++i)device->SetRenderState(states[i],values[i]);
+    return SUCCEEDED(hr);
+}
 bool Initializing(MMDApp* app) {
     if(build_profile::original || !app || !PostProcess(app->antialiasing))return false;
     const auto found=targets.find(app);
@@ -497,7 +576,7 @@ bool FrameScope::Complete() {
         auto* vectors=p.temporal?motion::Resolve(p.app,device):nullptr;
         FullscreenState(device);
         const auto& v=p.viewport;const auto& desc=t.description;
-        const float constants[]={1.f/desc.Width,1.f/desc.Height,vectors?float(std::min(t.samples,7u))/(std::min(t.samples,7u)+1):0,0,
+        const float constants[]={1.f/desc.Width,1.f/desc.Height,vectors?float(std::min(t.samples,31u))/(std::min(t.samples,31u)+1):0,0,
             (v.X+.5f)/desc.Width,(v.Y+.5f)/desc.Height,(v.X+v.Width-.5f)/desc.Width,(v.Y+v.Height-.5f)/desc.Height,
             p.jitterX,p.jitterY,.002f,.002f,
             t.historyJitterX,t.historyJitterY,0,0};

@@ -351,13 +351,14 @@ bool InitMainWindowAndD3D(MMDApp* app, void* hInstanceIn, int nShowCmd) {
         return false;
     }
 
-    WNDCLASSA wc;
-    std::memset(&wc, 0, sizeof(wc));
-    wc.style = 11;
-    wc.lpfnWndProc = RecWndProc;                                // 0x479DA0
-    wc.hInstance = hInstance;
-    wc.lpszClassName = "RecWindow";
-    if (!RegisterClassA(&wc)) {
+    // Export captions must remain Unicode through creation and WM_SETTEXT,
+    // independently of the Windows ANSI code page.
+    WNDCLASSW recClass{};
+    recClass.style = 11;
+    recClass.lpfnWndProc = RecWndProc;                          // 0x479DA0
+    recClass.hInstance = hInstance;
+    recClass.lpszClassName = L"RecWindow";
+    if (!RegisterClassW(&recClass)) {
         // x64 0x7FF7CB42EBAF: EN keeps "RecWindow failed"/"create main
         // window"; JP swaps both text and caption (0x7FF7CB42EBD2).
         LegacyUiMessageBoxA(nullptr,
@@ -369,6 +370,7 @@ bool InitMainWindowAndD3D(MMDApp* app, void* hInstanceIn, int nShowCmd) {
         return false;
     }
 
+    WNDCLASSA wc;
     std::memset(&wc, 0, sizeof(wc));
     wc.style = 11;
     wc.lpfnWndProc = MicWndProc;                                // 0x466A10

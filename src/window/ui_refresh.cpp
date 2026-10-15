@@ -157,16 +157,12 @@ void CloseDataFile(void* file) {
 
     // ---- step 1: wait for an in-flight async read to finish --------------
     // 0x004C2683 cmp [esi+234h], 0 / 0x004C268C test [esi+248h]
-    if (audio->feedThread != 0 && audio->stopFlag == 0) {
-        audio->stopFlag = 1;
-        // 0x004C26A0 pre-check; the loop reloads the flag raw (volatile),
-        // like the original's memory reads behind the worker thread.
-        if (*reinterpret_cast<volatile std::uint32_t*>(&audio->stopFlag) != 2) {
-            do {
-                Sleep(1);                   // 0x004C26B2
-            } while (*reinterpret_cast<volatile std::uint32_t*>(
-                         &audio->stopFlag) != 2);
-        }
+    if (audio->feedThread != 0) {
+        // The worker can finish between reading its state and requesting stop.
+        // An unconditional store of 1 used to erase its final 2 and hang the UI.
+        RequestWaveStop(audio);
+        while (WaveStopState(audio) != 2)
+            Sleep(1);
         Sleep(0);                           // 0x004C26C1
     }
 

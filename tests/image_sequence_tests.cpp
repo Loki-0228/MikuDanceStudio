@@ -14,8 +14,16 @@
 #include "mikudancestudio/antialias_motion.hpp"
 #include "mikudancestudio/global_key_layout.hpp"
 #include "mikudancestudio/runtime_log.hpp"
+#include "mikudancestudio/model.hpp"
+#include "mikudancestudio/model_layout.hpp"
+#include "mikudancestudio/accessory_layout.hpp"
+#include "mikudancestudio/bone_key_pool.hpp"
+#include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/frame_limits.hpp"
 #include "../src/window/image_sequence_dialog.hpp"
 #include <MinHook.h>
+#include <ShObjIdl.h>
+#include <wrl/client.h>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -23,6 +31,9 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <memory>
+
+extern "C" float ExpGetFrameTime();
 
 using namespace mikudancestudio;
 namespace seq = mikudancestudio::image_sequence;
@@ -131,6 +142,9 @@ void DialogTests(MMDApp* app) {
         unsigned count = 0;
         for (int i = 0; i < GetMenuItemCount(file); ++i) count += GetMenuItemID(file, i) == seq::kMenuCommand;
         Check(count == 1, "menu survives language refresh without duplication");
+        wchar_t menuText[128]{};
+        GetMenuStringW(file, seq::kMenuCommand, menuText, 128, MF_BYCOMMAND);
+        if (language == 2) Check(std::wstring(menuText) == L"导出图片序列(&I)…", "Chinese sequence export naming is consistent");
     }
     Check(warnings == 3, "all three languages reject invalid FPS");
 }
@@ -189,7 +203,151 @@ void RunExport(MMDApp* app, seq::Options o, bool cancel = false) {
     std::printf("PASS format=%ls fps=%.3f range=%d..%d images=%llu cancel=%d\n",
         seq::kFormats[o.format].name, o.fps, o.start, o.end, static_cast<unsigned long long>(files), cancel);
 }
+unsigned folderPickers = 0, settingsDialogs = 0;
+bool cancelFolder = false, cancelSettings = false;
+std::wstring menuPrefix;
+HRESULT STDMETHODCALLTYPE ChooseFolder(IFileOpenDialog* picker, HWND owner) {
+    ++folderPickers;
+    Check(owner == g_Block->MainWindow(), "menu folder picker belongs to the main window");
+    FILEOPENDIALOGOPTIONS options{};
+    Check(SUCCEEDED(picker->GetOptions(&options)) && (options & FOS_PICKFOLDERS), "menu requests a folder picker");
+    return cancelFolder ? HRESULT_FROM_WIN32(ERROR_CANCELLED) : S_OK;
+}
+HRESULT STDMETHODCALLTYPE ChosenFolder(IFileOpenDialog*, IShellItem** item) {
+    return SHCreateItemFromParsingName(output.c_str(), nullptr, IID_PPV_ARGS(item));
+}
+INT_PTR CALLBACK MenuSettingsProbe(HWND dialog, UINT message, WPARAM wp, LPARAM lp) {
+    if (message != WM_INITDIALOG) return seq::DialogProc(dialog, message, wp, lp);
+    seq::DialogProc(dialog, message, wp, lp);
+    Check(Read(dialog, panel::kAviEndFrameEdit) == std::to_wstring(seq::SceneEndFrame(g_Block)),
+        "menu initializes the automatically detected scene range");
+    if (cancelSettings) { seq::DialogProc(dialog, WM_COMMAND, IDCANCEL, 0); return TRUE; }
+    SetDlgItemInt(dialog, panel::kAviWidthEdit, 64, FALSE);
+    SetDlgItemInt(dialog, panel::kAviHeightEdit, 48, FALSE);
+    SetDlgItemInt(dialog, panel::kAviStartFrameEdit, 0, FALSE);
+    SetDlgItemInt(dialog, panel::kAviEndFrameEdit, 1, FALSE);
+    SetDlgItemTextW(dialog, panel::kAviFpsEdit, L"30");
+    SetDlgItemTextW(dialog, seq::Prefix, menuPrefix.c_str());
+    CheckDlgButton(dialog, panel::kAviCloseAfterExportCheckbox, BST_UNCHECKED);
+    seq::DialogProc(dialog, WM_COMMAND, IDOK, 0);
+    return TRUE;
+}
+decltype(&UiDialogBoxParamA) originalMenuDialog = nullptr;
+INT_PTR MenuDialog(HINSTANCE instance, LPCSTR name, HWND owner, DLGPROC proc, LPARAM parameter) {
+    if (proc == seq::DialogProc) { ++settingsDialogs; proc = MenuSettingsProbe; }
+    return originalMenuDialog(instance, name, owner, proc, parameter);
+}
+void MenuEntryTests(MMDApp* app) {
+    wchar_t modelPath[32768]{};
+    const auto length = GetEnvironmentVariableW(L"MMS_MENU_SEQUENCE_MODEL", modelPath, std::size(modelPath));
+    if (length) {
+        Check(length < std::size(modelPath) && fs::is_regular_file(modelPath), "menu export model fixture exists");
+        LoadModelFile(app, modelPath, false);
+        Check(app->SelectedModel() != nullptr, "load menu export model fixture");
+    }
+    // Exercise the real WM_COMMAND entry and shell setup; only replace the
+    // user's folder selection and dialog input so the host stays hidden.
+    Microsoft::WRL::ComPtr<IFileOpenDialog> picker;
+    Check(SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(&picker))), "create shell picker for menu regression");
+    auto** table = *reinterpret_cast<void***>(picker.Get());
+    void* show = table[3]; void* result = table[20];
+    Check(MH_CreateHook(show, &ChooseFolder, nullptr) == MH_OK &&
+        MH_CreateHook(result, &ChosenFolder, nullptr) == MH_OK &&
+        MH_CreateHook(reinterpret_cast<void*>(&UiDialogBoxParamA), &MenuDialog,
+            reinterpret_cast<void**>(&originalMenuDialog)) == MH_OK, "hook user input for menu export");
+    MH_EnableHook(show); MH_EnableHook(result); MH_EnableHook(reinterpret_cast<void*>(&UiDialogBoxParamA));
+    const auto camera = app->CameraMode();
+    for (int mode : {0, 1}) {
+        if (!mode && !app->SelectedModel()) { std::puts("SKIP model-mode menu export: set MMS_MENU_SEQUENCE_MODEL"); continue; }
+        app->CameraMode() = mode;
+        menuPrefix = L"menu_camera_" + std::to_wstring(mode) + L"_";
+        folderPickers = settingsDialogs = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, seq::kMenuCommand, 0);
+        std::printf("MENU camera=%d folder_pickers=%u settings=%u recording=%d\n",
+            mode, folderPickers, settingsDialogs, seq::Active(app));
+        Check(folderPickers == 1 && settingsDialogs == 1 && seq::Active(app) && app->RecordingWindow(),
+            "image sequence menu starts export in model and camera/accessory modes");
+        unsigned steps = 0;
+        while (seq::Active(app) && steps++ < 150) { app->state.messageSeen = 1; FrameDriver(app); }
+        Check(!seq::Active(app) && !app->RecordingWindow(), "menu export finishes recording");
+        for (int frame : {1, 2})
+            Check(fs::file_size(output / (menuPrefix + std::to_wstring(frame) + L".png")) > 0,
+                "menu export writes consecutive PNG images");
+        for (bool folder : {true, false}) {
+            folderPickers = settingsDialogs = 0; cancelFolder = folder; cancelSettings = !folder;
+            SendMessageW(app->MainWindow(), WM_COMMAND, seq::kMenuCommand, 0);
+            Check(folderPickers == 1 && settingsDialogs == unsigned(!folder) &&
+                !seq::Active(app) && !app->RecordingWindow(), "canceling either menu dialog leaves export inactive");
+        }
+        cancelFolder = cancelSettings = false;
+        folderPickers = settingsDialogs = 0;
+        const auto playback = app->PlaybackActive(); app->PlaybackActive() = 1;
+        SendMessageW(app->MainWindow(), WM_COMMAND, seq::kMenuCommand, 0);
+        app->PlaybackActive() = playback;
+        Check(folderPickers == 0 && settingsDialogs == 0, "playback still blocks menu export");
+    }
+    app->CameraMode() = camera;
+    for (void* hook : {show, result, reinterpret_cast<void*>(&UiDialogBoxParamA)}) {
+        MH_DisableHook(hook); MH_RemoveHook(hook);
+    }
+    if (length) ResetAppState(app);
+}
+fs::path stillPath;
+bool cancelStill = false;
+unsigned stillPickers = 0;
+BOOL WINAPI StillSaveDialog(LPOPENFILENAMEW parameters) {
+    ++stillPickers;
+    const wchar_t* expected = g_Block->EnglishUI() == 2 ? L"导出图片" :
+        g_Block->EnglishUI() == 1 ? L"render to picture file" : L"画像ファイル出力";
+    Check(std::wcscmp(parameters->lpstrTitle, expected) == 0, "still-image save dialog title follows the UI language");
+    if (cancelStill) return FALSE;
+    wcscpy_s(parameters->lpstrFile, parameters->nMaxFile, stillPath.c_str());
+    return TRUE;
+}
+void StillImageLanguageTests(MMDApp* app) {
+    Check(MH_CreateHook(reinterpret_cast<void*>(&GetSaveFileNameW), &StillSaveDialog, nullptr) == MH_OK &&
+        MH_EnableHook(reinterpret_cast<void*>(&GetSaveFileNameW)) == MH_OK, "control still-image save selection");
+    const int language = app->EnglishUI(), frame = app->CurrentFrame();
+    const int width = app->RenderWidth(), height = app->RenderHeight();
+    app->RenderWidth() = 64; app->RenderHeight() = 48;
+    const wchar_t* formats[] = {L"画像出力中（%d フレーム）", L"Exporting image (frame %d)", L"正在导出图片（第 %d 帧）"};
+    for (int mode : {0, 1, 2}) {
+        app->EnglishUI() = mode;
+        for (int current : {0, 137}) {
+            app->CurrentFrame() = current; stillPickers = 0;
+            stillPath = output / (L"单张_" + std::to_wstring(mode) + L"_" + std::to_wstring(current) + L".png");
+            SendMessageW(app->MainWindow(), WM_COMMAND, 276, 0);
+            const HWND window = app->RecordingWindow();
+            Check(stillPickers == 1 && window && IsWindowUnicode(window), "still-image menu creates a Unicode export window");
+            wchar_t expected[96]{}, actual[128]{};
+            swprintf_s(expected, formats[mode], current);
+            GetWindowTextW(window, actual, std::size(actual));
+            Check(std::wcscmp(actual, expected) == 0, "still-image window preserves localized title and current frame");
+            // WM_SETTEXT/WM_GETTEXT must also stay Unicode after creation,
+            // including characters outside the system ANSI code page.
+            const wchar_t* unicode = L"图片・画像・image \U0001F3AC";
+            SetWindowTextW(window, unicode); GetWindowTextW(window, actual, std::size(actual));
+            Check(std::wcscmp(actual, unicode) == 0, "export window caption updates preserve Unicode");
+            SetWindowTextW(window, expected);
+            for (unsigned step = 0; app->RecordingWindow() && step < 12; ++step) {
+                app->state.messageSeen = 1; FrameDriver(app);
+            }
+            Check(!app->RecordingWindow() && fs::is_regular_file(stillPath) && fs::file_size(stillPath) > 0,
+                "localized still-image export completes and writes a PNG");
+            std::printf("PASS still-image language=%d frame=%d Unicode caption and PNG output\n", mode, current);
+        }
+        cancelStill = true; stillPickers = 0;
+        SendMessageW(app->MainWindow(), WM_COMMAND, 276, 0);
+        Check(stillPickers == 1 && !app->RecordingWindow(), "canceling still-image selection creates no export window");
+        cancelStill = false;
+    }
+    app->EnglishUI() = language; app->CurrentFrame() = frame;
+    app->RenderWidth() = width; app->RenderHeight() = height;
+    MH_DisableHook(reinterpret_cast<void*>(&GetSaveFileNameW)); MH_RemoveHook(reinterpret_cast<void*>(&GetSaveFileNameW));
+}
 #include "antialias_image_sequence_checks.hpp"
+#include "image_sequence_continuity_checks.hpp"
 }
 int wmain(int argc, wchar_t** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -221,7 +379,10 @@ int wmain(int argc, wchar_t** argv) {
     }
     Check(InitMainWindowAndD3D(app, GetModuleHandleW(nullptr), SW_HIDE), "initialize production renderer");
     Check(!IsWindowVisible(app->MainWindow()), "production host remains hidden");
-    NamesAndValidation(app); DialogTests(app); app->EnglishUI() = 2;
+    NamesAndValidation(app); SceneRangeTests(app); DialogTests(app); app->EnglishUI() = 2;
+    MenuEntryTests(app);
+    CameraAndContinuityTests(app);
+    StillImageLanguageTests(app);
     seq::Options o; o.directory = output.wstring(); o.width = 64; o.height = 48; o.end = 1;
     for (int format = 0; format < std::size(seq::kFormats); ++format) {
         o.format = format; o.prefix = L"中文_" + std::to_wstring(format) + L"_";

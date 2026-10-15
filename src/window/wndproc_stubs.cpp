@@ -80,7 +80,7 @@ LRESULT CALLBACK RecWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     if (msg != WM_CLOSE && msg != WM_KEYDOWN)                    // 0x479DD0
-        return DefWindowProcA(hwnd, msg, wp, lp);
+        return DefWindowProcW(hwnd, msg, wp, lp);
     if (msg == WM_KEYDOWN && wp != 27 /*VK_ESCAPE*/)
         return 0;
     const int choice = ShowUiMessage(app, hwnd, UiMessage::StopRecording,

@@ -178,7 +178,7 @@ void FinishAviRecord(MMDApp* app, bool reachedRequestedEnd) {  // was Sub464A00
     s.state.frameStepPlayback = 0;
     if (!movError.empty()) MessageBoxW(static_cast<HWND>(s.Hwnd()), movError.c_str(), L"MOV export", MB_OK | MB_ICONERROR);
     if (!sequenceError.empty()) MessageBoxW(s.MainWindow(), sequenceError.c_str(),
-        image_sequence::Text(app, L"图片序列输出", L"Image sequence export", L"連番画像出力"), MB_OK | MB_ICONERROR);
+        image_sequence::Text(app, L"导出图片序列", L"Image sequence export", L"連番画像出力"), MB_OK | MB_ICONERROR);
     if (reachedRequestedEnd && (mfComplete || dshowComplete || movComplete || sequenceComplete) &&
         s.AviCloseAfterExport())
         PostMessageW(static_cast<HWND>(s.Hwnd()), WM_CLOSE, 0, 0);

@@ -318,7 +318,7 @@ static void AdvancePlaybackTracks(MMDApp* app, int advance, bool modelsEnabled) 
             frame = (std::floor(scaled) + 1.0) / 1000.0;
     }
 
-    const bool editGate = s.state.optflag[0] != 0 ||
+    const bool editGate = s.FrameStepPlayback() != 0 || s.state.optflag[0] != 0 ||
                           s.state.followCameraEnabled != 0;
 
     // ---- 4A. camera track (0x417656..0x417A48) ----------------------------

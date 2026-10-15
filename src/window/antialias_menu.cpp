@@ -23,24 +23,30 @@ bool Locate(HMENU menu,HMENU& result,int& index) {
 void Populate(MMDApp* app) {
     while(GetMenuItemCount(popup)>0)DeleteMenu(popup,0,MF_BYPOSITION);
     smaaPopup=nullptr;
+    const wchar_t* off=app->EnglishUI()==2?L"关闭":app->EnglishUI()==1?L"Off":L"オフ";
+    AppendMenuW(popup,MF_STRING,kOffCommand,off);
+    MENUITEMINFOW offItem{sizeof(offItem)};offItem.fMask=MIIM_FTYPE|MIIM_STATE;offItem.fType=MFT_RADIOCHECK;
+    offItem.fState=app->antialiasing.enabled?MFS_UNCHECKED:MFS_CHECKED;
+    SetMenuItemInfoW(popup,kOffCommand,FALSE,&offItem);
     const wchar_t* original=app->EnglishUI()==2?L"MMD 原始（MSAA）":app->EnglishUI()==1?L"MMD original (MSAA)":L"MMD オリジナル（MSAA）";
     const wchar_t* temporal=app->EnglishUI()==2?L"TAA（运动矢量）":app->EnglishUI()==1?L"TAA (motion vectors)":L"TAA（モーションベクトル）";
     // Keep serialized algorithm IDs stable; explicit MSAA counts remain readable
     // from older projects, but the menu exposes only the original MSAA choice.
     const struct { Algorithm algorithm; const wchar_t* label; } entries[]={
         {Algorithm::MmdOriginal,original},{Algorithm::Fxaa,L"FXAA"},{Algorithm::Taa,temporal}};
-    for(const auto& entry:entries) {
-        const auto command=kFirstCommand+unsigned(entry.algorithm);
-        AppendMenuW(popup,MF_STRING|(Supported(app,entry.algorithm)?MF_ENABLED:MF_GRAYED),command,entry.label);
-        MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_FTYPE;item.fType=MFT_RADIOCHECK;
-        SetMenuItemInfoW(popup,command,FALSE,&item);
-    }
-    // Legacy explicit counts belong to the same MSAA family. Choosing this
-    // entry explicitly restores the original hardware-negotiated sample count.
+    // Keep the selected algorithm while disabled; only Off is marked until
+    // the parent is enabled again. Explicit MSAA counts share the original row.
     const auto checked=app->antialiasing.algorithm<=Algorithm::Msaa8?
         Algorithm::MmdOriginal:app->antialiasing.algorithm;
-    CheckMenuRadioItem(popup,kFirstCommand,kFirstCommand+unsigned(Algorithm::Count)-1,
-        kFirstCommand+unsigned(checked),MF_BYCOMMAND);
+    for(const auto& entry:entries) {
+        const auto command=kFirstCommand+unsigned(entry.algorithm);
+        const bool supported=Supported(app,entry.algorithm);
+        AppendMenuW(popup,MF_STRING|(supported?MF_ENABLED:MF_GRAYED),command,entry.label);
+        MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_FTYPE|MIIM_STATE;item.fType=MFT_RADIOCHECK;
+        item.fState=(supported?MFS_ENABLED:MFS_GRAYED)|
+            (app->antialiasing.enabled && checked==entry.algorithm?MFS_CHECKED:MFS_UNCHECKED);
+        SetMenuItemInfoW(popup,command,FALSE,&item);
+    }
     smaaPopup=CreatePopupMenu();
     const Algorithm modes[]={Algorithm::SmaaStandard,Algorithm::Smaa,Algorithm::SmaaT2xStandard,Algorithm::SmaaT2xEnhanced};
     const wchar_t* chinese[]={L"SMAA 1x（标准）",L"SMAA 1x（斜线与拐角增强）",L"SMAA T2x（标准）",L"SMAA T2x（斜线与拐角增强）"};
@@ -52,14 +58,15 @@ void Populate(MMDApp* app) {
         AppendMenuW(smaaPopup,MF_STRING|(Supported(app,modes[i])?MF_ENABLED:MF_GRAYED),command,smaaLabels[i]);
         MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_FTYPE|MIIM_STATE;item.fType=MFT_RADIOCHECK;
         item.fState=(Supported(app,modes[i])?MFS_ENABLED:MFS_GRAYED)|
-            (app->antialiasing.algorithm==modes[i]?MFS_CHECKED:MFS_UNCHECKED);
+            (app->antialiasing.enabled && app->antialiasing.algorithm==modes[i]?MFS_CHECKED:MFS_UNCHECKED);
         SetMenuItemInfoW(smaaPopup,command,FALSE,&item);
     }
     MENUITEMINFOW smaa{sizeof(smaa)};smaa.fMask=MIIM_ID|MIIM_SUBMENU|MIIM_STRING|MIIM_FTYPE|MIIM_STATE;
     smaa.wID=kSmaaCommand;smaa.hSubMenu=smaaPopup;smaa.dwTypeData=const_cast<wchar_t*>(L"SMAA");
     smaa.fType=MFT_RADIOCHECK;
     smaa.fState=((Supported(app,Algorithm::Smaa) || Supported(app,Algorithm::SmaaStandard))?MFS_ENABLED:MFS_GRAYED)|
-        (app->antialiasing.algorithm>=Algorithm::Smaa && app->antialiasing.algorithm<Algorithm::Count?MFS_CHECKED:MFS_UNCHECKED);
+        (app->antialiasing.enabled && app->antialiasing.algorithm>=Algorithm::Smaa &&
+            app->antialiasing.algorithm<Algorithm::Count?MFS_CHECKED:MFS_UNCHECKED);
     InsertMenuItemW(popup,GetMenuItemCount(popup),TRUE,&smaa);
 }
 void Detach() {
@@ -115,14 +122,27 @@ bool HandleMessage(MMDApp* app,UINT message,WPARAM wp,LPARAM lp) {
     } else if(message==WM_EXITMENULOOP || message==WM_DESTROY) {
         Detach();if(message==WM_DESTROY)owner=nullptr;
     } else if(message==WM_COMMAND && HIWORD(wp)==0 &&
-              ((LOWORD(wp)>=kFirstCommand && LOWORD(wp)<kFirstCommand+unsigned(Algorithm::Count)) || LOWORD(wp)==kSmaaCommand)) {
+              ((LOWORD(wp)>=kFirstCommand && LOWORD(wp)<kFirstCommand+unsigned(Algorithm::Count)) ||
+               LOWORD(wp)==kSmaaCommand || LOWORD(wp)==kOffCommand)) {
         // The SMAA parent only opens its submenu. Ignore the former shortcut
         // command so stale queued input cannot apply a remembered variant.
         if(LOWORD(wp)==kSmaaCommand)return true;
         std::wstring error;
+        Initialize(app);
+        if(LOWORD(wp)==kOffCommand) {
+            if(app->antialiasing.enabled && !Toggle(app,error))
+                MessageBoxW(app->MainWindow(),error.c_str(),DialogTitle(app),MB_OK|MB_ICONERROR);
+            return true;
+        }
         const auto algorithm=Algorithm(LOWORD(wp)-kFirstCommand);
-        if(!Select(app,algorithm,error))
+        // Choosing an algorithm is also an explicit request to turn AA on.
+        // If activation fails, restore the former enabled state as well.
+        const bool wasEnabled=app->antialiasing.enabled;
+        app->antialiasing.enabled=true;
+        if(!Select(app,algorithm,error)) {
+            app->antialiasing.enabled=wasEnabled;ApplyRenderState(app);RefreshMenu(app);
             MessageBoxW(app->MainWindow(),error.c_str(),DialogTitle(app),MB_OK|MB_ICONERROR);
+        }
         return true;
     }
     return false;

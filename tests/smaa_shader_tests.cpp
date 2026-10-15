@@ -201,10 +201,14 @@ int main() {
     Check(close(temporalPixels[48*side+48],0x80640064),"T2x resolves exactly two static phases and restores image alpha");
     solid(0x8000c800,0x8000c800);temporalPixels=render();
     Check(close(temporalPixels[48*side+48],0x80006464),"third phase uses only the previous spatial frame, without recursive TAA history");
-    velocity(0,10,20);solid(0x80c80000,0x80c80000);temporalPixels=render();
+    velocity(0,10,5);solid(0x80c80000,0x80c80000);temporalPixels=render();
     Check(close(temporalPixels[48*side+48],0x80c80000),"T2x rejects history at disoccluded depth");
     velocity(0,0,10);solid(0x800000c8,0x800000c8);temporalPixels=render();
     Check(close(temporalPixels[48*side+48],0x800000c8),"T2x rejects newly drawn geometry without previous positions");
+    velocity(0,10,20);solid(0x80c80000,0x80c80000);temporalPixels=render();
+    Check(close(temporalPixels[48*side+48],0x80640064),"stationary edge blends the farther background seen by the other jitter phase");
+    velocity(0,10,0);solid(0x8000c800,0x8000c800);temporalPixels=render();
+    Check(close(temporalPixels[48*side+48],0x80646400),"stationary edge retains uncovered background phase");
     for(float pixels:{4.f,-4.f}) {
         submitted=0;velocity(pixels,10,10);solid(0x80c80000,0x800000c8);render();
         solid(0x8000c800,0x8000c800);temporalPixels=render();

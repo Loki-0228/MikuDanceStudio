@@ -96,24 +96,39 @@ float4 smaaTemporal(float2 uv : TEXCOORD0) : COLOR0 {
     current.a=alpha;
     if(smaaTemporalState.x<=0)return current;
     float4 velocity=tex2D(smaaSearch,currentUV);
+    float depthSlope=abs(ddx(velocity.w))+abs(ddy(velocity.w));
     if(velocity.z>0 && velocity.w<=0)return current;
+    bool uncovered=velocity.z<=0;
+    float fixedPriorDepth=tex2D(smaaPreviousDepth,clamp(uv+smaaSampleOffsets.zw,smaaBounds.xy,smaaBounds.zw)).z;
+    float coverageTolerance=max(smaaTemporalState.y,abs(fixedPriorDepth)*smaaTemporalState.z)+
+        min(depthSlope*.75,abs(fixedPriorDepth)*.01);
+    bool stationaryNeighbor=false;
     // A phase may uncover an edge pixel. Borrow only tracked neighboring
     // geometry, never another object's history through a transparent fragment.
     [unroll] for(int y=-1;y<=1;++y) [unroll] for(int x=-1;x<=1;++x) {
         float2 at=clamp(currentUV+float2(x,y)*smaaMetrics.xy,smaaBounds.xy,smaaBounds.zw);
         float4 candidate=tex2D(smaaSearch,at);
-        if(candidate.z>0 && (velocity.z<=0 || candidate.z<velocity.z))velocity=candidate;
+        stationaryNeighbor=stationaryNeighbor || (candidate.w>0 && all(candidate.xy==0) &&
+            fixedPriorDepth>0 && abs(candidate.w-fixedPriorDepth)<=coverageTolerance);
+        if(uncovered && candidate.z>0 && (velocity.z<=0 || candidate.z<velocity.z))velocity=candidate;
     }
     float2 previous=uv+velocity.xy+smaaSampleOffsets.zw;
     if(velocity.z<=0 || velocity.w<=0 || any(previous<smaaBounds.xy) || any(previous>smaaBounds.zw))return current;
     float tolerance=max(smaaTemporalState.y,abs(velocity.w)*smaaTemporalState.z);
-    float mismatch=abs(tex2D(smaaPreviousDepth,previous).z-velocity.w);
+    tolerance+=min(depthSlope*.75,abs(velocity.w)*.01);
+    float priorDepth=tex2D(smaaPreviousDepth,previous).z;
+    float mismatch=abs(priorDepth-velocity.w);
     [unroll] for(int dy=-1;dy<=1;++dy) [unroll] for(int dx=-1;dx<=1;++dx) {
         float2 at=clamp(previous+float2(dx,dy)*smaaMetrics.xy,smaaBounds.xy,smaaBounds.zw);
         float depth=tex2D(smaaPreviousDepth,at).z;
         if(depth>0)mismatch=min(mismatch,abs(depth-velocity.w));
     }
-    if(mismatch>tolerance)return current;
+    // The other phase may see background behind a stationary subpixel edge.
+    // A nearer sample needs a still-visible stationary neighbor at its depth.
+    // Moving or vanished occluders still reject history.
+    bool stationaryCoverage=all(velocity.xy==0) &&
+        (priorDepth<=0 || priorDepth>=velocity.w-tolerance || stationaryNeighbor);
+    if(mismatch>tolerance && !stationaryCoverage)return current;
     // Keep upstream's two-frame blend and velocity-change weight, with both
     // raw neighborhood images aligned to the fixed display pixel. History is
     // the previous neighborhood result, never the recursively resolved result.

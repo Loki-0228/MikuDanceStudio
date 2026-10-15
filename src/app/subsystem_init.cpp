@@ -59,7 +59,6 @@ void __cdecl WaveFeedThread(void* ctx) {
     IDirectSoundBuffer* buffer = audio->streamingBuffer;
     const DWORD avgBytes = audio->format.nAvgBytesPerSec;
     const std::int32_t bufBytes = audio->bufferBytes;
-    std::uint32_t& stop = audio->stopFlag;
     auto lock = [&](DWORD off, void** p1, DWORD* l1, void** p2,
                     DWORD* l2) -> HRESULT {
         HRESULT hr = buffer->Lock(off, avgBytes, p1, l1, p2, l2, 0);
@@ -73,7 +72,7 @@ void __cdecl WaveFeedThread(void* ctx) {
         buffer->Stop();                                        // 0x4C2F36
         buffer->Release();                                     // 0x4C2F4A
         audio->streamingBuffer = nullptr;                       // 0x4C2F4C
-        stop = 2;                                              // 0x4C2F53
+        SetWaveStopState(audio, 2); // Publish only after releasing the buffer.
         _endthread();
     };
 
@@ -91,7 +90,7 @@ void __cdecl WaveFeedThread(void* ctx) {
         buffer->Unlock(p1, l1, p2, l2);                        // 0x4C2D8B
         buffer->Play(0, 0, DSBPLAY_LOOPING);                   // 0x4C2D9C
         bool wrapped = false;                                  // 0x4C2DA7
-        if (stop != 1) {
+        if (WaveStopState(audio) != 1) {
             DWORD writeOff = l1;  // v3 seeded with the first lock length
             // ---- 2. streaming loop ----------------------------------------
             for (;;) {
@@ -123,12 +122,12 @@ void __cdecl WaveFeedThread(void* ctx) {
                     last = cur;
                     for (int i = 0; i < 10; ++i) {             // 0x4C2E9E
                         Sleep(10);
-                        if (stop == 1)
+                        if (WaveStopState(audio) == 1)
                             break;
                     }
-                } while (stop != 1);
+                } while (WaveStopState(audio) != 1);
                 // advance the write offset (0x4C2EC6..0x4C2F05)
-                if (stop != 1) {
+                if (WaveStopState(audio) != 1) {
                     if (l2 != 0) {
                         writeOff = l2;
                         wrapped = true;
@@ -141,7 +140,7 @@ void __cdecl WaveFeedThread(void* ctx) {
                             wrapped = false;
                         }
                     }
-                    if (stop != 1)
+                    if (WaveStopState(audio) != 1)
                         continue;
                 }
                 break;
@@ -219,7 +218,7 @@ void WaveSeekAndFeed(void* obj, double seconds) {  // was Sub4C34A0
         return;                                                 // 0x4C34AA
     const std::int32_t avgBytes = audio->format.nAvgBytesPerSec; // 0x4C34B1
     const std::int32_t blkAlign = audio->format.nBlockAlign;     // 0x4C34B7
-    audio->stopFlag = 0;                                        // 0x4C34BF
+    SetWaveStopState(audio, 0);
     audio->failureCount = 0;                                    // 0x4C34C9
     double avg = static_cast<double>(avgBytes);                 // 0x4C34D7 fild
     if (avgBytes < 0)                                           // 0x4C34DA jge
@@ -232,6 +231,14 @@ void WaveSeekAndFeed(void* obj, double seconds) {  // was Sub4C34A0
     HANDLE file = audio->fileHandle;                             // 0x4C3502
     SetFilePointer(file, dataOff - rem + whole, nullptr, FILE_BEGIN);
     audio->feedThread = _beginthread(WaveFeedThread, 0, obj);   // 0x4C3518
+    if (audio->feedThread == static_cast<std::uintptr_t>(-1)) {
+        // No worker will publish completion or release the buffer on failure.
+        // Do not let CloseDataFile wait for this invalid thread indefinitely.
+        audio->feedThread = 0;
+        audio->streamingBuffer->Release();
+        audio->streamingBuffer = nullptr;
+        SetWaveStopState(audio, 2);
+    }
 }
 
 // ---------------------------------------------------------------------------

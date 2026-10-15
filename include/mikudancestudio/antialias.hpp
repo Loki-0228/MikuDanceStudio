@@ -16,6 +16,7 @@ enum class Algorithm : unsigned {
 };
 inline constexpr unsigned kFirstCommand = 34900;
 inline constexpr unsigned kSmaaCommand = 34932;
+inline constexpr unsigned kOffCommand = 34933;
 struct Settings {
     Algorithm algorithm = Algorithm::MmdOriginal;
     Algorithm lastSmaaAlgorithm = Algorithm::Smaa;
@@ -42,6 +43,10 @@ unsigned AccumulatedSamples(MMDApp* app);
 unsigned RequiredSamples(MMDApp* app);
 void ResetHistory(MMDApp* app);
 void Release(MMDApp* app);
+// Native inverted-hull coverage on the active post-process scene. The caller
+// retains the original draw when this returns false (MSAA, disabled, or failure).
+bool DrawOutline(MMDApp* app, unsigned char* model, unsigned firstIndex,
+                 unsigned indexCount, const float* uniformColor);
 bool HandleMessage(MMDApp* app, UINT message, WPARAM wp, LPARAM lp);
 LRESULT CALLBACK MenuFilter(int code, WPARAM wp, LPARAM lp);
 // Owns a single-sample scene for post-process AA. MME sees one ordinary frame;

@@ -15,7 +15,7 @@
 namespace mikudancestudio::image_sequence {
 namespace {
 const wchar_t* Title(MMDApp* app) {
-    return Text(app, L"图片序列输出设置", L"Image Sequence Export Settings", L"連番画像出力設定");
+    return Text(app, L"导出图片序列", L"Export image sequence", L"連番画像出力");
 }
 void Error(HWND owner, MMDApp* app, const std::wstring& error) {
     MessageBoxW(owner, error.c_str(), Title(app), MB_OK | MB_ICONWARNING);
@@ -28,7 +28,7 @@ bool PickFolder(HWND owner, MMDApp* app, std::wstring& directory) {
         DWORD flags = 0;
         hr = picker->GetOptions(&flags);
         if (SUCCEEDED(hr)) hr = picker->SetOptions(flags | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR);
-        picker->SetTitle(Text(app, L"选择图片序列输出文件夹", L"Choose image sequence output folder", L"連番画像の出力フォルダーを選択"));
+        picker->SetTitle(Text(app, L"导出图片序列：选择文件夹", L"Choose image sequence output folder", L"連番画像の出力フォルダーを選択"));
         Microsoft::WRL::ComPtr<IShellItem> folder;
         if (!directory.empty() && SUCCEEDED(SHCreateItemFromParsingName(directory.c_str(),
             nullptr, IID_PPV_ARGS(&folder)))) picker->SetFolder(folder.Get());
@@ -116,7 +116,7 @@ INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wp, LPARAM lp) {
         label(FpsLabel, L"帧率", L"Frame rate", L"フレームレート");
         label(RangeLabel, L"输出帧范围", L"Frame range", L"出力フレーム範囲");
         label(panel::kAviCloseAfterExportCheckbox, L"导出成功后关闭 MMS", L"Close MMS after successful export", L"出力完了後に MMS を終了");
-        label(IDOK, L"开始输出", L"Export", L"出力開始");
+        label(IDOK, L"导出", L"Export", L"出力開始");
         label(IDCANCEL, L"取消", L"Cancel", L"キャンセル");
         c->updating = true;
         SendDlgItemMessageW(dialog, Prefix, EM_SETLIMITTEXT, 128, 0);
@@ -181,7 +181,7 @@ void RefreshMenu(MMDApp* app) {
     for (int i = 0; i < GetMenuItemCount(menu); ++i) {
         const HMENU popup = GetSubMenu(menu, i);
         if (!popup || GetMenuState(popup, 223, MF_BYCOMMAND) == UINT(-1)) continue;
-        const wchar_t* label = Text(app, L"图片序列输出(&I)…", L"Export image sequence(&I)…", L"連番画像出力(&I)…");
+        const wchar_t* label = Text(app, L"导出图片序列(&I)…", L"Export image sequence(&I)…", L"連番画像出力(&I)…");
         if (GetMenuState(popup, kMenuCommand, MF_BYCOMMAND) == UINT(-1))
             InsertMenuW(popup, 276, MF_BYCOMMAND | MF_STRING, kMenuCommand, label);
         else {
@@ -196,11 +196,13 @@ void RefreshMenu(MMDApp* app) {
 
 bool HandleCommand(MMDApp* app, unsigned command) {
     if (command != kMenuCommand) return false;
-    if (app->state.optflag[0] || app->PlaybackActive() || app->RecordingWindow() || Active(app)) return true;
+    // Export the scene in either editing mode, just like video export.
+    // CameraMode is an editor selection, not a playback/recording guard.
+    if (app->PlaybackActive() || app->RecordingWindow() || Active(app)) return true;
     DialogContext context{app};
     context.options.width = app->RenderWidth();
     context.options.height = app->RenderHeight();
-    context.options.end = static_cast<int>(DefaultEndFrame(app));
+    context.options.end = static_cast<int>(SceneEndFrame(app));
     context.options.directory = app->DirUser();
     if (!PickFolder(app->MainWindow(), app, context.options.directory)) return true;
     app->state.enterKeyState = 1;

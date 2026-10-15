@@ -11,6 +11,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <process.h>
 #include <vector>
 
 namespace mikudancestudio {
@@ -23,6 +24,19 @@ namespace fs = std::filesystem;
 namespace {
 unsigned creates = 0, errors = 0;
 bool failDevice = false;
+std::uintptr_t __cdecl FailFeedThread(void (__cdecl*)(void*), unsigned, void*) {
+    return static_cast<std::uintptr_t>(-1);
+}
+struct CompletionRace {
+    WaveAudioContext audio{};
+    HANDLE ready = nullptr;
+};
+unsigned __stdcall CompleteFeed(void* value) {
+    auto* race = static_cast<CompletionRace*>(value);
+    WaitForSingleObject(race->ready, INFINITE);
+    SetWaveStopState(&race->audio, 2);
+    return 0;
+}
 const wchar_t* menuPath = nullptr;
 decltype(&DirectSoundCreate) realCreate = nullptr;
 void Check(bool ok, const char* what) {
@@ -86,8 +100,32 @@ void Open(MMDApp* app, const fs::path& path) {
 }
 }
 int wmain(int argc, wchar_t** argv) {
-    if (argc != 2) return 2;
+    if (argc != 2 && argc != 3) return 2;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (argc == 3 && std::wcscmp(argv[2], L"--stop-race") == 0) {
+        CompletionRace race;
+        race.ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        Check(race.ready != nullptr, "create completion-race event");
+        for (int i = 0; i < 256; ++i) {
+            race.audio = {};
+            ResetEvent(race.ready);
+            HANDLE worker = reinterpret_cast<HANDLE>(
+                _beginthreadex(nullptr, 0, CompleteFeed, &race, 0, nullptr));
+            if (!worker) return 2;
+            race.audio.feedThread = reinterpret_cast<std::uintptr_t>(worker);
+            SetEvent(race.ready);
+            CloseDataFile(&race.audio);
+            if (WaitForSingleObject(worker, 1000) != WAIT_OBJECT_0) return 3;
+            CloseHandle(worker);
+            if (race.audio.feedThread || WaveStopState(&race.audio) != 2) return 4;
+        }
+        CloseHandle(race.ready);
+        Check(true, "256 concurrent feed completion and cleanup cycles");
+        SetWaveStopState(&race.audio, 2);
+        RequestWaveStop(&race.audio);
+        Check(WaveStopState(&race.audio) == 2, "late stop request preserves published completion");
+        return 0;
+    }
     const fs::path directory = fs::absolute(argv[1]);
     fs::create_directories(directory);
     const auto wave = directory / L"silent.wav";
@@ -120,6 +158,30 @@ int wmain(int argc, wchar_t** argv) {
     CmdOpenWave(app);
     Loaded(app);
     Check(creates == 1, "menu import creates device once");
+    if (argc == 3 && std::wcscmp(argv[2], L"--feed-failure") == 0) {
+        Hook(reinterpret_cast<void*>(&_beginthread), reinterpret_cast<void*>(&FailFeedThread));
+        WaveSeekAndFeed(app->Audio(), 0.0);
+        const bool noWorker = app->Audio()->feedThread == 0;
+        const bool released = WaveStopState(app->Audio()) == 2 && !app->Audio()->streamingBuffer;
+        std::puts("cleanup after injected feed-thread creation failure");
+        const auto started = GetTickCount64();
+        CloseDataFile(app->Audio());
+        Check(GetTickCount64() - started < 1000, "cleanup after failed feed start cannot hang");
+        Check(noWorker, "failed feed start does not leave a phantom worker");
+        Check(released, "failed feed start releases its buffer and publishes completion");
+        Check(MH_DisableHook(reinterpret_cast<void*>(&_beginthread)) == MH_OK,
+              "restore feed thread creation");
+        WaveRestartAt(app->Audio(), 0.0);
+        Sleep(40);
+        Check(app->Audio()->feedThread != 0, "audio seek recovers after failed feed start");
+        ResetAppState(app);
+        Empty(app);
+        ShutdownCleanup(app);
+        delete app;
+        g_Block = nullptr;
+        MH_Uninitialize();
+        return 0;
+    }
     WaveSeekAndFeed(app->Audio(), 0.0);
     Sleep(40);
     Check(app->Audio()->feedThread != 0, "silent playback starts feed thread");

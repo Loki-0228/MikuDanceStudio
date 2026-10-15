@@ -25,6 +25,8 @@ struct Options {
 };
 const wchar_t* Text(MMDApp*, const wchar_t* zh, const wchar_t* en, const wchar_t* ja);
 std::uint32_t DefaultEndFrame(MMDApp*);
+// Actual scene tracks and audio, independent of the editor's playback range.
+std::uint32_t SceneEndFrame(MMDApp*);
 std::uint64_t FrameCount(const Options&);
 std::wstring FramePath(const Options&, std::uint64_t number);
 bool Validate(MMDApp*, const Options&, std::wstring& error);

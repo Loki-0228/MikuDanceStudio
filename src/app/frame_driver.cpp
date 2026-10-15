@@ -527,11 +527,26 @@ void FrameDriver(MMDApp* app) {
 
         s.state.playbackActive = 1;
         UpdateBoneFrames(app);                                    // 0x433A40
+        // Initialize the first output sample even when the editing playhead
+        // already equals the export start (including frame zero).
+        PlaybackPoseAdvance(app, 0);
+        s.state.timelineAdvanceDue = 0;
+        s.state.timelineAdvanceRequested = 0;
         s.state.recordedFrameCount = 0;
         EnableWindow(GetDlgItem(static_cast<HWND>(s.Hwnd()), panel::kPlayButton),
                      FALSE);
         s.state.recordPlaybackStartPending = 0;
     }
+
+    // Export time follows the output FPS; disk/encoder latency must not become
+    // the elapsed time supplied to effects and physics plugins.
+    struct RestoreDelta {
+        MMDApp& app;
+        float value;
+        ~RestoreDelta() { app.DeltaTime() = value; }
+    } restoreDelta{s, s.DeltaTime()};
+    if (s.FrameStepPlayback() && s.PlaybackActive() && s.AviRecordFps() > 0)
+        s.DeltaTime() = 1.0f / s.AviRecordFps();
 
 
     AdvanceFrameRenderGate(app);

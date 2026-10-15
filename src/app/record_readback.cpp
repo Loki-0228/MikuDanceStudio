@@ -295,7 +295,7 @@ bool RecordingReadbackPass(MMDApp* app) {
         if (image_sequence::WriteFrame(app, *rtSlot, error)) return true;
         FinishAviRecord(app);
         MessageBoxW(s.MainWindow(), error.c_str(), image_sequence::Text(app,
-            L"图片序列输出", L"Image sequence export", L"連番画像出力"), MB_OK | MB_ICONERROR);
+            L"导出图片序列", L"Image sequence export", L"連番画像出力"), MB_OK | MB_ICONERROR);
         return false;
     }
 

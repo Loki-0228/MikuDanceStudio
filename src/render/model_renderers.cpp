@@ -3,6 +3,7 @@
 #include "mikudancestudio/native_mesh.hpp"
 #include "mikudancestudio/deformed_mesh_capture.hpp"
 #include "mikudancestudio/perf_timing.hpp"
+#include "mikudancestudio/antialias.hpp"
 // ===========================================================================
 // VA 0x00425D20 / 0x00426CD0 / 0x004277E0 - model and shadow render passes
 // ===========================================================================
@@ -2135,8 +2136,12 @@ void DrawModelEdgeGeometry(MMDApp* app, unsigned char* model,
             device->SetFVF(66);
             device->SetStreamSource(0, vb, 0, 16);
             device->SetIndices(ib);
-            device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0,
-                state.vertexCount, firstIndex, count / 3);
+            const float defaultColor[]={app->ModelOutlineColorRed()*(1.f/256.f),
+                app->ModelOutlineColorGreen()*(1.f/256.f),app->ModelOutlineColorBlue()*(1.f/256.f),1};
+            const float* color=effectEdge?(pmx && sub->postProcessEnabled?record.edgeColor:defaultColor):nullptr;
+            if(projectedShadow || !antialias::DrawOutline(app,model,firstIndex,count,color))
+                device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0,
+                    state.vertexCount, firstIndex, count / 3);
         }
         firstIndex += count;
     }

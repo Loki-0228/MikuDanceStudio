@@ -3,6 +3,7 @@
 本页按功能归并实现、诊断与验收资料。各记录中的「当前」「已完成」只适用于其注明的源码、构建和测试条件；当前使用入口见[文档导航](../README.md)。
 
 ## 记录索引
+- [v2026.10.15.2-pre.1 预发布说明](#release-v2026-10-15-2-pre-1)
 - [v2026.10.15.1 发布说明](#release-v2026-10-15-1)
 - [MikuDanceStudio v2026.10.14.6 release notes / 发布说明 / リリースノート](#release-v2026-10-14-6)
 - [共享阴影滤波修复](#record-release-notes-shared)
@@ -11,6 +12,103 @@
 - [v2026.10.11.3 构建与发布记录](#record-release-3)
 - [v2026.10.11.2 构建与发布记录](#record-release-2)
 - [MMS 原生媒体导入与导出](#record-native-media)
+
+<a id="release-v2026-10-15-2-pre-1"></a>
+
+<!-- release-notes:v2026.10.15.2-pre.1:begin -->
+## MikuMikuStudio v2026.10.15.2-pre.1
+
+Windows x64 · 预发布 / Prerelease / プレリリース
+
+[中文](#release-v2026-10-15-2-pre-1-zh) | [English](#release-v2026-10-15-2-pre-1-en) | [日本語](#release-v2026-10-15-2-pre-1-ja)
+
+<a id="release-v2026-10-15-2-pre-1-zh"></a>
+
+### 中文
+
+本预发布包含自 `v2026.10.15.1` 以来的更新。
+
+#### 更新内容
+
+- 修复完整包中点击「打开」无法直接弹出文件选择窗口，以及点击「导出图片序列」没有反应的问题。打开菜单右侧箭头仍可展开最近工程。
+- 图片序列按视频录制流程连续导出，第 0 帧使用动画摄像机位置。特效和物理按输出帧率推进，同一帧的抗锯齿预热不重复推进特效时间，避免磁盘写入耗时导致画面不连贯。
+- 「导出图片序列」窗口布局更紧凑，默认帧范围自动取自场景中的有效关键帧和音频时长，无需额外检测按钮。统一中文菜单与窗口用语，并修复单张图片导出窗口在中文、英文和日文模式下的标题乱码。
+- 修复完整包中动作和镜头文件位于含中文等 Unicode 字符的文件夹时无法导入的问题。最小包继续遵守原版 CP932 名称和路径限制，并在导入时检查名称、引用和字段长度。
+- 抗锯齿子菜单新增「关闭」，与一级开关同步。关闭后记住上次算法，再次开启时恢复；直接选择算法也会开启抗锯齿。
+- 调整原生细描边的覆盖和透明度，减少粗细偏差，并改进 TAA、SMAA T2x 的静止边缘稳定性。已回退导致画面明显变模糊的 FXAA 实验。
+- 修复停止音频时的线程状态竞争，以及音频线程启动失败后可能无法结束的问题。
+- 保留 MME 特效指定的固定阴影贴图尺寸，修复附件绘制顺序和编辑选中项的保持问题。
+
+#### 已知限制
+
+FXAA 仍可能出现细描边断裂，TAA、SMAA T2x 在部分边缘仍可能波动。本版未完全解决这些问题，也未加入 DLSS、FSR 或 XeSS。此前白屏与摄像机崩溃报告缺少原始工程，尚不能确认已消除该报告中的全部故障。
+
+#### 下载与使用
+
+通常选择完整包。最小包保留原版 MMD 的功能范围及编码限制，不包含完整包的扩展编辑与导出功能。分别解压到独立目录后运行 `MikuMikuDance.exe`。模型、个人设置、MME、MMV 和 FFmpeg 需自行准备。
+
+#### NVIDIA 修复安装（可选）
+
+两个主程序包均不附带 NVIDIA 修复插件。需要时单独下载 `MMSNvidiaAAFix.dll`，放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作，删除 DLL 不会撤销已安装的设置。
+
+<a id="release-v2026-10-15-2-pre-1-en"></a>
+
+### English
+
+This prerelease includes the changes since `v2026.10.15.1`.
+
+#### What's new
+
+- Fixed clicks on **Open** failing to show the file picker and **Export image sequence** doing nothing in the full build. The arrow beside **Open** still opens recent projects.
+- Image sequences now follow continuous video recording, including the animated camera at frame 0. Effects and physics advance at the output frame rate; AA warm-up samples do not advance effect time again within a frame. Disk write delays no longer change the export clock.
+- Made the image-sequence dialog more compact. Its default range comes from active scene keyframes and audio duration, with no separate detection button. Unified the Chinese export labels and fixed the single-image export window title in Chinese, English, and Japanese.
+- Fixed motion and camera imports from folders containing Chinese or other Unicode characters in the full build. The minimal build retains the original CP932 limits and now validates names, references, and field lengths during import.
+- Added **Off** to the AA submenu and synchronized it with the main toggle. Turning AA off remembers the selected algorithm; turning it back on restores that selection. Choosing an algorithm also enables AA.
+- Adjusted native thin-outline coverage and opacity to reduce thickness differences, and improved stationary-edge stability in TAA and SMAA T2x. Reverted the FXAA experiments that made the image noticeably blurrier.
+- Fixed a thread-state race when stopping audio and a shutdown stall when the audio thread could not start.
+- Preserved fixed shadow-map sizes specified by MME effects and fixed accessory draw-order and editing-selection retention.
+
+#### Known limitations
+
+FXAA can still break thin outlines, and some edges can still fluctuate with TAA or SMAA T2x. These issues are not fully resolved. This version does not add DLSS, FSR, or XeSS. The original project for the reported white-screen camera crash was unavailable, so resolution of every failure in that report remains unconfirmed.
+
+#### Download and use
+
+Choose the full package for the features above. The minimal package retains the original MMD feature set and encoding limits, without the full build's extended editing and export features. Extract each package into a separate folder and run `MikuMikuDance.exe`. Models, personal settings, MME, MMV, and FFmpeg are not included.
+
+#### Optional NVIDIA fix
+
+Neither application package includes the NVIDIA fix. If needed, download `MMSNvidiaAAFix.dll` separately and place it beside the full build's EXE. Install it from **Help**, then restart MMS. Use **Help** to uninstall. Deleting the DLL does not remove an installed setting.
+
+<a id="release-v2026-10-15-2-pre-1-ja"></a>
+
+### 日本語
+
+`v2026.10.15.1` 以降の変更を含むプレリリース版です。
+
+#### 更新内容
+
+- 完全版で「開く」をクリックしてもファイル選択画面が表示されない問題と、連番画像出力が反応しない問題を修正しました。「開く」の右側の矢印からは引き続き最近使ったプロジェクトを選べます。
+- 連番画像を動画録画と同じ連続処理で出力し、0 フレーム目にもアニメーションのカメラを適用します。エフェクトと物理演算は出力フレームレートに従って進み、同一フレームの AA 初期化でエフェクト時間が重複して進むことを防ぎます。ディスクへの書き込み時間は出力時刻に影響しません。
+- 連番画像出力画面をコンパクトにしました。出力範囲の初期値は有効なシーンのキーフレームと音声の長さから求め、検出ボタンは不要です。中国語の表記を統一し、単一画像出力ウィンドウの中国語・英語・日本語タイトルの文字化けを修正しました。
+- 完全版で中国語などの Unicode 文字を含むフォルダーからモーションやカメラを読み込めない問題を修正しました。最小版は原版の CP932 制限を維持し、読込時に名前・参照先・フィールド長を検証します。
+- AA サブメニューに「オフ」を追加し、親メニューの切り替えと連動させました。オフにしても選択した方式を記憶し、再度オンにすると復元します。方式を選ぶ操作でも AA が有効になります。
+- 原生の細い輪郭線のカバレッジと不透明度を調整して太さの差を抑え、TAA と SMAA T2x の静止したエッジの安定性を改善しました。画像が大きくぼける FXAA の実験的変更は取り消しました。
+- 音声停止時のスレッド状態の競合と、音声スレッドの起動失敗時に終了できなくなる問題を修正しました。
+- MME エフェクトが指定した固定シャドウマップサイズを維持し、アクセサリの描画順と編集中の選択の保持を修正しました。
+
+#### 既知の制限
+
+FXAA では細い輪郭線が途切れる場合があり、TAA と SMAA T2x でも一部のエッジが変動する場合があります。これらの問題は完全には解決していません。DLSS・FSR・XeSS は追加していません。白画面とカメラのクラッシュに関する報告は元のプロジェクトを入手できず、報告されたすべての不具合が解消されたかは未確認です。
+
+#### ダウンロードと使い方
+
+通常は完全版を選んでください。最小版は原版 MMD の機能範囲と文字コード制限を維持し、完全版の拡張編集・出力機能を含みません。各パッケージを別のフォルダーに展開し、`MikuMikuDance.exe` を実行します。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。
+
+#### NVIDIA 修正の導入（任意）
+
+NVIDIA 修正プラグインは両方のパッケージに含まれません。必要な場合のみ `MMSNvidiaAAFix.dll` を別途ダウンロードし、完全版の EXE と同じフォルダーに置きます。ヘルプからインストールして MMS を再起動してください。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
+<!-- release-notes:v2026.10.15.2-pre.1:end -->
 
 <a id="release-v2026-10-15-1-pre-1"></a>
 <a id="release-v2026-10-15-1"></a>

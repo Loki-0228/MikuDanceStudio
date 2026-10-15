@@ -55,6 +55,7 @@ using CreateEffectFile = HRESULT(WINAPI*)(IDirect3DDevice9*, LPCWSTR,
     const ShaderMacro*, void*, DWORD, void*, void**, void**);
 CreateEffectFile originalCompile = nullptr;
 unsigned fileEffectCompiles = 0;
+std::vector<IUnknown*> sequenceClockEffects;
 HRESULT WINAPI ObserveCompile(IDirect3DDevice9* device, LPCWSTR path,
     const ShaderMacro* macros, void* include, DWORD flags, void* pool,
     void** effect, void** errors) {
@@ -63,6 +64,10 @@ HRESULT WINAPI ObserveCompile(IDirect3DDevice9* device, LPCWSTR path,
     std::printf("COMPILE path=%s result=%08lx\n", utf8.c_str(), static_cast<unsigned long>(result));
     if (std::filesystem::path(path).filename() == L"assigned.fx" && SUCCEEDED(result)) ++emdEffectCompiles;
     if (SUCCEEDED(result)) ++fileEffectCompiles;
+    if (SUCCEEDED(result) && std::filesystem::path(path).filename() == L"sequence-clock.fx") {
+        auto* object = static_cast<IUnknown*>(*effect); object->AddRef();
+        sequenceClockEffects.push_back(object);
+    }
     return result;
 }
 decltype(&ShowWindow) originalShow;
@@ -490,6 +495,7 @@ void CALLBACK Probe(HWND, UINT, UINT_PTR timer, DWORD) {
 #include "viewport_panel_checks.hpp"
 #include "antialias_scene_checks.hpp"
 #include "antialias_startup_checks.hpp"
+#include "outline_coverage_scene_checks.hpp"
 #include "mme_ground_shadow_checks.hpp"
 #include "effect_file_watch_checks.hpp"
 ULONGLONG startupClock = 0;
@@ -499,6 +505,7 @@ void StartupLog(const char* format, ...) noexcept {
     std::putchar('\n');
 }
 }
+#include "mme_sequence_clock_checks.hpp"
 int wmain(int argc, wchar_t** argv) {
     Check(argc >= 2 && argc <= 4, "model path supplied");
     bilingualFixture = argc == 3 && std::wcscmp(argv[2], L"--bilingual") == 0;
@@ -551,7 +558,8 @@ int wmain(int argc, wchar_t** argv) {
     const bool emmLoad = argc == 4 && std::wcscmp(argv[2], L"--emm-load") == 0;
     const bool aaScene = argc == 4 && std::wcscmp(argv[2], L"--antialias-scene") == 0;
     const bool groundShadow = argc == 4 && std::wcscmp(argv[2], L"--ground-shadow") == 0;
-    if (emdAutoload || fileWatch || emmLoad || aaScene || groundShadow || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
+    const bool sequenceClock = argc == 4 && std::wcscmp(argv[2], L"--sequence-clock") == 0;
+    if (sequenceClock || emdAutoload || fileWatch || emmLoad || aaScene || groundShadow || (argc == 4 && std::wcscmp(argv[2], L"--surface-grid") == 0)) {
         auto* compile = reinterpret_cast<void*>(GetProcAddress(d3dx::Get().module, "D3DXCreateEffectFromFileW"));
         Check(compile && MH_CreateHook(compile, &ObserveCompile, reinterpret_cast<void**>(&originalCompile)) == MH_OK &&
               MH_EnableHook(compile) == MH_OK, "observe actual MME effect compilation");
@@ -577,6 +585,12 @@ int wmain(int argc, wchar_t** argv) {
     } else LoadModelFile(app, argv[1], false);
     Check(app->SelectedModel() != nullptr, "load textured PMX");
     for (int i = 0; i < 3; ++i) { app->DeltaTime() = 1.f / 30; app->state.messageSeen = 10; FrameDriver(app); }
+    if (sequenceClock) {
+        CheckMmeSequenceClock(app, argv[3]);
+        for (auto* effect : sequenceClockEffects) effect->Release();
+        sequenceClockEffects.clear();
+        ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
     if (fileWatch) {
         CheckEffectFileWatch(app, argv[3]);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
@@ -632,6 +646,14 @@ int wmain(int argc, wchar_t** argv) {
         captureDirectory = argv[3];
         CheckSurfaceGrid(app);
         ShutdownCleanup(app); delete app; g_Block = nullptr; UnhookWindowsHookEx(guard); return 0;
+    }
+    if (argc == 4 && std::wcscmp(argv[2], L"--outline-coverage") == 0) {
+        CheckOutlineCoverage(app,argv[3]);
+        ShutdownCleanup(app);delete app;g_Block=nullptr;UnhookWindowsHookEx(guard);return 0;
+    }
+    if (argc == 4 && std::wcscmp(argv[2], L"--outline-stability") == 0) {
+        CheckOutlineStability(app,argv[3]);
+        ShutdownCleanup(app);delete app;g_Block=nullptr;UnhookWindowsHookEx(guard);return 0;
     }
     if (argc >= 3 && std::wcscmp(argv[2], L"--outline-antialias") == 0) {
         if (argc == 4) captureDirectory = argv[3];

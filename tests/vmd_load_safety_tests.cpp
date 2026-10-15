@@ -10,12 +10,15 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <clocale>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <filesystem>
+#include <fstream>
 #include <io.h>
 #include <memory>
 #include <share.h>
@@ -220,6 +223,72 @@ struct Fixture {
         }
     }
 };
+
+void UnicodePaths(bool camera) {
+    namespace fs = std::filesystem;
+    const std::wstring previousLocale = _wsetlocale(LC_ALL, nullptr);
+    const auto root = fs::temp_directory_path() /
+        (L"MMS-vmd-path-" + std::to_wstring(GetCurrentProcessId()));
+    Check(fs::create_directory(root), "create Unicode path test root");
+    unsigned caseNumber = 0;
+    for (const wchar_t* locale : {L"japanese", L""}) {
+        Check(_wsetlocale(LC_ALL, locale) != nullptr, "set production or system CRT locale");
+        for (const wchar_t* folder : {L"中文目录", L"plain", L"混合_髪_무대_😀"}) {
+            const auto directory = root / folder;
+            Check(fs::create_directory(directory), "create motion directory");
+            for (const wchar_t* name : {L"motion.vmd", L"动作与镜头_😀.vmd"}) {
+                Fixture fixture(camera);
+                Motion motion(2, camera);
+                if (!camera) {
+                    // Scale data reopens the VMD; it must receive the same
+                    // Unicode path as the standard bone and morph reader.
+                    bone_scale_io::PrefixFingerprint fingerprint;
+                    fingerprint.Append(motion.bytes.data(), motion.bytes.size());
+                    bone_scale_io::VmdExtension extension;
+                    extension.prefixBytes = fingerprint.bytes();
+                    extension.prefixCrc32 = fingerprint.crc32();
+                    bone_scale_io::VmdExtension::Entry entry;
+                    std::memcpy(entry.name.data(), "bone", 4);
+                    entry.scale.v[0] = entry.scale.v[4] = entry.scale.v[8] = 2;
+                    extension.entries.push_back(entry);
+                    const auto tail = bone_scale_io::EncodeExtension(extension);
+                    motion.bytes.insert(motion.bytes.end(), tail.begin(), tail.end());
+                    Put(motion.bytes, std::uint64_t(tail.size()));
+                    Text(motion.bytes, "MDSXVMDX", 8);
+                }
+                const auto path = directory / name;
+                {
+                    std::ofstream file(path, std::ios::binary);
+                    file.write(reinterpret_cast<const char*>(motion.bytes.data()), motion.bytes.size());
+                    file.close();
+                    Check(bool(file), "write Unicode VMD fixture");
+                }
+                std::printf("VMD path case %u: camera=%d ACP=%u locale=%ls\n",
+                            ++caseNumber, camera, GetACP(), _wsetlocale(LC_ALL, nullptr));
+                std::fflush(stdout);
+                // Shared production entry for the file dialog and file drop.
+                LoadVmdFile(path.c_str());
+                if (camera) {
+                    Check(fixture.cameraKeys[0].distance == -25 && fixture.cameraKeys[0].fov == 50,
+                          "Unicode path imports camera keys");
+                    Check(fixture.lightKeys[0].color[0] == .2f && fixture.shadowKeys[0].mode == 2,
+                          "Unicode path imports light and shadow keys");
+                } else {
+                    Check(fixture.boneKeys[0].position[0] == 7 && fixture.morphKeys[1].value == .75f,
+                          "Unicode path imports bone and morph keys");
+                    Check(bone_scale::Key(fixture.Raw(), 0).v[0] == 2,
+                          "Unicode path imports the scale extension");
+                }
+                Check(fs::remove(path), "remove Unicode VMD fixture");
+            }
+            Check(fs::remove(directory), "remove motion directory");
+        }
+    }
+    Check(fs::remove(root), "remove Unicode path test root");
+    Check(_wsetlocale(LC_ALL, previousLocale.c_str()) != nullptr, "restore CRT locale");
+}
+void UnicodeMotionPaths() { UnicodePaths(false); }
+void UnicodeCameraPaths() { UnicodePaths(true); }
 
 void ForceMorphPaste() {
     Fixture fixture;
@@ -608,7 +677,7 @@ int main(int argc, char** argv) {
         Benchmark(warmup, iterations); return 0;
     }
     struct Case { const char* name; void (*run)(); };
-    const Case cases[]{{"unicode", UnicodeIdentity}, {"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}, {"twist", FixedAxisRotations}, {"force-morph", ForceMorphPaste}};
+    const Case cases[]{{"path-motion", UnicodeMotionPaths}, {"path-camera", UnicodeCameraPaths}, {"unicode", UnicodeIdentity}, {"overflow", Overflow}, {"short", ShortReads}, {"counts", Counts}, {"valid", Valid}, {"tails", Tails}, {"camera", Camera}, {"ik", Ik}, {"twist", FixedAxisRotations}, {"force-morph", ForceMorphPaste}};
     if (argc == 3 && std::strcmp(argv[1], "--case") == 0) {
         for (const auto& test : cases) if (std::strcmp(argv[2], test.name) == 0) { test.run(); std::printf("VMD %s: passed\n", test.name); return 0; }
         return 2;

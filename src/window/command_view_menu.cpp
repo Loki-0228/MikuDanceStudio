@@ -406,9 +406,6 @@ static const char kCaptionPhysEngineJp[] =
 static const char kCaptionCreateWndJp[] =
     "\x98\x5E\x89\xE6\x83\x45\x83\x42\x83\x93\x83\x68\x83\x45\x8D\xEC"
     "\x90\xAC";
-// 0x52F1C0: window title "描画中(0 frame)" (ANSI)
-static const char kRecWndTitle[] =
-    "\x98\x5E\x89\xE6\x92\x86(0 frame)";
 // 0x52E2F4: "モデルを選択していないとoniデータは読めません"
 static const char kMsgOpenOniJp[] =
     "\x83\x4A\x83\x81\x83\x89\x81\x45\x8F\xC6\x96\xBE\x83\x82\x81\x5B"
@@ -2384,8 +2381,14 @@ void CmdViewMenu(MMDApp* app, HWND hwnd, std::uint16_t id,
         rc.right = renderW;
         rc.bottom = renderH;
         AdjustWindowRect(&rc, WS_POPUP | WS_CAPTION, FALSE);
-        HWND recWnd = CreateWindowExA(
-            0, "RecWindow", kRecWndTitle, 0x80C80000,
+        // A Shift-JIS title passed to an ANSI window was decoded using the
+        // system code page and ignored the selected UI language.
+        wchar_t title[96]{};
+        swprintf_s(title, app->EnglishUI() == 2 ? L"正在导出图片（第 %d 帧）" :
+            english ? L"Exporting image (frame %d)" : L"画像出力中（%d フレーム）",
+            app->CurrentFrame());
+        HWND recWnd = CreateWindowExW(
+            0, L"RecWindow", title, 0x80C80000,
             app->SidebarWidth() + 0x32, 0x64,
             rc.right - rc.left, rc.bottom - rc.top, hwnd, nullptr, hInst,
             nullptr);

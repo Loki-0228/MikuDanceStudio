@@ -318,7 +318,7 @@ void PlaybackCatchup(MMDApp* app, unsigned char selActive) {
         wchar_t buf[0x100];
         if (image_sequence::Active(app)) {
             swprintf_s(buf, image_sequence::Text(app,
-                L"正在输出图片序列：第 %d 张（时间轴 %d / %d 帧）",
+                L"正在导出图片序列：第 %d 张（时间轴 %d / %d 帧）",
                 L"Exporting image %d (timeline frame %d / %d)",
                 L"連番画像出力中：%d 枚（フレーム %d / %d）"),
                 n + 1, shown, s.AviRecordEndFrame());
