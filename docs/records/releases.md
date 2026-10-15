@@ -13,6 +13,7 @@
 - [MMS 原生媒体导入与导出](#record-native-media)
 
 <a id="release-v2026-10-15-1-pre-1"></a>
+
 <!-- prerelease-notes:v2026.10.15.1-pre.1:begin -->
 ## MikuMikuStudio v2026.10.15.1-pre.1
 
@@ -37,7 +38,6 @@ Windows 无法解码的格式（如部分 10-bit H.264）需要另行提供 FFmp
 
 本轮验证覆盖两种构建档编译、最小版界面、连续删除与撤销、框选、镜头与焦点、坐标状态、PMM 保存重开、散布、缩放编辑、H.264 与 4K 定位、视频播放中动作和物理推进，以及实际录制输出。曲线数值、同步和密集播放回归通过。三个既有界面测试目标仍失败：`animation_curve_host_tests` 的标签重绘、`animation_curve_editor_tests` 的左箭头平移，以及 `morph_curve_host_ui_tests` 的拖帧和按钮位置。这些断言在修改前基线日志中同样失败，预发布未宣称全部测试通过。外部 MMD 9.32 往返及所有 MME 特效组合未在本轮复测。
 
-<a id="nvidia-fix-zh"></a>
 #### NVIDIA 修复安装（可选）
 
 将独立下载的 `MMSNvidiaAAFix.dll` 放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作；删除 DLL 不会撤销已安装的设置。
@@ -60,7 +60,6 @@ Formats unsupported by Windows, including some 10-bit H.264 files, require a sep
 
 Builds and the targeted editing, media, playback, undo, and persistence checks passed. Three existing UI test targets still fail on label repaint, left-arrow panning, and morph-panel drag/layout assertions. The same failures occur in the recorded baseline. This candidate does not claim a fully passing test suite. Original MMD round trips and every MME effect combination were not retested.
 
-<a id="nvidia-fix-en"></a>
 #### Optional NVIDIA fix
 
 Place the separately downloaded `MMSNvidiaAAFix.dll` beside the full build's EXE. Install it from **Help**, then restart MMS. Use Help to uninstall; deleting the DLL does not remove an installed setting.
@@ -82,7 +81,7 @@ Place the separately downloaded `MMSNvidiaAAFix.dll` beside the full build's EXE
 Windows が対応しない一部の 10-bit H.264 などには、別途 FFmpeg が必要です。検索順は実行ファイル横の `tools/ffmpeg.exe`、`ffmpeg.exe`、`PATH` です。プレビューは 8-bit RGB に変換します。最小版の背景動画は AVI のままです。
 
 両構成のビルドと、対象の編集・メディア・再生・取り消し・保存の検証は通過しました。ラベル再描画、左矢印の移動、表情パネルのドラッグと配置に関する既存の UI テスト 3 件は、変更前の基準ログと同様に失敗しています。全テスト通過は主張しません。原版 MMD との往復保存や、すべての MME エフェクトの組み合わせは今回再検証していません。
-<a id="nvidia-fix-ja"></a>
+
 #### NVIDIA 修正の導入（任意）
 
 別途ダウンロードした `MMSNvidiaAAFix.dll` を完全版の EXE と同じフォルダーに置き、ヘルプからインストールして MMS を再起動します。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
