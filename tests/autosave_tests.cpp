@@ -15,9 +15,29 @@
 #include <fstream>
 #include <thread>
 #include <cstdio>
+#include <cstdlib>
+#include <new>
 #include <fcntl.h>
 #include <io.h>
 #include <share.h>
+
+// Affect only this test thread, and only while an explicit failure probe runs.
+// The production path still performs its real std::filesystem/string work.
+namespace autosave_allocation_fault {
+thread_local bool enabled = false;
+thread_local unsigned failures = 0;
+void* Allocate(std::size_t bytes) {
+    if (enabled) { ++failures; throw std::bad_alloc(); }
+    if (void* p = std::malloc(bytes ? bytes : 1)) return p;
+    throw std::bad_alloc();
+}
+}
+void* operator new(std::size_t bytes) { return autosave_allocation_fault::Allocate(bytes); }
+void* operator new[](std::size_t bytes) { return autosave_allocation_fault::Allocate(bytes); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 using namespace mikudancestudio;
 namespace fs = std::filesystem;
@@ -25,24 +45,73 @@ namespace as = mikudancestudio::autosave;
 namespace {
 unsigned checks = 0, warnings = 0;
 bool expectedWarning = false, crashChild = false;
-fs::path root;
+bool expectedFullWarning = false;
+bool failFullWarningCreation = false;
+unsigned failedFullWarnings = 0;
+unsigned fullWarnings = 0;
+std::wstring fullWarningText;
+fs::path root, crashDirectory;
 void Check(bool good, const char* reason) {
     ++checks;
     if (!good) { std::printf("FAIL %s\n", reason); std::exit(1); }
+}
+template<class Operation>
+void FailNextAllocation(Operation operation, const char* reason) {
+    const auto before = autosave_allocation_fault::failures;
+    bool escaped = false;
+    autosave_allocation_fault::enabled = true;
+    try { operation(); } catch (...) { escaped = true; }
+    autosave_allocation_fault::enabled = false;
+    Check(autosave_allocation_fault::failures > before, "failure probe reached a real C++ allocation");
+    Check(!escaped, reason);
 }
 std::string Bytes(const fs::path& path) {
     std::ifstream stream(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(stream), {}};
 }
-int WINAPI MessageW(HWND, LPCWSTR text, LPCWSTR title, UINT) {
+int WINAPI MessageW(HWND owner, LPCWSTR text, LPCWSTR title, UINT flags) {
     if (crashChild && title && wcsstr(title, L"Fatal error")) {
-        const auto backups = as::Backups(as::Current().directory);
+        const auto backups = as::Backups(crashDirectory);
         Check(backups.size() == 1 && backups[0].filename().wstring().find(L"_crash.pmm") != std::wstring::npos,
             "production unhandled exception filter saved a crash backup before reporting");
         Check(Bytes(root / L"工程原稿.pmm") == Bytes(root / L"original-before-crash.bin"), "crash preserved manual project bytes");
+        Check(fs::path(as::Current().directory) == crashDirectory || as::Backups(as::Current().directory).empty(),
+            "crash backup ignores the periodic autosave folder override");
+        unsigned logs = 0;
+        for (const auto& entry : fs::directory_iterator(crashDirectory)) {
+            if (entry.path().extension() != L".log") continue;
+            const auto log = Bytes(entry.path());
+            Check(entry.path().filename().wstring().find(L"error-") == 0 &&
+                log.find("0xE1234567") != std::string::npos && log.find("crash_backup=") != std::string::npos &&
+                log.find("CRASH_BACKUP saved") != std::string::npos, "persisted error log includes exception and backup result");
+            Check(text && wcsstr(text, entry.path().c_str()), "fatal dialog identifies the saved error log");
+            ++logs;
+        }
+        Check(logs == 1, "one timestamped error log saved in EXE backups");
         std::puts("PASS actual unhandled-exception recovery");
         // Only the disposable test child terminates; bypass the OS crash UI.
         TerminateProcess(GetCurrentProcess(), 0);
+    }
+    if (failFullWarningCreation) {
+        Check(owner == g_Block->MainWindow() && title && flags == (MB_OK | MB_ICONWARNING) &&
+            !wcscmp(title, as::Text(g_Block, L"备份文件夹已满", L"Backup folder is full",
+                L"バックアップフォルダーがいっぱいです")), "failed window creation probe reached only the capacity warning");
+        ++failedFullWarnings;
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return 0;
+    }
+    if (expectedFullWarning) {
+        ++fullWarnings;
+        Check(fullWarnings == 1, "full warning appears at most once per process");
+        Check(owner == g_Block->MainWindow(), "full warning belongs to the main window");
+        Check(flags == (MB_OK | MB_ICONWARNING), "full warning is informational and does not change backup policy");
+        const auto language = g_Block->EnglishUI();
+        Check(title && std::wstring(title) == (language == 2 ? L"备份文件夹已满" : language == 0 ?
+            L"バックアップフォルダーがいっぱいです" : L"Backup folder is full"), "full warning caption follows UI language");
+        fullWarningText = text ? text : L"";
+        as::Tick(g_Block, GetTickCount64());
+        Check(fullWarnings == 1, "nested idle work does not repeat the modal warning");
+        return IDOK;
     }
     if (expectedWarning) { ++warnings; return IDOK; }
     std::fwprintf(stderr, L"FAIL unexpected message: %ls\n", text); std::exit(2);
@@ -70,11 +139,14 @@ void Configure(MMDApp* app, const as::Settings& value) {
     std::wstring error;
     Check(as::Configure(app, value, error), "persist autosave settings in isolated profile");
 }
-pmm_extension::Document Extension(const fs::path& path) {
+pmm_extension::Document Extension(const fs::path& path, bool manual = false) {
     int fd = -1;
     Check(!_wsopen_s(&fd, path.c_str(), _O_BINARY | _O_RDONLY, _SH_DENYWR, 0), "read snapshot");
     pmm_extension::Document document; std::uint64_t size;
-    Check(pmm_extension::Read(fd, document, size) == pmm_extension::ReadResult::Loaded, "snapshot extension has valid checksum");
+    const auto expected = manual && MMD_ORIGINAL_PROFILE ? pmm_extension::ReadResult::Absent :
+        pmm_extension::ReadResult::Loaded;
+    Check(pmm_extension::Read(fd, document, size) == expected,
+        "backup has a valid extension; manual save follows the selected profile format");
     _close(fd); return document;
 }
 std::wstring Title(HWND window) { wchar_t text[512]{}; GetWindowTextW(window, text, 512); return text; }
@@ -161,15 +233,27 @@ unsigned RedMenuPixels(MMDApp* app) {
     SelectObject(memory, old); DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(app->MainWindow(), dc);
     return red;
 }
+#include "autosave_warning_checks.hpp"
 }
 int wmain(int argc, wchar_t** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     Check(argc >= 2, "disposable artifact folder required"); root = fs::absolute(argv[1]);
+    wchar_t executable[32768]{};
+    Check(GetModuleFileNameW(nullptr, executable, 32768) != 0, "find actual test EXE");
+    crashDirectory = fs::path(executable).parent_path() / L"backups";
+    const std::wstring mode = argc == 3 ? argv[2] : L"";
+    const bool fullWarningMode = mode.find(L"--full-") == 0;
+    Check(fullWarningMode || !fs::exists(crashDirectory), "test requires a fresh isolated EXE directory");
     fs::create_directories(root);
     const auto config = root / L"autosave.ini";
     SetEnvironmentVariableW(L"MIKUDANCESTUDIO_AUTOSAVE_CONFIG", config.c_str());
     SetEnvironmentVariableW(L"LOCALAPPDATA", (root / L"profile").c_str());
-    const std::wstring mode = argc == 3 ? argv[2] : L"";
+    as::Result allocationResult = as::Result::Busy;
+    FailNextAllocation([&] { allocationResult = as::BackupNow(nullptr, true); },
+        "crash backup catches allocation failure during first settings load");
+    Check(allocationResult == as::Result::Failed, "failed initial settings load reports failed backup");
+    FailNextAllocation([&] { as::Tick(nullptr, GetTickCount64()); },
+        "idle processing catches allocation failure during first settings load");
     const bool defaultCrash = mode == L"--crash-default";
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Check(MH_Initialize() == MH_OK, "install background test guards");
@@ -185,6 +269,13 @@ int wmain(int argc, wchar_t** argv) {
     app->EnglishUI() = 2; RefreshMenuLanguage(app);
     SetWindowPos(app->MainWindow(), nullptr, 0, 0, 1600, 800, SWP_NOACTIVATE | SWP_NOZORDER);
     as::Initialize(app);
+    if (fullWarningMode) {
+        CheckFullWarnings(app, config, mode);
+        Check(!IsWindowVisible(app->MainWindow()), "warning test stays hidden");
+        as::Shutdown(); ShutdownCleanup(app); g_Block = nullptr; delete app; UnhookWindowsHookEx(hook);
+        std::printf("PASS backup full warning checks=%u\n", checks);
+        return 0;
+    }
     Check(!as::Current().enabled && as::Current().intervalMinutes == 1, "default off with one minute interval");
     as::Settings value; value.enabled = true; value.directory = (root / L"自动备份").wstring(); value.maxBackups = 2;
     if (!defaultCrash) Configure(app, value);
@@ -245,16 +336,21 @@ int wmain(int argc, wchar_t** argv) {
     CloseHandle(lock);
     { ScopedSceneMutation mutation(*app); Check(as::BackupNow(app) == as::Result::Busy, "partial project mutations defer backup"); }
     app->PlaybackActive() = 1; Check(as::BackupNow(app) == as::Result::Busy, "playback defers periodic backup"); app->PlaybackActive() = 0;
-    value.directory = (root / L"timer").wstring(); value.maxBackups = 10; value.overwriteOldest = false; Configure(app, value);
+    value.directory = (root / L"timer").wstring(); value.maxBackups = 1; value.overwriteOldest = false; Configure(app, value);
     const auto now = GetTickCount64();
     as::Tick(app, now + 59900); Check(as::Backups(value.directory).empty(), "one-minute timer does not save early");
-    as::Tick(app, now + 60001); Check(as::Backups(value.directory).size() == 1, "one-minute timer writes a backup when due");
+    expectedFullWarning = true;
+    as::Tick(app, now + 60001);
+    expectedFullWarning = false;
+    Check(as::Backups(value.directory).size() == 1, "one-minute timer writes a backup when due");
+    Check(fullWarnings == 1 && as::FolderFull(), "timer warns immediately when its new backup fills the folder");
     as::TryCrashBackup(EXCEPTION_STACK_OVERFLOW); as::TryCrashBackup(0xC0000374);
     std::thread worker([] { as::TryCrashBackup(EXCEPTION_ACCESS_VIOLATION); }); worker.join();
-    Check(as::Backups(value.directory).size() == 1, "unsafe heap/stack and foreign-thread faults skip crash serialization");
+    Check(as::Backups(value.directory).size() == 1 && !fs::exists(crashDirectory), "unsafe heap/stack and foreign-thread faults skip crash serialization");
     as::TryCrashBackup(EXCEPTION_ACCESS_VIOLATION);
-    backups = as::Backups(value.directory);
-    Check(backups.size() == 2 && backups.back().filename().wstring().find(L"_crash") != std::wstring::npos, "safe crash path adds a timestamped copy");
+    backups = as::Backups(crashDirectory);
+    Check(backups.size() == 1 && backups.back().filename().wstring().find(L"_crash") != std::wstring::npos &&
+        as::Backups(value.directory).size() == 1, "safe crash path uses EXE backups instead of the periodic folder");
     wcscpy_s(app->EnvFileName(), 256, backups.back().c_str());
     LoadSceneFile();
     Check(app->CurrentFrame() == 222 && app->CameraDistance() == -77, "production loader restores current frame and camera from crash backup");
@@ -263,8 +359,8 @@ int wmain(int argc, wchar_t** argv) {
     Check(Bytes(manual) == original, "roundtrip never touches the manual original");
     // An explicit Save of a recovered copy makes it a user-controlled file.
     app->SceneModified() = 1; SaveSceneFile(app);
-    Check(!pmm_extension::Find(Extension(backups.back()), as::kOwnershipKey), "manual save removes rotation ownership");
-    Check(as::Backups(value.directory).size() == 1, "manually saved recovered file is excluded from automatic rotation");
+    Check(!pmm_extension::Find(Extension(backups.back(), true), as::kOwnershipKey), "manual save removes rotation ownership");
+    Check(as::Backups(crashDirectory).empty(), "manually saved recovered file is excluded from automatic rotation");
     DialogTests(app);
     Check(warnings == 3, "invalid settings rejected in each language");
     value = as::Current(); value.enabled = false; Configure(app, value);
@@ -275,13 +371,15 @@ int wmain(int argc, wchar_t** argv) {
     as::Tick(app, GetTickCount64() + 180000);
     Check(as::Backups(value.directory).size() == beforeDisabled, "timer never saves when periodic checkbox is off");
     as::TryCrashBackup(EXCEPTION_ACCESS_VIOLATION);
-    Check(as::Backups(value.directory).size() == beforeDisabled + 1, "crash recovery remains armed after disabling periodic saving");
+    Check(as::Backups(crashDirectory).size() == 1 && as::Backups(value.directory).size() == beforeDisabled,
+        "crash recovery stays armed in EXE backups after disabling periodic saving");
     Check(Bytes(manual) == original, "always-on crash copy preserves manual original");
-    value.maxBackups = static_cast<unsigned>(beforeDisabled + 1); value.overwriteOldest = false; Configure(app, value);
+    value.maxBackups = static_cast<unsigned>(beforeDisabled); value.overwriteOldest = false; Configure(app, value);
     Check(as::FolderFull() && RedMenuPixels(app), "full-folder warning remains visible with periodic saving off");
-    Check(as::BackupNow(app, true) == as::Result::Full, "always-on recovery respects no-overwrite capacity policy");
+    value.maxBackups = 1; Configure(app, value);
+    Check(as::BackupNow(app, true) == as::Result::Full, "crash recovery respects its own folder's no-overwrite capacity policy");
     value.overwriteOldest = true; Configure(app, value);
-    Check(as::BackupNow(app, true) == as::Result::Saved && as::Backups(value.directory).size() == value.maxBackups,
+    Check(as::BackupNow(app, true) == as::Result::Saved && as::Backups(crashDirectory).size() == value.maxBackups,
         "crash recovery rotates old backups only when authorized");
     value.maxBackups = 3; Configure(app, value);
     const auto persisted = as::LoadSettings(config);

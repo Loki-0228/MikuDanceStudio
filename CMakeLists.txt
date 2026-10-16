@@ -28,14 +28,35 @@ option(MIKUDANCESTUDIO_ENABLE_DX12
     "Build optional DX12 skinning/native preview; OFF keeps the DX9/MME renderer with CPU skinning"
     ON)
 
+option(MIKUDANCESTUDIO_DEBUG_SYMBOLS "Generate separate Release PDB files" ON)
+option(MIKUDANCESTUDIO_WIN7_BASELINE "Require the pinned Windows 7 x64 CPU baseline" OFF)
+if(MIKUDANCESTUDIO_WIN7_BASELINE)
+    if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR
+       NOT CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL "19.44.35229.0")
+        message(FATAL_ERROR "Win7 baseline requires x64 MSVC 19.44.35229 (VS 2022 14.44.35207 toolset directory)")
+    endif()
+    if(NOT CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION STREQUAL "10.0.19041.0")
+        message(FATAL_ERROR "Win7 baseline requires Windows SDK 10.0.19041.0")
+    endif()
+    if(CMAKE_CXX_FLAGS MATCHES "/arch:(AVX|AVX2|AVX512)" OR CMAKE_CXX_FLAGS_RELEASE MATCHES "/arch:(AVX|AVX2|AVX512)")
+        message(FATAL_ERROR "Win7 CPU baseline cannot require AVX instructions")
+    endif()
+    set(MIKUDANCESTUDIO_ENABLE_DX12 OFF CACHE BOOL "Win7 baseline uses DX9 and CPU skinning" FORCE)
+    add_compile_definitions(_WIN32_WINNT=0x0601 WINVER=0x0601)
+endif()
+
 if (MSVC)
     # Sources contain UTF-8 comments and literals; do not use the host code page.
     add_compile_options(/W3 /permissive- /utf-8)
     # Keep symbols for crash dumps without disabling Release optimization.
     # Embed compiler symbols in objects to avoid shared-PDB C1902 failures.
     add_compile_options($<$<CONFIG:Release>:/Z7>)
-    add_link_options($<$<CONFIG:Release>:/DEBUG:FULL>
-                     $<$<CONFIG:Release>:/OPT:REF>
+    if(MIKUDANCESTUDIO_DEBUG_SYMBOLS)
+        add_link_options($<$<CONFIG:Release>:/DEBUG:FULL>)
+    else()
+        add_link_options($<$<CONFIG:Release>:/DEBUG:NONE>)
+    endif()
+    add_link_options($<$<CONFIG:Release>:/OPT:REF>
                      $<$<CONFIG:Release>:/OPT:ICF>)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     # The original binary tolerates implicit narrowing everywhere; keep the
@@ -936,6 +957,13 @@ if (MIKUDANCESTUDIO_BUILD_UI_TESTS)
     target_link_options(autosave_tests PRIVATE "/MANIFEST:NO" "${MIKUDANCESTUDIO_GEN_RES}")
     set_target_properties(autosave_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    add_executable(runtime_log_tests EXCLUDE_FROM_ALL
+        tests/runtime_log_tests.cpp src/main/runtime_log.cpp)
+    target_compile_definitions(runtime_log_tests PRIVATE MMS_RUNTIME_LOG_TESTS=1)
+    target_include_directories(runtime_log_tests PRIVATE include)
+    target_link_libraries(runtime_log_tests PRIVATE minhook::minhook user32)
+    set_target_properties(runtime_log_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     add_executable(image_sequence_tests EXCLUDE_FROM_ALL
         tests/image_sequence_tests.cpp res/MMD.rc ${MIKUDANCESTUDIO_GEN_RES})
     target_link_libraries(image_sequence_tests PRIVATE mikudancestudio_core minhook::minhook winmm dsound)
@@ -1343,7 +1371,7 @@ endif()
 # The Windows WIC PNG encoder creates transparent MOV files without a separate codec.
 # The regression executables are EXCLUDE_FROM_ALL
 # and carry no install rule, static/import libraries and PDBs live under
-# build\lib and build\symbols, and no log or dump is produced at runtime.
+# build\lib and build\symbols. Fatal error logs go to backups beside the EXE.
 # The runtime assets (Data\toon*.bmp, mmconfig.ini) come from the reference
 # MMD installation and are not part of this source tree.
 # ---------------------------------------------------------------------------

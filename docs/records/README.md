@@ -40,6 +40,7 @@
 
 ## 开发与维护
 
+- [main 源码审查与本地验收记录（2026-10-17）](main-source-review-2026-10-17.md)
 - [代码审查与缺陷记录](development/audits.md)
 - [历史功能范围审计](development/features.md)
 - [跨模块集成与兼容记录](development/integration.md)
