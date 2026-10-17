@@ -9,7 +9,9 @@ namespace mikudancestudio::curve_host {
 void Open(MMDApp*, bool) {}
 void OpenInterpolation(MMDApp*, bool) {}
 void OpenMorph(MMDApp*, int, bool) {}
-void NotifyRegistered(MMDApp*, Kind, int) {}
+void NotifyRegistered(MMDApp* app, Kind kind, int slot, int frame) {
+    if(app)ReconcileRegisteredFrame(*app,kind,slot,frame);
+}
 void NotifyModelRegistered(MMDApp*, bool) {}
 void CreateControls(MMDApp*, void*) {}
 void LayoutControls(MMDApp*) {}
@@ -25,6 +27,7 @@ bool Command(MMDApp*, unsigned id) {
 namespace mikudancestudio::curve_editor {
 void* Open(void*, Session, bool) { return nullptr; }
 void CloseOwned(void*) {}
+bool OwnsWindow(void*, void*) { return false; }
 void SetLanguage(void*, unsigned) {}
 void NotifySourceChanged(void*, const std::string&) {}
 void NotifyOwnedChanged(void*) {}

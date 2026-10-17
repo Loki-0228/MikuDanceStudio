@@ -982,8 +982,10 @@ void OpenInterpolation(MMDApp*app,bool visible){
     BindTransport(session,app);curve_editor::Open(app->Hwnd(),std::move(session),visible);
 }
 
-void NotifyRegistered(MMDApp*app,Kind kind,int slot){
-    if(app)curve_editor::NotifySourceChanged(app->Hwnd(),std::to_string(int(kind))+"/"+std::to_string(slot));
+void NotifyRegistered(MMDApp*app,Kind kind,int slot,int frame){
+    if(!app)return;
+    ReconcileRegisteredFrame(*app,kind,slot,frame);
+    curve_editor::NotifySourceChanged(app->Hwnd(),std::to_string(int(kind))+"/"+std::to_string(slot));
 }
 void NotifyModelRegistered(MMDApp*app,bool morph){
     if(!app)return;

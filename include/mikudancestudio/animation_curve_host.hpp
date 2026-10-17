@@ -20,7 +20,10 @@ void Open(MMDApp*, bool visible = true);
 // (camera mode) or selected bone (model mode).
 void OpenInterpolation(MMDApp*, bool visible = true);
 // Notifies an already open editor after native key registration completes.
-void NotifyRegistered(MMDApp*, Kind, int slot = 0);
+void NotifyRegistered(MMDApp*, Kind, int slot = 0, int frame = -1);
+// Explicit registration also creates an authored key when a shared native
+// record already exists with identical values for other curve lanes.
+void ReconcileRegisteredFrame(MMDApp&, Kind, int slot, int frame);
 void NotifyModelRegistered(MMDApp*, bool morph);
 void CreateControls(MMDApp*, void* window);
 void LayoutControls(MMDApp*);

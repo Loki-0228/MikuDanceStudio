@@ -1,5 +1,6 @@
 #include "mikudancestudio/frame_limits.hpp"
 #include "mikudancestudio/key_pool.hpp"
+#include "mikudancestudio/animation_curve_editor.hpp"
 // ===========================================================================
 // Edit-menu frame-line commands + select-all frame groups.
 //   VA 0x00439E40  insert frame line (bone / camera)    menu 0xFF,  key I
@@ -201,6 +202,7 @@ void ClearCameraKeyRecord(mdl::CameraKey& key) {
 // scroll branch (ui_hscroll.cpp, 428) and the separate-window refresh use.
 // ---------------------------------------------------------------------------
 void RefreshFrameLineViews(MMDApp* app) {
+    curve_editor::NotifyOwnedChanged(app->Hwnd());
     PostViewRefresh(app);                             // 0x40D130 readouts
     const HWND hwnd = static_cast<HWND>(app->Hwnd());
     if (hwnd == nullptr) {

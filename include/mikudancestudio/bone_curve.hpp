@@ -12,6 +12,10 @@ using Tracks = std::array<animation_curve::Track, 9>;
 bool Read(const unsigned char* model, int bone, Tracks& out);
 bool Has(const unsigned char* model, int bone);
 bool Write(unsigned char* model, int bone, const Tracks&, std::string& error);
+// Merge native edits into authored tracks without discarding unrelated curves.
+void Synchronize(const unsigned char* model);
+// A native registration also creates missing lane keys at a shared mirror frame.
+void ReconcileRegisteredFrame(const unsigned char* model, int bone, int frame);
 void Evaluate(unsigned char* model, double frame);
 void Forget(unsigned char* model);
 void CopyState(const unsigned char* source, unsigned char* destination);

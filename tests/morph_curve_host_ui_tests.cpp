@@ -760,8 +760,8 @@ void LauncherButtons() {
         Check(combo.left == kLanes[lane].comboX + 22 && combo.right - combo.left == 70,
               "the selector keeps 70 px and starts after the launcher");
         Check(previous.left == kLanes[lane].arrowX && previous.right - previous.left == 16 &&
-                  previous.top == kLanes[lane].arrowY,
-              "the previous arrow is not moved");
+                  previous.top == combo.top && previous.bottom == combo.bottom,
+              "the previous arrow keeps its X position and aligns with the selector");
         Check(forward.left == kLanes[lane].arrowX + 108 && forward.right - forward.left == 16,
               "the forward arrow is not moved");
     }
@@ -942,7 +942,7 @@ void BakedMorphKeepsBoneEditing() {
         Check(bone.rotQuat[0] == pose.rotQuat[0] && bone.trans[0] == pose.trans[0],
               "a selection flag without a timeline gesture cannot re-seek bones");
         app->SelectionBoxDragging() = 1;
-        mikudancestudio::HandleMouseMove(521, 272);
+        mikudancestudio::HandleMouseMove(540, 272); // Cross a frame cell; sub-cell motion is a no-op.
         Check(bone.rotQuat[0] == boneKey.rotation[0] && bone.trans[0] == boneKey.position[0],
               "a real timeline drag still applies the native frame");
         app->SelectionBoxDragging() = app->TimelineSelectionChanged() = 0;

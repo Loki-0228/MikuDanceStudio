@@ -227,7 +227,7 @@ bool Same(const std::vector<Channel>&a,const std::vector<Channel>&b){
         for(size_t i=0;i<a[c].track.keys.size();++i)if(!Same(a[c].track.keys[i],b[c].track.keys[i]))return false;}
     return true;
 }
-struct State {std::vector<Channel> channels, baseline;void* identity=nullptr;uint64_t fingerprint=0;};
+struct State {std::vector<Channel> channels, baseline;void* identity=nullptr;uint64_t fingerprint=0;std::set<int> registrations;};
 using Address=std::tuple<MMDApp*,Kind,int>;
 std::map<Address,State> states;
 template<class K> uint64_t Fingerprint(K*pool){
@@ -251,6 +251,19 @@ void* Identity(MMDApp&app,Kind kind,int slot){
 // Detect edits made by the existing registration/delete/paste/undo commands.
 // Only changed native keys replace authored keys; unrelated tangents survive.
 void Reconcile(State&s,const std::vector<Channel>&native){
+    // Registration is an explicit key insertion even if a shared native row
+    // already has identical bytes. Batch these events until the next read.
+    for(size_t c=0;!s.registrations.empty()&&c<s.channels.size();++c){
+        const auto& keys=s.channels[c].track.keys;
+        std::set<int> missing;
+        for(int frame:s.registrations){
+            const auto at=std::lower_bound(keys.begin(),keys.end(),frame,[](const auto& key,int f){return key.frame<f;});
+            if(at==keys.end()||at->frame!=frame)missing.insert(frame);
+        }
+        auto& before=s.baseline[c].track.keys;
+        before.erase(std::remove_if(before.begin(),before.end(),[&](const auto& key){return missing.count(key.frame)!=0;}),before.end());
+    }
+    s.registrations.clear();
     if(Same(s.baseline,native))return;
     for(size_t c=0;c<s.channels.size();++c){
         auto& keys=s.channels[c].track.keys;const auto& old=s.baseline[c].track.keys;
@@ -294,7 +307,7 @@ State* Current(MMDApp&app,Kind k,int slot){
     auto it=states.find({&app,k,slot});if(it==states.end())return nullptr;
     if(it->second.identity!=Identity(app,k,slot)){states.erase(it);return nullptr;}
     const uint64_t fingerprint=Fingerprint(app,k,slot);
-    if(fingerprint&&it->second.fingerprint==fingerprint)return &it->second;
+    if(fingerprint&&it->second.fingerprint==fingerprint&&it->second.registrations.empty())return &it->second;
     // The authored extension is the authority for custom curves. A legacy
     // proxy that cannot be decoded must not make valid authoring disappear.
     // Keep the old fingerprint so reconciliation retries after native repair.
@@ -324,10 +337,15 @@ struct PoolTransaction {
         restore(address,before);release(after);
     }
 };
-template<class K> void Mirror(K*& pool,const std::vector<Channel>&channels,const std::set<int>&frames){
+template<class K> void Mirror(K*& pool,const K* previous,const std::vector<Channel>&channels,const std::set<int>&frames){
+    // Curve values and native timeline selection are independent. Rebuilding
+    // the pool must not turn a handle edit into a selection of the whole track.
+    std::set<std::uint32_t> selected;
+    for(std::size_t i=0,capacity=mdl::KeyPoolCapacity(previous);i<capacity;++i)
+        if((i==0||previous[i].frame!=0)&&previous[i].selected)selected.insert(previous[i].frame);
     std::vector<K> records; records.reserve(frames.size());
     for(int frame:frames){
-        K key{};key.frame=uint32_t(frame);key.selected=1;
+        K key{};key.frame=uint32_t(frame);key.selected=selected.count(key.frame)!=0;
         for(size_t c=0;c<channels.size();++c)Put(key,c,SampleValue(channels[c],frame));
         records.push_back(key);
     }
@@ -373,7 +391,7 @@ bool Write(MMDApp&app,Kind kind,int slot,const std::vector<Channel>&input,std::w
     switch(kind){
     case Kind::Camera:
         transaction.Begin(app.CameraKeys());
-        Mirror(app.CameraKeys(),input,frames);transaction.Updated(app.CameraKeys());
+        Mirror(app.CameraKeys(),static_cast<const mdl::CameraKey*>(transaction.before),input,frames);transaction.Updated(app.CameraKeys());
         // The standard PMM body contains a linear proxy; full curves follow it.
         for(size_t i=0;i<frames.size();++i)for(int c=0;c<6;++c){
             app.CameraKeys()[i].interpolation[0][c]=20;app.CameraKeys()[i].interpolation[1][c]=20;
@@ -396,10 +414,10 @@ bool Write(MMDApp&app,Kind kind,int slot,const std::vector<Channel>&input,std::w
             }
         }
         break;
-    case Kind::Light:transaction.Begin(app.LightKeys());Mirror(app.LightKeys(),input,frames);transaction.Updated(app.LightKeys());break;
-    case Kind::Shadow:transaction.Begin(app.ShadowKeys());Mirror(app.ShadowKeys(),input,frames);transaction.Updated(app.ShadowKeys());break;
-    case Kind::Gravity:transaction.Begin(app.GravityKeys());Mirror(app.GravityKeys(),input,frames);transaction.Updated(app.GravityKeys());break;
-    case Kind::Accessory:transaction.Begin(app.AccessoryKeys(slot));Mirror(app.AccessoryKeys(slot),input,frames);transaction.Updated(app.AccessoryKeys(slot));break;
+    case Kind::Light:transaction.Begin(app.LightKeys());Mirror(app.LightKeys(),static_cast<const mdl::LightKey*>(transaction.before),input,frames);transaction.Updated(app.LightKeys());break;
+    case Kind::Shadow:transaction.Begin(app.ShadowKeys());Mirror(app.ShadowKeys(),static_cast<const mdl::SelfShadowKey*>(transaction.before),input,frames);transaction.Updated(app.ShadowKeys());break;
+    case Kind::Gravity:transaction.Begin(app.GravityKeys());Mirror(app.GravityKeys(),static_cast<const mdl::GravityKey*>(transaction.before),input,frames);transaction.Updated(app.GravityKeys());break;
+    case Kind::Accessory:transaction.Begin(app.AccessoryKeys(slot));Mirror(app.AccessoryKeys(slot),static_cast<const mdl::AccessoryKey*>(transaction.before),input,frames);transaction.Updated(app.AccessoryKeys(slot));break;
     }
     next.identity=kind==Kind::Accessory ? app.AccessorySlot(slot) : transaction.FinalIdentity();
     if (!NativeRead(app,kind,slot,next.baseline)) throw std::runtime_error("Invalid mirrored key track");
@@ -424,6 +442,11 @@ bool Write(MMDApp&app,Kind kind,int slot,const std::vector<Channel>&input,std::w
         error=Error(app,L"メモリ不足のため編集を適用できません。",L"Not enough memory to apply the edit.",L"内存不足，无法应用编辑，原关键帧已保留。");
         return false;
     }
+}
+void ReconcileRegisteredFrame(MMDApp& app,Kind kind,int slot,int frame){
+    if(frame<0)frame=app.CurrentFrame();
+    const auto found=states.find({&app,kind,slot});
+    if(found!=states.end())found->second.registrations.insert(frame);
 }
 void Apply(MMDApp*app,Kind kind,double frame,int slot){
     if(!app||!std::isfinite(frame)||states.empty())return;

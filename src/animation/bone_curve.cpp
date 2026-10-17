@@ -18,7 +18,18 @@ namespace mikudancestudio::bone_curve {
 namespace {
 namespace ac = animation_curve;
 constexpr double pi = 3.14159265358979323846;
-struct Entry { Tracks tracks; std::uint64_t nativeHash = 0; };
+struct NativeKey {
+    unsigned slot;
+    mdl::BoneKey key;
+    bone_scale::Matrix scale;
+    bone_scale::Curve scaleCurve;
+};
+struct Entry {
+    Tracks tracks;
+    std::uint64_t nativeHash = 0;
+    std::vector<NativeKey> baseline;
+    std::set<int> registrations;
+};
 using Curves = std::map<int, Entry>;
 struct State {
     const void* identity = nullptr;
@@ -72,15 +83,13 @@ State* Current(const unsigned char* model) {
     }
     return &it->second;
 }
+bool Reconcile(const unsigned char* model, int bone, Entry& entry);
 Entry* Current(const unsigned char* model, int bone) {
     auto* state = Current(model);
     if (!state) return nullptr;
     auto it = state->curves.find(bone);
     if (it == state->curves.end()) return nullptr;
-    // Native registration/deletion/retiming takes precedence over an old mirror.
-    if (it->second.nativeHash != Hash(model, bone)) {
-        state->curves.erase(it); return nullptr;
-    }
+    if (!Reconcile(model,bone,it->second)) return nullptr;
     return &it->second;
 }
 void Quaternion(const Tracks& tracks, double frame, float* q) {
@@ -101,6 +110,142 @@ bone_scale::Matrix Scale(const Tracks& tracks, double frame, bone_scale::Matrix 
     }
     return matrix;
 }
+bool Snapshot(const unsigned char* model,int bone,std::vector<NativeKey>& out) {
+    std::vector<unsigned> slots;
+    if(!Chain(model,bone,slots))return false;
+    out.reserve(slots.size());
+    for(auto slot:slots){const auto& key=mdl::Mdl(model)->boneKeys[slot];
+        if(key.frame>unsigned(frame_limits::maximum))return false;
+        for(float value:key.position)if(!std::isfinite(value))return false;
+        double norm=0;for(float value:key.rotation){if(!std::isfinite(value))return false;norm+=double(value)*value;}
+        auto scale=bone_scale::Key(model,slot);
+        if(norm<1e-20||!bone_scale::Valid(scale))return false;
+        out.push_back({slot,key,scale,bone_scale::KeyCurve(model,slot)});
+    }
+    return !out.empty()&&out.front().key.frame==0;
+}
+std::array<double,3> Angles(const float* q,const std::array<double,3>& reference) {
+    double norm=0;for(int c=0;c<4;++c)norm+=double(q[c])*q[c];
+    const double inverse=1/std::sqrt(norm),x=q[0]*inverse,y=q[1]*inverse,z=q[2]*inverse,w=q[3]*inverse;
+    const double rx=std::asin(std::clamp(2*(x*w-y*z),-1.0,1.0));
+    const auto nearest=[](double value,double target){return value+360*std::round((target-value)/360);};
+    std::array<double,3> angles;
+    if(std::abs(std::cos(rx))<1e-7){
+        // Keep the existing roll at the singularity instead of resetting it.
+        angles={rx*180/pi,std::atan2(2*(y*w-x*z),1-2*(y*y+z*z))*180/pi,reference[2]};
+        angles[1]+=rx>=0?reference[2]:-reference[2];
+    }else angles={rx*180/pi,std::atan2(2*(x*z+y*w),1-2*(x*x+y*y))*180/pi,
+                              std::atan2(2*(x*y+z*w),1-2*(x*x+z*z))*180/pi};
+    auto alternate=std::array<double,3>{180-angles[0],angles[1]+180,angles[2]+180};
+    double first=0,second=0;
+    for(int c=0;c<3;++c){angles[c]=nearest(angles[c],reference[c]);alternate[c]=nearest(alternate[c],reference[c]);
+        first+=std::pow(angles[c]-reference[c],2);second+=std::pow(alternate[c]-reference[c],2);}
+    return second<first?alternate:angles;
+}
+bool SameRotation(const float* a,const float* b) {
+    if(!std::memcmp(a,b,4*sizeof(float)))return true;
+    double dot=0,aa=0,bb=0;for(int c=0;c<4;++c){dot+=double(a[c])*b[c];aa+=double(a[c])*a[c];bb+=double(b[c])*b[c];}
+    return aa>0&&bb>0&&dot*dot/(aa*bb)>1-1e-14;
+}
+bool SamePose(const NativeKey& a,const NativeKey& b) {
+    return !std::memcmp(a.key.position,b.key.position,sizeof a.key.position)&&
+           SameRotation(a.key.rotation,b.key.rotation)&&a.scale==b.scale;
+}
+bone_scale::Curve Controls(const NativeKey& key,int channel) {
+    if(channel>=6)return key.scaleCurve;
+    const int lane=channel<3?channel:3;
+    return {key.key.interpolation[lane],key.key.interpolation[4+lane],
+            key.key.interpolation[8+lane],key.key.interpolation[12+lane]};
+}
+double ScaleValue(const bone_scale::Matrix& scale,int axis) {
+    double norm=0;for(int c=0;c<3;++c)norm+=double(scale.v[axis*3+c])*scale.v[axis*3+c];
+    return std::sqrt(norm);
+}
+bool FindOrInsert(ac::Track& track,int frame,std::size_t& index,std::string& error) {
+    const auto found=std::lower_bound(track.keys.begin(),track.keys.end(),frame,[](const ac::Key& key,int f){return key.frame<f;});
+    index=std::size_t(found-track.keys.begin());
+    if(found!=track.keys.end()&&found->frame==frame)return true;
+    return ac::InsertPreservingShape(track,frame,index,error)!=ac::InsertResult::Rejected;
+}
+bool Reconcile(const unsigned char* model,int bone,Entry& entry) {
+    const auto hash=Hash(model,bone);
+    if(!hash)return false;
+    if(hash==entry.nativeHash&&entry.registrations.empty())return true;
+    std::vector<NativeKey> fresh;
+    if(!Snapshot(model,bone,fresh))return false;
+    // Stable native slots distinguish retiming from registration. A recycled
+    // slot with a different frame and pose is a deletion followed by insertion.
+    std::map<unsigned,std::size_t> bySlot;
+    std::map<int,std::size_t> byFrame;
+    for(std::size_t i=0;i<entry.baseline.size();++i){bySlot.emplace(entry.baseline[i].slot,i);byFrame.emplace(int(entry.baseline[i].key.frame),i);}
+    std::vector<int> match(fresh.size(),-1);std::set<std::size_t> used;
+    for(std::size_t i=0;i<fresh.size();++i){auto found=bySlot.find(fresh[i].slot);
+        if(found!=bySlot.end()&&(entry.baseline[found->second].key.frame==fresh[i].key.frame||
+            (!entry.registrations.count(int(fresh[i].key.frame))&&SamePose(entry.baseline[found->second],fresh[i])))){
+            match[i]=int(found->second);used.insert(found->second);}}
+    for(std::size_t i=0;i<fresh.size();++i)if(match[i]<0){auto found=byFrame.find(int(fresh[i].key.frame));
+        if(found!=byFrame.end()&&!used.count(found->second)){match[i]=int(found->second);used.insert(found->second);}}
+    std::map<int,int> frames;
+    for(std::size_t i=0;i<fresh.size();++i)if(match[i]>=0)frames.emplace(int(entry.baseline[match[i]].key.frame),int(fresh[i].key.frame));
+    Tracks tracks=entry.tracks;
+    for(auto& track:tracks){const auto original=track.keys;track.keys.clear();
+        for(std::size_t i=0;i<original.size();++i){auto moved=frames.find(original[i].frame);if(moved==frames.end())continue;
+            auto key=original[i];key.frame=moved->second;
+            // Keep normalized handle positions when stretching an interval.
+            if(i){auto previous=frames.find(original[i-1].frame);if(previous!=frames.end()&&previous->second<key.frame)
+                key.inSlope*=double(original[i].frame-original[i-1].frame)/(key.frame-previous->second);}
+            if(i+1<original.size()){auto next=frames.find(original[i+1].frame);if(next!=frames.end()&&next->second>key.frame)
+                key.outSlope*=double(original[i+1].frame-original[i].frame)/(next->second-key.frame);}
+            track.keys.push_back(key);
+        }
+        std::sort(track.keys.begin(),track.keys.end(),[](const auto&a,const auto&b){return a.frame<b.frame;});
+        if(track.keys.empty()||track.keys.front().frame!=0)return false;
+        // Deleting a middle key joins handles that previously belonged to
+        // different intervals. Keep their slopes but fit their time weights.
+        for(std::size_t i=1;i<track.keys.size();++i){auto& a=track.keys[i-1];auto& b=track.keys[i];
+            const double sum=a.outWeight+b.inWeight;
+            if(sum>0.9999){a.outWeight=std::clamp(a.outWeight*0.9998/sum,0.0001,0.9997);b.inWeight=0.9998-a.outWeight;}}
+    }
+    std::string error;
+    for(std::size_t i=0;i<fresh.size();++i){const auto& native=fresh[i];const int frame=int(native.key.frame);
+        const NativeKey* old=match[i]<0?nullptr:&entry.baseline[match[i]];
+        const bool registered=entry.registrations.count(frame)!=0;
+        const bool rotationChanged=!old||!SameRotation(old->key.rotation,native.key.rotation);
+        std::array<double,3> reference{};
+        for(int axis=0;axis<3;++axis)reference[axis]=ac::Evaluate(tracks[3+axis],frame).value;
+        const auto angles=Angles(native.key.rotation,reference);
+        for(int c=0;c<9;++c){auto& track=tracks[c];
+            const double value=c<3?native.key.position[c]:c<6?angles[c-3]:ScaleValue(native.scale,c-6);
+            const bool changed=!old||(c<3?native.key.position[c]!=old->key.position[c]:c<6?rotationChanged:
+                ScaleValue(native.scale,c-6)!=ScaleValue(old->scale,c-6));
+            const bool controlsChanged=old?Controls(*old,c)!=Controls(native,c):!bone_scale::Linear(Controls(native,c));
+            if(!changed&&!controlsChanged&&!registered)continue;
+            std::size_t at=0;
+            if(!FindOrInsert(track,frame,at,error))return false;
+            // Untouched float proxies must not quantize high precision values
+            // or remove full Euler revolutions from an existing authored key.
+            if(changed){const double tolerance=c<3?0:1e-5;
+                if(c<3?float(track.keys[at].value)!=float(value):std::abs(track.keys[at].value-value)>tolerance)
+                    track.keys[at].value=value;
+            }
+            if(controlsChanged&&at){const auto controls=Controls(native,c);
+                // The native destination owns the interval beginning at the
+                // preceding native row, even when this lane had no key there.
+                std::size_t start=0;
+                if(!FindOrInsert(track,int(fresh[i-1].key.frame),start,error))return false;
+                at=std::size_t(std::lower_bound(track.keys.begin(),track.keys.end(),frame,[](const ac::Key& k,int f){return k.frame<f;})-track.keys.begin());
+                auto& a=track.keys[at-1];auto& b=track.keys[at];
+                const double x1=std::clamp(controls[0]/127.0,0.0002,0.9996),x2=std::clamp(controls[2]/127.0,x1+0.0002,0.9998);
+                const double rate=(b.value-a.value)/double(b.frame-a.frame);
+                a.outWeight=x1;b.inWeight=1-x2;a.outSlope=controls[1]/127.0/x1*rate;b.inSlope=(1-controls[3]/127.0)/(1-x2)*rate;
+                a.tangent=b.tangent=ac::Tangent::Free;b.interpolation=ac::Interpolation::Bezier;
+            }
+        }
+    }
+    for(const auto& track:tracks)if(!ac::Validate(track,error))return false;
+    entry.tracks=std::move(tracks);entry.baseline=std::move(fresh);entry.nativeHash=hash;entry.registrations.clear();
+    return true;
+}
 std::string StableId(const unsigned char* model, int bone, int channel) {
     std::string id = "bone/" + std::to_string(bone) + "/" + std::to_string(channel) + "/";
     const auto* name = mdl::Mdl(model)->boneTable[bone].name;
@@ -115,6 +260,13 @@ bool Read(const unsigned char* model, int bone, Tracks& out) {
     out = entry->tracks; return true;
 }
 bool Has(const unsigned char* model, int bone) { return Current(model, bone) != nullptr; }
+void Synchronize(const unsigned char* model) {
+    if(auto* state=Current(model))for(auto& pair:state->curves)Reconcile(model,pair.first,pair.second);
+}
+void ReconcileRegisteredFrame(const unsigned char* model,int bone,int frame) {
+    auto* state=Current(model);if(!state||frame<0)return;
+    auto found=state->curves.find(bone);if(found!=state->curves.end())found->second.registrations.insert(frame);
+}
 bool Write(unsigned char* model, int bone, const Tracks& tracks, std::string& error) {
     error.clear();
     std::vector<unsigned> oldSlots;
@@ -179,7 +331,10 @@ bool Write(unsigned char* model, int bone, const Tracks& tracks, std::string& er
         for(std::size_t i=frames.size();i<oldSlots.size();++i){scaleState.keys.erase(int(oldSlots[i]));scaleState.curves.erase(int(oldSlots[i]));}
         auto state = Current(model) ? *Current(model) : State{};
         state.identity=record.boneTable;
-        state.curves[bone]={tracks,0};
+        Entry authored;authored.tracks=tracks;authored.baseline.reserve(keys.size());
+        for(std::size_t i=0;i<keys.size();++i)
+            authored.baseline.push_back({slots[i],keys[i],scaleState.keys.at(int(slots[i])),bone_scale::LinearCurve()});
+        state.curves[bone]=std::move(authored);
         // Prepare all allocating work before publishing native keys and curves.
         auto& target=states[model];
         if(!bone_scale::Restore(model,std::move(scaleState))){error="Cannot store bone scale.";return false;}
@@ -197,27 +352,27 @@ bool Write(unsigned char* model, int bone, const Tracks& tracks, std::string& er
 void Evaluate(unsigned char* model, double frame) {
     if(!model||!std::isfinite(frame)||!mdl::Bones(model))return;
     auto* state=Current(model);if(!state)return;
-    for(auto it=state->curves.begin();it!=state->curves.end();){
-        if(it->second.nativeHash!=Hash(model,it->first)){it=state->curves.erase(it);continue;}
-        auto& bone=mdl::Bones(model)[it->first];const auto& tracks=it->second.tracks;
+    for(auto& pair:state->curves){
+        if(!Reconcile(model,pair.first,pair.second))continue;
+        auto& bone=mdl::Bones(model)[pair.first];const auto& tracks=pair.second.tracks;
         for(int c=0;c<3;++c)bone.trans[c]=float(ac::Evaluate(tracks[c],frame).value);
         Quaternion(tracks,frame,bone.rotQuat);
-        bone_scale::SetPose(model,it->first,Scale(tracks,frame,bone_scale::Pose(model,it->first)));
-        ++it;
+        bone_scale::SetPose(model,pair.first,Scale(tracks,frame,bone_scale::Pose(model,pair.first)));
     }
 }
 void Forget(unsigned char* model){states.erase(model);}
 void Reset(){states.clear();}
 void CaptureUndo(unsigned char* model,unsigned ring){
     if(!model||ring>=30)return;
+    Synchronize(model);
     auto& s=states[model];s.identity=mdl::Mdl(model)->boneTable;s.undo[ring]=s.curves;s.undoValid[ring]=true;s.redoValid[ring]=false;
 }
 void Undo(unsigned char* model,unsigned ring){auto* s=Current(model);if(s&&ring<30&&s->undoValid[ring]){s->redo[ring]=s->curves;s->redoValid[ring]=true;s->curves=s->undo[ring];}}
 void Redo(unsigned char* model,unsigned ring){auto* s=Current(model);if(s&&ring<30&&s->redoValid[ring])s->curves=s->redo[ring];}
 void CopyState(const unsigned char* source,unsigned char* destination){
-    Forget(destination);auto* s=Current(source);if(!s||!destination)return;
+    Synchronize(source);Forget(destination);auto* s=Current(source);if(!s||!destination)return;
     State copy;copy.identity=mdl::Mdl(destination)->boneTable;copy.curves=s->curves;
-    for(auto& pair:copy.curves)pair.second.nativeHash=Hash(destination,pair.first);
+    for(auto& pair:copy.curves){pair.second.nativeHash=Hash(destination,pair.first);pair.second.baseline.clear();Snapshot(destination,pair.first,pair.second.baseline);}
     states[destination]=std::move(copy);
 }
 void ExchangeState(unsigned char* first,unsigned char* second){
@@ -246,7 +401,7 @@ void LoadPmm(const MMDApp& app,const pmm_extension::Document& document){
         for(unsigned bone=0;bone<mdl::Mdl(model)->boneCount;++bone){
             Entry entry;bool complete=true;
             for(int c=0;c<9;++c){auto it=byId.find(StableId(model,bone,c));if(it==byId.end()||it->second->keys.empty()||it->second->keys.front().frame!=0){complete=false;break;}entry.tracks[c]=*it->second;}
-            if(complete){entry.nativeHash=Hash(model,bone);if(entry.nativeHash)state.curves[int(bone)]=std::move(entry);}
+            if(complete){entry.nativeHash=Hash(model,bone);if(entry.nativeHash&&Snapshot(model,bone,entry.baseline))state.curves[int(bone)]=std::move(entry);}
         }
         states[model]=std::move(state);
     }

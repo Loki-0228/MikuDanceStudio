@@ -13,6 +13,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "mikudancestudio/bone_scale.hpp"
+#include "mikudancestudio/bone_curve.hpp"
 #include "mikudancestudio/sequence_scatter.hpp"
 #include <Windows.h>
 #include <CommCtrl.h>
@@ -398,6 +399,7 @@ int RegisterBonePoseAtFrame(unsigned char* model, int boneIndex,  // was Sub4B38
         }
         bone_scale::Register(model, boneIndex, recordIndex);
         record.allocated = 1;
+        bone_curve::ReconcileRegisteredFrame(model,boneIndex,int(frame));
     };
 
     // Index rather than a reference: the free-slot scan below may grow the pool
@@ -921,6 +923,8 @@ void UndoModelEdit(unsigned char* model, std::int32_t* frame) {  // was Sub4A187
 
 void UndoModelEdit(unsigned char* model, std::int32_t* frame, int physicsMode) {
     if (model == nullptr || frame == nullptr) return;
+    // Capture edited curves for redo before native keys and scale roll back.
+    bone_curve::Synchronize(model);
     int cursor = static_cast<int>(mdl::Mdl(model)->undoState[0]);
     auto& undo = UndoAt(model, cursor);
     const int type = undo.operation;

@@ -365,6 +365,7 @@ template <typename Key, typename Source, typename Fill>
 static int InsertGlobalFrame(MMDApp* app, Key*& table,
                              std::uint32_t relativeFrame,
                              const Source& source, Fill fill,
+                             curve_host::Kind kind,
                              int advertisedCapacity = 10000) {
     if (table == nullptr) {
         return 0;
@@ -373,18 +374,16 @@ static int InsertGlobalFrame(MMDApp* app, Key*& table,
     std::uint32_t frame;
     if(!frame_limits::Add(app->CurrentFrame(),relativeFrame,frame))return 0;
     std::uint32_t index = 0;
-    std::uint32_t next = table[0].next;
-    while (next != 0) {
-        index = next;
-        const Key& candidate = table[index];
-        if (candidate.frame >= frame) {
-            break;
-        }
-        next = candidate.next;
+    // Include the permanent frame-zero head in the equality check. Starting
+    // at head.next inserted a second zero record; the allocator later reused
+    // it as a free slot and disconnected every key between it and the new key.
+    while (table[index].frame < frame && table[index].next != 0) {
+        index = table[index].next;
     }
 
     if (table[index].frame == frame) {
         fill(table[index], source);
+        curve_host::NotifyRegistered(app,kind,0,int(frame));
         return 1;
     }
 
@@ -418,6 +417,7 @@ static int InsertGlobalFrame(MMDApp* app, Key*& table,
     if (frame > app->state.lastRegisteredFrame) {
         app->state.lastRegisteredFrame = frame;
     }
+    curve_host::NotifyRegistered(app,kind,0,int(frame));
     return 1;
 }
 
@@ -462,25 +462,25 @@ int RegisterCameraKey(MMDApp* app, const void* rec,
                       int overflowAdvertised) {  // was Sub410AA0, VA 0x00410AA0
     const auto& source = *static_cast<const CameraClipboardRecord*>(rec);
     return InsertGlobalFrame(app, app->CameraKeys(), source.frame, source,
-                             FillCameraFrame, overflowAdvertised);
+                             FillCameraFrame, curve_host::Kind::Camera, overflowAdvertised);
 }
 
 int RegisterLightKey(MMDApp* app, const void* rec) {  // was Sub411900, VA 0x00411900
     const auto& source = *static_cast<const LightClipboardRecord*>(rec);
     return InsertGlobalFrame(app, app->LightKeys(), source.frame, source,
-                             FillLightFrame);
+                             FillLightFrame, curve_host::Kind::Light);
 }
 
 int RegisterSelfShadowKey(MMDApp* app, const void* rec) {  // was Sub4120B0, VA 0x004120B0
     const auto& source = *static_cast<const ShadowClipboardRecord*>(rec);
     return InsertGlobalFrame(app, app->ShadowKeys(), source.frame, source,
-                             FillShadowFrame);
+                             FillShadowFrame, curve_host::Kind::Shadow);
 }
 
 int RegisterGravityKey(MMDApp* app, const void* rec) {  // was Sub412DF0, VA 0x00412DF0
     const auto& source = *static_cast<const GravityClipboardRecord*>(rec);
     return InsertGlobalFrame(app, app->GravityKeys(), source.frame, source,
-                             FillGravityFrame);
+                             FillGravityFrame, curve_host::Kind::Gravity);
 }
 
 template <typename Key>
@@ -532,8 +532,7 @@ void RegisterCameraState(MMDApp* app, int frame) {
     // 满表文案 x64 一比一照抄 600000（0x7FF7CB47B18D sprintf_s 的实参；
     // 表容实为 10000 条，孪生粘贴注册器 Sub410AA0/x64 0x7FF7CB47B769 才打
     // 10000 —— 原版自身不一致，按行为基准保留）
-    if(RegisterCameraKey(app, &source, 600000))
-        curve_host::NotifyRegistered(app, curve_host::Kind::Camera);
+    RegisterCameraKey(app, &source, 600000);
 }
 
 // VA 0x00411630: Light manipulation "register" button backend
@@ -546,8 +545,7 @@ void RegisterLightState(MMDApp* app, int frame) {
     std::memcpy(source.direction, app->LightDirection(),
                 sizeof(source.direction));
     std::memcpy(source.color, app->LightColor(), sizeof(source.color));
-    if(RegisterLightKey(app, &source))
-        curve_host::NotifyRegistered(app, curve_host::Kind::Light);
+    RegisterLightKey(app, &source);
 }
 
 static void UnlinkAccessoryKey(mdl::AccessoryKey* keys,
@@ -734,6 +732,7 @@ void DeleteMarkedKeyframes(MMDApp* app) {
                       app->PlaybackPhysicsMode());
         }
     }
+    curve_editor::NotifyOwnedChanged(app->Hwnd());
 }
 
 // The view-reset shared tail loc_47EFF6: PostViewRefresh + RefreshRequest(-1)
