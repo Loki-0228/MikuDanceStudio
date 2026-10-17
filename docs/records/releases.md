@@ -3,6 +3,7 @@
 本页按功能归并实现、诊断与验收资料。各记录中的「当前」「已完成」只适用于其注明的源码、构建和测试条件；当前使用入口见[文档导航](../README.md)。
 
 ## 记录索引
+- [v2026.10.18.1-pre.1 预发布说明](#release-v2026-10-18-1-pre-1)
 - [v2026.10.17.1 正式发布说明](#release-v2026-10-17-1)
 - [v2026.10.17.1-pre.1 预发布说明](#release-v2026-10-17-1-pre-1)
 - [v2026.10.15.2 发布说明](#release-v2026-10-15-2)
@@ -14,6 +15,78 @@
 - [v2026.10.11.3 构建与发布记录](#record-release-3)
 - [v2026.10.11.2 构建与发布记录](#record-release-2)
 - [MMS 原生媒体导入与导出](#record-native-media)
+
+<a id="release-v2026-10-18-1-pre-1"></a>
+
+本节为预发布说明。
+
+<!-- release-notes:v2026.10.18.1-pre.1:begin -->
+## MikuMikuStudio v2026.10.18.1-pre.1
+
+Windows x64 · Prerelease
+
+[English](#release-v2026-10-18-1-pre-1-en) | [中文](#release-v2026-10-18-1-pre-1-zh) | [日本語](#release-v2026-10-18-1-pre-1-ja)
+
+<a id="release-v2026-10-18-1-pre-1-en"></a>
+
+### English
+
+Changes since the last published release, `v2026.10.17.1`.
+
+#### What's new
+
+- Fixed video export started from model mode shifting the framing upward and cutting off the model. Export now renders the registered camera track regardless of the selected editor panel. This includes H.264 MP4 export in the full build.
+- Image-sequence export uses the same camera framing. Camera attachments, perspective and orthographic projection follow the camera track, independent of the model editing reference and Track setting. The selected editor mode is preserved; manual frame stepping and single-image capture retain their editing viewpoint.
+- Updated the separate curve repair tool: the launcher uses English and respects Windows display scaling, fixing overlapping Start MMS and Close buttons. Corrected its startup loading sequence so the repair DLL can load after Windows initializes the MMS process.
+
+#### Download and use
+
+Choose the full package for MP4 and image-sequence export. The minimal package retains the original MMD feature set and encoding limits, with shared rendering fixes. Extract each package into a separate folder and run `MikuMikuDance.exe`. Models, personal settings, MME, MMV, and FFmpeg are not included. The curve repair launcher remains a separate tool and is not bundled in either application package.
+
+#### Optional NVIDIA fix
+
+Neither application package includes the NVIDIA fix. If needed, download `MMSNvidiaAAFix.dll` separately and place it beside the full build's EXE. Install it from Help, then restart MMS. Use Help to uninstall. Deleting the DLL does not remove an installed setting.
+
+<a id="release-v2026-10-18-1-pre-1-zh"></a>
+
+### 中文
+
+以下为相较上次正式发布 `v2026.10.17.1` 的更新。
+
+#### 更新内容
+
+- 修复从模型模式开始导出视频时，画面上移、人物只剩半身的问题。导出统一使用已注册的镜头轨道，不再受当前编辑面板影响，覆盖完整版的 H.264 MP4 导出。
+- 图片序列导出使用相同的镜头构图。相机附着、透视和正交投影均跟随镜头轨道，不受模型编辑参照点及「追踪」开关影响。保留当前编辑模式，手动逐帧和单张图片仍使用编辑视角。
+- 更新独立的曲线修复工具：启动器改为英文并适配 Windows 显示缩放，修复「Start MMS」与「Close」按钮重叠。修正启动加载顺序，等待 Windows 初始化 MMS 进程后加载修复 DLL。
+
+#### 下载与使用
+
+需要 MP4 和图片序列导出时选择完整包。最小包保留原版 MMD 的功能范围及编码限制，并包含共享的渲染修复。分别解压到独立目录后运行 `MikuMikuDance.exe`。模型、个人设置、MME、MMV 和 FFmpeg 需自行准备。曲线修复启动器继续作为独立工具，不放入两个主程序包。
+
+#### NVIDIA 修复安装（可选）
+
+两个主程序包均不附带 NVIDIA 修复插件。需要时单独下载 `MMSNvidiaAAFix.dll`，放到完整版 EXE 同目录，在「帮助」菜单选择安装并重启 MMS。卸载也通过该菜单操作，删除 DLL 不会撤销已安装的设置。
+
+<a id="release-v2026-10-18-1-pre-1-ja"></a>
+
+### 日本語
+
+前回の正式リリース `v2026.10.17.1` からの変更です。
+
+#### 更新内容
+
+- モデルモードから動画を出力すると構図が上にずれ、モデルの一部が切れる問題を修正しました。編集中のパネルにかかわらず、登録済みのカメラトラックで描画します。完全版の H.264 MP4 出力も対象です。
+- 連番画像出力にも同じカメラの構図を使います。カメラの外部親、透視・正射影はカメラトラックに従い、モデル編集の参照点や「追従」の設定に左右されません。選択中の編集モードを保持し、手動のコマ送りと静止画出力では編集時の視点を維持します。
+- 独立したカメラ数値修復ツールを更新しました。ランチャーを英語表示にし、Windows の表示倍率に対応して Start MMS と Close の重なりを修正しました。Windows による MMS プロセスの初期化後に修復 DLL を読み込むよう、起動手順も修正しました。
+
+#### ダウンロードと使い方
+
+MP4 と連番画像の出力には完全版を選んでください。最小版は原版 MMD の機能範囲と文字コード制限を維持し、共通の描画修正を含みます。各パッケージを別のフォルダーに展開し、`MikuMikuDance.exe` を実行します。モデル、個人設定、MME、MMV、FFmpeg は同梱しません。修復ランチャーは独立したツールであり、どちらのアプリケーションパッケージにも含めません。
+
+#### NVIDIA 修正の導入（任意）
+
+NVIDIA 修正プラグインは両方のパッケージに含まれません。必要な場合のみ `MMSNvidiaAAFix.dll` を別途ダウンロードし、完全版の EXE と同じフォルダーに置きます。ヘルプからインストールして MMS を再起動してください。解除も同じメニューから行います。DLL の削除だけでは適用済みの設定は解除されません。
+<!-- release-notes:v2026.10.18.1-pre.1:end -->
 
 <a id="release-v2026-10-17-1"></a>
 
