@@ -33,6 +33,68 @@ LRESULT CALLBACK ObserveChildPaint(HWND window, UINT message, WPARAM wp, LPARAM 
     }
     return DefSubclassProc(window, message, wp, lp);
 }
+int ExportCameraTests(MMDApp* app, IDirect3DDevice9* device, HWND window) {
+    int failures = 0;
+    const auto check = [&](bool ok, const char* label) {
+        std::printf("%s %s\n", ok ? "PASS" : "FAIL", label); failures += !ok;
+    };
+    auto model = std::make_unique<mdl::ModelRecord>(); mdl::BoneRecord bones[2]{};
+    model->boneTable = bones; model->boneCount = 2; model->selectedBone = 1;
+    app->ModelSlot(0) = reinterpret_cast<unsigned char*>(model.get());
+    app->SelectedModelSlot() = 0;
+    for (auto& bone : bones)
+        bone.matInit[0] = bone.matInit[5] = bone.matInit[10] = bone.matInit[15] = 1.f;
+    bones[0].matInit[13] = 20.f;
+    d3dx::D3DXMATRIXF parent{}; d3dx::Get().rotY(&parent, .7f);
+    parent.m[3][0] = 5.f; parent.m[3][1] = 7.f; parent.m[3][2] = 11.f;
+    std::memcpy(bones[1].matInit, &parent, sizeof parent);
+    app->CameraPositionX() = 2.f; app->CameraPositionY() = 10.f; app->CameraPositionZ() = -30.f;
+    app->CameraDistance() = -45.f; app->ViewOffsetX() = app->ViewOffsetY() = 0;
+    app->CameraYaw() = .3f; app->CameraPitch() = -.1f; app->CameraRoll() = .05f;
+    app->CameraParentBone() = 1;
+    const auto matrices = [&] {
+        SetupFrameWorldTransform(app);
+        std::array<D3DMATRIX, 3> result{};
+        device->GetTransform(D3DTS_WORLD, &result[0]);
+        device->GetTransform(D3DTS_VIEW, &result[1]);
+        device->GetTransform(D3DTS_PROJECTION, &result[2]);
+        return result;
+    };
+    for (int perspective : {0, 1}) for (int parentModel : {-1, 0}) {
+        app->CameraPerspective() = perspective; app->CameraParentModel() = parentModel;
+        app->CameraMode() = 1; app->state.followCameraEnabled = 0;
+        app->RecordingWindow() = nullptr; app->FrameStepPlayback() = 0;
+        app->CameraReferenceMode() = CameraAttachmentReference::None;
+        const auto expected = matrices();
+        for (int reference = 0; reference < 3; ++reference) for (int follow : {0, 1}) {
+            app->CameraMode() = 0; app->state.followCameraEnabled = follow;
+            app->CameraReferenceMode() = static_cast<CameraAttachmentReference>(reference);
+            app->RecordingWindow() = window; app->FrameStepPlayback() = 1;
+            const auto actual = matrices();
+            std::printf("EXPORT perspective=%d parent=%d reference=%d follow=%d\n",
+                perspective, parentModel, reference, follow);
+            check(std::memcmp(expected.data(), actual.data(), sizeof expected) == 0,
+                  "model-mode recording uses the same world/view/projection as camera mode");
+            check(app->CameraMode() == 0 && app->state.followCameraEnabled == follow &&
+                  static_cast<int>(app->CameraReferenceMode()) == reference,
+                  "rendering preserves editor mode, tracking and reference selection");
+        }
+    }
+    app->CameraParentModel() = -1; app->CameraMode() = 0; app->state.followCameraEnabled = 0;
+    app->CameraReferenceMode() = CameraAttachmentReference::None;
+    app->RecordingWindow() = nullptr; app->FrameStepPlayback() = 0;
+    const auto freeView = matrices();
+    app->FrameStepPlayback() = 1;
+    const auto manualStep = matrices();
+    check(std::memcmp(freeView.data(), manualStep.data(), sizeof freeView) == 0,
+          "manual frame stepping retains the model editing viewpoint");
+    app->FrameStepPlayback() = 0; app->RecordingWindow() = window;
+    const auto still = matrices();
+    check(std::memcmp(freeView.data(), still.data(), sizeof freeView) == 0,
+          "single-image capture retains the model editing viewpoint");
+    app->RecordingWindow() = nullptr; app->ModelSlot(0) = nullptr;
+    return failures;
+}
 }
 int main(int argc, char** argv) {
     std::setvbuf(stdout,nullptr,_IONBF,0);
@@ -50,6 +112,12 @@ int main(int argc, char** argv) {
     auto renderer=std::make_unique<D3DRenderer>();renderer->device=device;renderer->viewScale=1.f;
     app->Renderer()=renderer.get();app->state.hwnd=window;app->CameraFov()=45.f;
     app->CameraPerspective()=0;app->CameraReferenceMode()=CameraAttachmentReference::None;
+    if (argc > 1 && std::strcmp(argv[1], "--export-only") == 0) {
+        const int failures = ExportCameraTests(app.get(), device, window);
+        app->Renderer() = nullptr; g_Block = nullptr;
+        device->Release(); d3d->Release(); DestroyWindow(window);
+        return failures ? 1 : 0;
+    }
     if (argc > 1 && std::strcmp(argv[1], "--lighting-only") == 0) {
         int failures = 0;
         const auto check = [&](bool ok, const char* label) {

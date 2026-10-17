@@ -9,6 +9,8 @@
 #include "mikudancestudio/frame_presentation.hpp"
 #include "mikudancestudio/window_dpi_scope.hpp"
 #include "mikudancestudio/antialias.hpp"
+#include "mikudancestudio/mf_h264_recorder.hpp"
+#include "mikudancestudio/native_media.hpp"
 #include <MinHook.h>
 #include <Windows.h>
 #include <wrl/client.h>
@@ -96,6 +98,56 @@ std::vector<DWORD> Pixels(MMDApp*a,const char*name){
 void Pump(){MSG m;for(int i=0;i<100&&PeekMessageW(&m,nullptr,0,0,PM_REMOVE);++i){TranslateMessage(&m);DispatchMessageW(&m);}}
 void Frame(MMDApp*a){Pump();a->DeltaTime()=1.f/30;a->state.messageSeen=1;FrameDriver(a);}
 void Render(MMDApp*a){a->state.messageSeen=1;RenderFrameScene(a);}
+decltype(&WriteBuiltInH264Frame) realH264Write;
+std::vector<std::vector<unsigned char>> cameraFrames;
+unsigned cameraCase=0, cameraFrame=0;
+bool ObserveH264Write(DShowRecorder* recorder,const void* data,std::size_t size) {
+ const auto* pixels=static_cast<const unsigned char*>(data);
+ if(cameraCase==0)cameraFrames.emplace_back(pixels,pixels+size);
+ else Check(cameraFrame<cameraFrames.size()&&cameraFrames[cameraFrame].size()==size&&
+     std::memcmp(cameraFrames[cameraFrame].data(),pixels,size)==0,
+     "MP4 model-mode pixels match camera mode before encoding");
+ ++cameraFrame;return realH264Write(recorder,data,size);
+}
+void CameraModeExports(MMDApp* app) {
+ LoadModelFile(app,(output/L"model"/L"fixture.pmd").c_str(),false);
+ Need(app->SelectedModel()!=nullptr,"load model for production model-mode export");
+ Hook(&WriteBuiltInH264Frame,&ObserveH264Write,&realH264Write);
+ auto* keys=app->CameraKeys();
+ keys[0].next=1;keys[0].eye[0]=2.f;keys[0].eye[1]=10.f;keys[0].eye[2]=0.f;
+ keys[0].distance=-45.f;keys[0].fov=30;keys[0].parentModel=-1;
+ std::memset(keys[0].target,0,sizeof keys[0].target);
+ keys[1]=keys[0];keys[1].frame=30;keys[1].previous=0;keys[1].next=0;keys[1].eye[0]=5.f;
+ for(int channel=0;channel<6;++channel){keys[1].interpolation[0][channel]=keys[1].interpolation[1][channel]=20;
+   keys[1].interpolation[2][channel]=keys[1].interpolation[3][channel]=107;}
+ for(cameraCase=0;cameraCase<3;++cameraCase){
+   const int mode=cameraCase==0?1:0,follow=cameraCase==2?1:0;
+   app->CameraMode()=mode;app->state.followCameraEnabled=follow;
+   app->CameraReferenceMode()=CameraAttachmentReference::None;
+   app->CameraPositionY()=99.f;app->ViewOffsetX()=8.f;app->ViewOffsetY()=7.f;
+   const auto path=output/(L"camera-mode-"+std::to_wstring(cameraCase)+L".mp4");
+   wcscpy_s(app->AviOutputPath(),256,path.c_str());app->Recorder()->selectedCodec=kBuiltInH264Codec;
+   app->AviOutputWidth()=640;app->AviOutputHeight()=360;
+   app->AviRecordStartFrame()=0;app->AviRecordEndFrame()=5;app->AviRecordFps()=30;
+   app->AviIncludeWave()=0;app->AviCloseAfterExport()=0;cameraFrame=0;
+   StartAviRecordWindow(app);Need(app->RecordingWindow()!=nullptr,"start production H264 export");
+   for(int step=0;step<60&&app->RecordingWindow();++step)Frame(app);
+   Need(!app->RecordingWindow(),"MP4 export finishes normally");
+   Check(cameraFrame==6,"MP4 has all six output samples including frame zero");
+   Check(app->CameraMode()==mode&&app->state.followCameraEnabled==follow,"MP4 preserves editor and track selection");
+   Need(fs::is_regular_file(path)&&fs::file_size(path)>0,"MP4 file is finalized");
+   std::wstring error;int width=0,height=0;double duration=0;
+   Need(media::OpenVideo(app,path.c_str(),width,height,duration,error,640),"decode finalized MP4");
+   Check(width==640&&height==360,"MP4 output dimensions are unchanged");
+   Need(media::VideoFrame(app,0,error)!=nullptr&&media::VideoFrame(app,5./30,error)!=nullptr,
+        "MP4 first and final frames decode");
+   media::ReleaseVideo(app);
+   std::printf("MP4 mode=%d follow=%d frames=%u bytes=%llu\n",mode,follow,cameraFrame,
+       static_cast<unsigned long long>(fs::file_size(path)));
+ }
+ MH_DisableHook(reinterpret_cast<void*>(&WriteBuiltInH264Frame));
+ MH_RemoveHook(reinterpret_cast<void*>(&WriteBuiltInH264Frame));
+}
 void SettleTemporal(MMDApp* app) {
  const char* aa=std::getenv("PROBE_AA");
  if(!aa||std::strcmp(aa,"taa")!=0)return;
@@ -152,6 +204,10 @@ int wmain(int argc,wchar_t**argv){
  }
  LoadAccessoryFile((output/L"fixture.x").c_str());Need(a->AccessorySlot(0)!=nullptr,"load static diagnostic geometry");
  for(int i=5;i<argc;++i){LoadAccessoryFile(argv[i]);Need(a->AccessorySlot(i-4)!=nullptr,"load real effect accessory");}
+ if(std::getenv("PROBE_CAMERA_MODES")){
+   CameraModeExports(a);ShutdownCleanup(a);g_Block=nullptr;delete a;UnhookWindowsHookEx(cbt);
+   return failures?1:0;
+ }
  if(const char*aa=std::getenv("PROBE_AA")){
    std::wstring error;
    const auto algorithm=std::strcmp(aa,"taa")==0?antialias::Algorithm::Taa:antialias::Algorithm::Fxaa;
