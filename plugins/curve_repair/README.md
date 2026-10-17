@@ -6,11 +6,13 @@
 
 适用于 Windows x64 MMS。宿主须提供 `MMSGetMenuHostApi` 菜单接口；原版 MikuMikuDance 不在支持范围内。
 
-本插件使用唯一文件名 `MMSCurveRepair.dll`，不会占用系统或其他程序的 DLL 名称。启动器会在开始 MMS 前加载该 DLL。它使用当前选定的 MMS EXE，不会改写或替换 EXE。
+本插件使用唯一文件名 `MMSCurveRepair.dll`，不会占用系统或其他程序的 DLL 名称。启动器启动选定的 MMS，并在该进程中加载 DLL，不会改写或替换 EXE。
+
+启动器界面固定为英文，窗口和按钮按 Windows 显示缩放排列。MMS 内的修复菜单与修复窗口仍跟随 MMS 的界面语言。
 
 1. 关闭所有 MMS 进程。
 2. 将本包解压到 `MikuMikuDance.exe` 所在目录。
-3. 启动 `MMSCurveRepairLauncher.exe`。确认路径指向当前 MMS 的 `MikuMikuDance.exe`，然后点击「启动 MMS」。
+3. 启动 `MMSCurveRepairLauncher.exe`。确认路径指向当前 MMS 的 `MikuMikuDance.exe`，然后点击「Start MMS」。
 4. 在已启动的 MMS 中点击「数值修复」→「修复已保存的镜头数值…」。
 5. 选择已经保存的 PMM。如果工程没有保留原始曲线，可以另选与该镜头序列对应的原始 VMD。
 6. 点击「扫描」，核对帧号、通道、修改前后数值和恢复依据。
@@ -46,10 +48,10 @@ cmake --build .local/builds/curve-repair --config Release
 
 DLL 和启动器分别位于 `.local/builds/curve-repair/Release/MMSCurveRepair.dll` 与 `.local/builds/curve-repair/Release/MMSCurveRepairLauncher.exe`。独立工程不会重新编译 MMS 主程序。
 
-`verify_runtime.py` 在隔离目录复制指定的 MMS EXE，验证启动器加载、菜单、中文文件路径和保存副本。需要正常 Windows 桌面图形环境、Python 和 Pillow。运行该脚本会启动并关闭隔离的 MMS 副本。
+`verify_runtime.py` 在隔离目录复制指定的 MMS EXE，验证启动器的英文文字、按钮间距、缩放后的控件边界、DLL 加载、菜单、中文文件路径和保存副本。需要正常 Windows 桌面图形环境、Python 和 Pillow。运行该脚本会启动并关闭隔离的 MMS 副本。
 
 ## 加载方式
 
-启动器先创建一个挂起的 MMS 进程，将唯一命名的插件 DLL 加载到该进程后再恢复 MMS。插件通过已有的菜单 ABI 注册功能表，未使用私有内存偏移。MMS 运行时只会打开启动器所选的原 EXE。
+启动器创建并恢复 MMS 进程，待 Windows 初始化模块列表后加载插件 DLL。插件等待主窗口就绪，再通过已有的菜单 ABI 注册菜单，未使用私有内存偏移。MMS 运行时只会打开启动器所选的原 EXE。
 
 本目录代码和引用的曲线编解码器遵循仓库 `LICENSE`。

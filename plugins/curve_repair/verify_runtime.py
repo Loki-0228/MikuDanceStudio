@@ -13,6 +13,8 @@ import time
 u = C.WinDLL("user32", use_last_error=True)
 k = C.WinDLL("kernel32", use_last_error=True)
 p = C.WinDLL("psapi", use_last_error=True)
+# Match screen coordinates to PrintWindow pixels on scaled Windows desktops.
+u.SetProcessDPIAware()
 CALLBACK = C.WINFUNCTYPE(W.BOOL, W.HWND, W.LPARAM)
 u.EnumWindows.argtypes = [CALLBACK, W.LPARAM]
 u.GetWindowThreadProcessId.argtypes = [W.HWND, C.POINTER(W.DWORD)]
@@ -33,6 +35,9 @@ u.GetDlgItem.restype = W.HWND
 u.IsWindowEnabled.argtypes = [W.HWND]
 u.IsWindowVisible.argtypes = [W.HWND]
 u.GetWindowRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
+u.GetClientRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
+u.ClientToScreen.argtypes = [W.HWND, C.POINTER(W.POINT)]
+u.GetMenuItemRect.argtypes = [W.HWND, W.HMENU, W.UINT, C.POINTER(W.RECT)]
 k.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
 k.OpenProcess.restype = W.HANDLE
 k.CloseHandle.argtypes = [W.HANDLE]
@@ -46,6 +51,7 @@ p.PROCESSENTRY32W = type("PROCESSENTRY32W", (C.Structure,), {"_fields_": [
 k.Process32FirstW.argtypes = [W.HANDLE, C.POINTER(p.PROCESSENTRY32W)]
 k.Process32NextW.argtypes = [W.HANDLE, C.POINTER(p.PROCESSENTRY32W)]
 k.GetExitCodeProcess.argtypes = [W.HANDLE, C.POINTER(W.DWORD)]
+k.WaitForSingleObject.argtypes = [W.HANDLE, W.DWORD]
 k.TerminateProcess.argtypes = [W.HANDLE, W.UINT]
 p.EnumProcessModules.argtypes = [W.HANDLE, C.POINTER(W.HMODULE), W.DWORD, C.POINTER(W.DWORD)]
 p.GetModuleFileNameExW.argtypes = [W.HANDLE, W.HMODULE, W.LPWSTR, W.DWORD]
@@ -134,14 +140,44 @@ def text(window):
     return buf.value
 
 
-def menu_command(main):
+def menu_item(main):
     menu = u.GetMenu(main)
     for i in range(u.GetMenuItemCount(menu)):
         label = C.create_unicode_buffer(256)
         u.GetMenuStringW(menu, i, label, len(label), 0x400)
         if label.value in ("数值修复", "Value repair", "数値修復"):
-            return u.GetMenuItemID(u.GetSubMenu(menu, i), 0)
+            popup = u.GetSubMenu(menu, i)
+            item = C.create_unicode_buffer(256)
+            u.GetMenuStringW(popup, 0, item, len(item), 0x400)
+            rect = W.RECT()
+            assert u.GetMenuItemRect(main, menu, i, C.byref(rect))
+            return {"command": u.GetMenuItemID(popup, 0), "title": label.value,
+                    "item": item.value, "rect": [rect.left, rect.top, rect.right, rect.bottom]}
     return None
+
+
+def verify_launcher(window):
+    expected = {300: "MMS executable", 302: "Browse...", 303: "Start MMS", 2: "Close"}
+    assert text(window) == "MMS Curve Repair Launcher", text(window)
+    rects = {}
+    client = W.RECT()
+    assert u.GetClientRect(window, C.byref(client))
+    origin = W.POINT()
+    assert u.ClientToScreen(window, C.byref(origin))
+    for control_id in (300, 301, 302, 303, 304, 2):
+        control = u.GetDlgItem(window, control_id)
+        if control_id in expected:
+            assert text(control) == expected[control_id], (control_id, text(control))
+        rect = W.RECT()
+        assert u.GetWindowRect(control, C.byref(rect))
+        box = [rect.left - origin.x, rect.top - origin.y, rect.right - origin.x, rect.bottom - origin.y]
+        assert 0 <= box[0] < box[2] <= client.right, (control_id, box, client.right)
+        assert 0 <= box[1] < box[3] <= client.bottom, (control_id, box, client.bottom)
+        rects[control_id] = box
+    assert rects[303][2] < rects[2][0], rects
+    assert rects[304][3] < rects[303][1], rects
+    assert text(u.GetDlgItem(window, 304)) == "The launcher loads the plug-in into MMS before starting it. The MMS executable stays intact."
+    return {"language": "English", "client": [client.right, client.bottom], "controls": rects}
 
 
 def sha(path):
@@ -194,6 +230,10 @@ def main():
     ap.add_argument("--language", type=int, choices=(0, 1, 2), default=2)
     ap.add_argument("--reopen", action="store_true")
     args = ap.parse_args()
+    for name in ("host", "launcher", "dll", "fixture", "output", "data"):
+        value = getattr(args, name)
+        if value is not None:
+            setattr(args, name, value.resolve())
     args.output.mkdir(parents=True, exist_ok=True)
     runtime = args.output / "runtime"
     runtime.mkdir(exist_ok=False)
@@ -213,13 +253,19 @@ def main():
     try:
         launcher_window = until(lambda: next((h for h, cls, _ in windows(launcher.pid)
                                             if cls == "MMS.CurveRepair.Launcher"), None))
+        report["launcher_ui"] = verify_launcher(launcher_window)
+        capture_window(launcher_window, args.output / "launcher-window.png")
         u.PostMessageW(launcher_window, 0x111, 303, 0)
         host_pid = until(lambda: child_process(launcher.pid), 50)
         main_window = until(lambda: next((h for h, cls, _ in windows(host_pid)
                                         if cls == "Polygon Movie Maker" and u.IsWindowVisible(h)), None), 50)
-        loaded = modules(host_pid)
-        assert str(runtime / "MMSCurveRepair.dll").lower() in [s.lower() for s in loaded]
-        command = until(lambda: menu_command(main_window))
+        until(lambda: str(runtime / "MMSCurveRepair.dll").lower() in [s.lower() for s in modules(host_pid)])
+        item = until(lambda: menu_item(main_window))
+        assert item["title"] == ("数値修復", "Value repair", "数值修复")[args.language], item
+        assert item["item"] == ("保存済みカメラ数値を修復…", "Repair saved camera values…", "修复已保存的镜头数值…")[args.language], item
+        report["menu"] = item
+        capture_window(main_window, args.output / "host-menu.png")
+        command = item["command"]
         report["loaded_plugin"] = str(runtime / "MMSCurveRepair.dll")
         report["menu_command"] = command
         u.PostMessageW(main_window, 0x111, command, 0)
