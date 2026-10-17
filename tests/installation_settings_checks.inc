@@ -38,6 +38,13 @@ void SettingsLocationChecks(const fs::path& executable,const std::wstring& mode)
         GetPrivateProfileStringW(L"autosave",L"directory",L"",value,64,target.c_str());
         Check(!wcscmp(value,L"data/backups"),"default backup setting stores no previous EXE absolute address");
         if(overrideMode)Check(!fs::exists(config),"test override does not write production data settings");
+
+        auto trailingSeparator=current;
+        trailingSeparator.directory+=L"\\";
+        const auto trailingTarget=root/L"trailing-separator.ini";
+        Check(as::SaveSettings(trailingTarget,trailingSeparator),"save default backup directory with trailing separator");
+        GetPrivateProfileStringW(L"autosave",L"directoryMode",L"",value,64,trailingTarget.c_str());
+        Check(!wcscmp(value,L"executable"),"trailing separator keeps the default backup directory executable-relative");
     }
     if(mode==L"--settings-custom"){
         auto custom=current;custom.directory=(root/L"custom").wstring();custom.enabled=true;custom.intervalMinutes=2;custom.maxBackups=7;

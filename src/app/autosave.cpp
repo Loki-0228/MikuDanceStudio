@@ -34,6 +34,17 @@ fs::path SettingsPath() {
     // LOCALAPPDATA profile, whose absolute backup path may belong to another EXE.
     return local_data::File(L"autosave.ini");
 }
+fs::path NormalizeDirectoryPath(fs::path path) {
+    path = path.lexically_normal();
+    // filesystem::path treats a trailing separator as an empty filename.
+    // Remove those empty components without walking above a volume/share root.
+    while (!path.empty() && path != path.root_path() && path.filename().empty()) {
+        const fs::path parent = path.parent_path();
+        if (parent == path) break;
+        path = parent;
+    }
+    return path;
+}
 Settings Defaults() {
     Settings value;
     const auto directory = local_data::File(L"backups");
@@ -192,10 +203,10 @@ bool SaveSettings(const fs::path& path, const Settings& value) {
     if (ec) return false;
     const auto temporary = path.wstring() + L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
     const auto defaultDirectory = Defaults().directory;
-    auto directoryPath = fs::path(value.directory).lexically_normal();
-    if (!directoryPath.has_filename()) directoryPath = directoryPath.parent_path();
+    const auto directoryPath = NormalizeDirectoryPath(value.directory);
+    const auto defaultDirectoryPath = NormalizeDirectoryPath(defaultDirectory);
     const bool besideExecutable = !defaultDirectory.empty() && _wcsicmp(
-        directoryPath.c_str(), fs::path(defaultDirectory).lexically_normal().c_str()) == 0;
+        directoryPath.c_str(), defaultDirectoryPath.c_str()) == 0;
     const std::wstring body = L"\xfeff[autosave]\r\nenabled=" + std::to_wstring(value.enabled) +
         L"\r\nintervalMinutes=" + std::to_wstring(value.intervalMinutes) + L"\r\nmaxBackups=" +
         std::to_wstring(value.maxBackups) + L"\r\noverwriteOldest=" + std::to_wstring(value.overwriteOldest) +
